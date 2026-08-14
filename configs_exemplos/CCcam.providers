@@ -1,0 +1,8 @@
+# ============================================================
+# CCcam.providers - NOMES DE PROVIDERS (mostrados na GUI)
+# Formato: CAID:PROVID:NOME DO PROVIDER
+# ============================================================
+098D:000000:Sky Deutschland
+0500:030B00:TNTSAT
+0100:003311:MEO
+2600:000000:BISS
