@@ -1,0 +1,21 @@
+MultiCS r1000 v1.0.9 - by Sharillas@2026
+=========================================
+
+Cardserver proxy (fork multi-cs/multics) com GUI web moderna.
+
+INSTALACAO RAPIDA (qualquer VPS Linux):
+  git clone https://github.com/sharillas/MultiCS-r1000-Sharillas.git
+  cd MultiCS-r1000-Sharillas
+  sudo bash install.sh
+
+WEB UI:  http://SEU_IP:5500   (user: admin / pass: admin - MUDAR!)
+
+Portas: HTTP 5500, Telnet 5600, CCcam 16000, MGcamd 21000,
+        camd35 7502, cs378x 8600, cache 5599, perfis 15001+
+
+Documentacao:
+  README.md                visao geral + instalacao
+  docs/CONFIGS.md          guia exato de configuracao do cardserver
+  docs/IMPLEMENTACAO.md    features e fixes da build
+
+Hash SHA256 (build/multics.x64): ver build/

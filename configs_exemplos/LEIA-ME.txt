@@ -1,0 +1,42 @@
+# ============================================================
+# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000)
+# ============================================================
+
+Ficheiros e funcao de cada um:
+
+  multics.cfg          -> FICHEIRO MESTRE. Define portas, credenciais,
+                          cache, telnet, HTTP e inclui os restantes.
+  profiles.cfg         -> PERFIS de saida (portas virtuais) com todas as
+                          opcoes por protocolo (DCW, SERVER, CACHEEX,
+                          SKIPCWP, SID lists...). Usa [DEFAULT] + [NOME].
+  Cache.cfg            -> PEERS de cache (partilha de CWs entre servers).
+  CacheEX.cfg          -> PEERS CacheEX (protocolo CacheEX, maxhop...).
+  1-Clients.cfg        -> F-LINES (clientes CCcam) com todas as opcoes.
+  Nlines.cfg           -> N-LINES (clientes newcamd).
+  users.cfg            -> Utilizadores globais (valem para todos os profiles).
+  Mgcamd.cfg           -> Utilizadores MGcamd.
+  Camd35.cfg           -> Utilizadores Camd35.
+  SKYDE.cfg           -> Perfis/readers extra (incluido pelo master).
+  Softcam.cfg          -> Chaves CONSTCW (BISS/Tandberg) do Emulator.
+  blocked_ips.cfg      -> IPs bloqueados (gerido pela pagina Iptables).
+  CCcam.channelinfo    -> Nomes de canais para a GUI.
+  CCcam.providers      -> Nomes de providers para a GUI.
+  multics.css          -> Tema externo (copiar de ../Configs/).
+
+Instalacao na VPS (Debian/Ubuntu):
+  mkdir -p /var/etc
+  copiar todos os *.cfg e auxiliares para /var/etc/
+  chmod -R 775 /var/etc/
+  executar: ./multics.x64 -b -C /var/etc/multics.cfg
+
+Actualizacao automatica de chaves BISS (opcional):
+  copiar biss_updater.py para /var/etc/ e adicionar ao crontab:
+  0 */6 * * * root /usr/bin/python3 /var/etc/biss_updater.py >> /var/log/biss_updater.log 2>&1
+
+Notas:
+  - O multics.cfg e o ficheiro MESTRE: todos os ficheiros de config que o
+    parse deve ler tem de estar la descritos (FILE ... ou INCLUDE "...").
+  - Alteracoes nos cfgs sao detectadas automaticamente (inotify).
+  - A GUI (porto 5500) permite editar configs (Edit Config / Edit Profiles),
+    gerir chaves BISS (pagina Emulator) e IPs bloqueados (pagina Iptables).
+  - Mudar sempre HTTP USER/PASS e TELNET USER/PASS antes de expor na net.
