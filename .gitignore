@@ -1,0 +1,6 @@
+build/obj/
+dist/
+*.o
+Bins_Analisar/
+backup_originais/
+projeto_final/
