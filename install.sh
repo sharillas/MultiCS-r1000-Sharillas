@@ -48,9 +48,24 @@ mkdir -p "$BIN_DIR"
 install -m 755 "$SCRIPT_DIR/build/multics.x64" "$BIN_DIR/multics.x64" 2>/dev/null || cp -f "$SCRIPT_DIR/build/multics.x64" "$BIN_DIR/multics.x64"
 install -m 755 "$SCRIPT_DIR/build/multics.x32" "$BIN_DIR/multics.x32" 2>/dev/null || cp -f "$SCRIPT_DIR/build/multics.x32" "$BIN_DIR/multics.x32"
 
-# ---- configs ----
+# ---- configs (NUNCA sobrescrever os existentes) ----
 mkdir -p "$CFG_DIR"
-cp -f "$SCRIPT_DIR"/configs_exemplos/* "$CFG_DIR/" 2>/dev/null || true
+BACKUP_TS=$(date +%Y%m%d_%H%M%S)
+FIRST_INSTALL=1
+if [ -f "$CFG_DIR/multics.cfg" ]; then FIRST_INSTALL=0; fi
+if [ "$FIRST_INSTALL" = "0" ]; then
+  # instalacao anterior detectada: copia apenas os ficheiros em falta
+  for f in "$SCRIPT_DIR"/configs_exemplos/*; do
+    base=$(basename "$f")
+    if [ ! -e "$CFG_DIR/$base" ]; then
+      cp -f "$f" "$CFG_DIR/"
+      echo "  novo: $base"
+    fi
+  done
+else
+  # primeira instalacao: copia tudo
+  cp -f "$SCRIPT_DIR"/configs_exemplos/* "$CFG_DIR/" 2>/dev/null || true
+fi
 chmod -R 775 "$CFG_DIR"
 
 # ---- credenciais web ----
