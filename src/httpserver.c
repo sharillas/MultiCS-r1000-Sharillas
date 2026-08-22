@@ -2365,6 +2365,16 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 			sprintf( cell[4],"%d / %d<span style=\"float: right;\">%d%%</span><br>Hits = %d",srv->ecmok ,srv->ecmnb, (srv->ecmok*100)/srv->ecmnb, srv->hits);
 		else
 			sprintf( cell[4],"<span style=\"float: right;\">0%%</span>");
+		// Health score (quando HEALTH ativo nalgum perfil deste server)
+		{
+			int henabled = 0;
+			int hscore = srv_healthscore_gui(srv, &henabled);
+			if (henabled) {
+				if (hscore) sprintf( temp,"<br>Health = %d/1000", hscore);
+				else sprintf( temp,"<br>Health = --");
+				strcat( cell[4], temp );
+			}
+		}
 		// CELL5
 		if (srv->ecmok)
 			sprintf( cell[5],"%d ms",(srv->ecmoktime/srv->ecmok) ); //, srv->hits );

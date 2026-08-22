@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# MultiCS r1000 v1.0.9 by Sharillas - Instalador Universal
+# MultiCS r1000 v1.0.10 by Sharillas - Instalador Universal
 # Funciona em: Debian/Ubuntu, CentOS/Rocky/Alma, Arch, Alpine
 # (binarios estaticos musl - nao precisam de libs do sistema)
 #
@@ -38,7 +38,7 @@ if [ ! -f "$BIN" ]; then
   exit 1
 fi
 
-echo "== MultiCS r1000 v1.0.9 - instalacao =="
+echo "== MultiCS r1000 v1.0.10 - instalacao =="
 echo "  binarios -> $BIN_DIR"
 echo "  configs  -> $CFG_DIR"
 echo "  web UI   -> porta $PORT_HTTP (user: $HTTP_USER / pass: $HTTP_PASS)"

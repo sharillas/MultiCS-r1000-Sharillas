@@ -689,6 +689,42 @@ struct cardserver_data
 		int fallowcamd35;
 		int fallowcs378x;
 		int fallowskipcwc;	// Skip Same CW (protecao cws fakes repetidas)
+		// CW Cycle Check (estilo OSCam module-cw-cycle-check)
+		struct {
+			int enable;        // ENABLE CWC
+			int sensitive;     // CWC SENSITIVE (bytes iguais na metade fixa, 0=off)
+			int dropold;       // CWC DROPOLD (drop ECM antigo/replay e same CW fora de janela)
+			int dropbad;       // CWC DROPBAD (drop bad CW cycle)
+			int keepcycletime; // CWC KEEPCYCLETIME (minutos, 0=off)
+		} cwc;
+		// Health scoring (ordena/elimina servers por saude: sucesso, latencia,
+		// estabilidade, erros) - pesos configuraveis por perfil
+		struct {
+			int enable;     // HEALTH ENABLE
+			int wsuc;       // HEALTH WEIGHTS: peso do sucesso (%)
+			int wlat;       // peso da latencia (%)
+			int wsta;       // peso da estabilidade (%)
+			int werr;       // peso da penalizacao de erros (%)
+			int minecms;    // HEALTH MINECMS (amostras minimas antes de pontuar)
+			int dropoff;    // HEALTH DROPOFF (score minimo para participar, 0=off)
+		} health;
+		// Fallback cross-protocol: ordem de preferencia de protocolos
+		// por perfil. So os protocolos na lista participam; o timeout
+		// adia os fallbacks enquanto existirem servers do protocolo
+		// preferido disponiveis.
+		struct {
+			int enable;         // FALLBACK ENABLE
+			uint8_t order[8];   // FALLBACK ORDER: tipos por ordem (0=end)
+			int timeout;        // FALLBACK TIMEOUT (ms)
+		} fallback;
+		// Timing budget por canal: usa o cryptoperiod estimado para
+		// falhar cedo (decode failed dentro do periodo) e dar tempo ao
+		// cliente de pedir o proximo ECM no mesmo ciclo
+		struct {
+			int enable;     // TIMING ENABLE
+			int fraction;   // TIMING FRACTION (% do cryptoperiod como budget)
+			int minperiod;  // TIMING MINPERIOD (ms minimo para aplicar)
+		} timing;
 		int fallowcache;
 #ifdef CACHEEX
 		int fallowcacheex;
@@ -1381,6 +1417,7 @@ struct config_data
 		int autoenable;
 		int faccept0onid;
 		int alivetime;
+		int adaptivettl; // TTL adaptativo (cryptoperiod estimado por canal)
 		int filter;
 		int filtertime;
 		int threshold;

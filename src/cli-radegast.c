@@ -138,6 +138,7 @@ void rdgd_srv_recvmsg(struct server_data *srv)
 						if (!acceptDCW(&buf[4], isnanoe0)) {
 							mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from radegast server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid, isnanoe0);
 							srv->ecmerrdcw ++;
+							ecm_setsrvflagdcw( ecm, srv->id, ECM_SRV_REPLY_FAIL, &buf[4] );
 							pthread_mutex_unlock(&prg.lockecm); //###
 							break;
 						}

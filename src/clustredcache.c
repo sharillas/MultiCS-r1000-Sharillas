@@ -325,6 +325,7 @@ struct PACK cache_data {
 
 	uint8_t flags;
 	uint32_t recvtime;
+	uint32_t validtime; // TTL adaptativo (0 = usar cfg.cache.alivetime)
 	// CSP
 	uint8_t tag;
 	uint16_t sid;
@@ -443,40 +444,45 @@ struct cache_data *cache_new( struct cache_data *newdata )
 	}
 	else {
 		new = cachetab[index]->prev;
-		if ( (new->recvtime+cfg.cache.alivetime) < ticks ) {
-			// cache is dead, add data to this one without allocating new data
-			// free old dcw
-			struct cw_cache_data *cwdata = new->cwdata;
-			while (cwdata) {
-				struct cw_cache_data *tmp = cwdata;
-				cwdata = cwdata->next;
-				free( tmp );
+		{
+			uint32_t alive = new->validtime ? new->validtime : cfg.cache.alivetime;
+			if ( (new->recvtime+alive) < ticks ) {
+				// cache is dead, add data to this one without allocating new data
+				// free old dcw
+				struct cw_cache_data *cwdata = new->cwdata;
+				while (cwdata) {
+					struct cw_cache_data *tmp = cwdata;
+					cwdata = cwdata->next;
+					free( tmp );
+				}
+				//mlogf(LOGDEBUG,0," reuse data for index = %02X\n", index);
+				pcache = new->prev; // store previous
+				memset( new, 0,  sizeof(struct cache_data) );
+				new->prev = pcache;
+				new->next = cachetab[index];
+				cachetab[index] = new; // it becomes the current one
 			}
-			//mlogf(LOGDEBUG,0," reuse data for index = %02X\n", index);
-			pcache = new->prev; // store previous
-			memset( new, 0,  sizeof(struct cache_data) );
-			new->prev = pcache;
-			new->next = cachetab[index];
-			cachetab[index] = new; // it becomes the current one
-		}
-		else { // allocate new data
-			//mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," new data for index = %02X\n", index);
-			new = malloc( sizeof(struct cache_data) );
-			memset( new, 0, sizeof(struct cache_data) );
-			// add new in list
-			new->prev = cachetab[index]->prev;
-			new->next = cachetab[index];
-			// update previous
-			cachetab[index]->prev->next = new;
-			// update next
-			cachetab[index]->prev = new;
-			//
-			cachetab[index] = new; // it becomes the current one			
+			else { // allocate new data
+				//mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," new data for index = %02X\n", index);
+				new = malloc( sizeof(struct cache_data) );
+				memset( new, 0, sizeof(struct cache_data) );
+				// add new in list
+				new->prev = cachetab[index]->prev;
+				new->next = cachetab[index];
+				// update previous
+				cachetab[index]->prev->next = new;
+				// update next
+				cachetab[index]->prev = new;
+				//
+				cachetab[index] = new; // it becomes the current one			
+			}
 		}
 	}
 	pcache = cachetab[index];
 	//pcache->status = CACHE_STAT_WAIT; // 0:Wait; 1: dcw received
 	pcache->recvtime = ticks;
+	// TTL adaptativo: validade = cryptoperiod estimado do canal (quando conhecido)
+	pcache->validtime = cfg.cache.adaptivettl ? (uint32_t)chnbudget_getperiod(newdata->caid, newdata->provid, newdata->sid) : 0;
 	pcache->tag = newdata->tag;
 	pcache->sid = newdata->sid;
 	pcache->onid = newdata->onid;
@@ -496,7 +502,8 @@ struct cache_data *cache_fetch( struct cache_data *thereq )
 	struct cache_data *pcache = cachetab[index];
 	uint32_t ticks = GetTickCount();
 	while (pcache) {
-		if ( (pcache->recvtime+cfg.cache.alivetime) < ticks ) return NULL;
+		uint32_t alive = pcache->validtime ? pcache->validtime : cfg.cache.alivetime;
+		if ( (pcache->recvtime+alive) < ticks ) return NULL;
 		if ( (pcache->hash==thereq->hash)&&(pcache->sid==thereq->sid) )
 			if ( (pcache->tag==thereq->tag) || !pcache->tag || !thereq->tag ) return pcache;
 		pcache = pcache->next;
@@ -1480,6 +1487,11 @@ int cache_setdcw( struct cache_data *req, uint8_t cw[16], cwcycle_t cwcycle, int
 			mlogf(LOGTRACE,getdbgflag(DBG_CACHE,0,0)," cache: non cs non CAID 0500 accept recv cw from peer %d: %04x:%06x:%04x - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n", peerid ,req->caid, req->provid, req->sid, cw[0],cw[1],cw[2],cw[3],cw[4],cw[5],cw[6],cw[7],cw[8],cw[9],cw[10],cw[11],cw[12],cw[13],cw[14],cw[15] );
 	}
 
+	// CWC: CW Cycle Check (estilo OSCam) - protege contra cws fakes/replay
+	if (cwc_check( req, cw, peerid )<0) {
+		return DCW_ERROR | DCW_SKIP;
+	}
+
 	// Search for Cache data
 	struct cw_cache_data *cwdata = NULL;
 	struct cache_data *pcache = cache_fetch( req );
@@ -1992,11 +2004,12 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 						if (!peer_doublecheck(cache,peer)) break;
 						mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,peer->id), " cache: Peer (%s:%d) come Online\n", peer->host->name, peer->port );
 						peer->ping = peer->lastpingrecv-peer->lastpingsent;
-#ifdef PEERLIST
-						ipeer_update(cache);
-#endif
 					}
 					peer->ping++;
+					if (peer->ping<1) peer->ping = 1; // RTT sub-ms (peers locais)
+#ifdef PEERLIST
+					ipeer_update(cache);
+#endif
 					break;
 				}
 				peer = peer->next;
@@ -2024,11 +2037,12 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 								if (!peer_doublecheck(cache,peer)) break;
 								mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,peer->id), " cache: Peer (%s:%d) come Online*\n", peer->host->name, peer->port );
 								peer->ping = peer->lastpingrecv-peer->lastpingsent;
-#ifdef PEERLIST
-								ipeer_update(cache);
-#endif
 							}
 							peer->ping++;
+							if (peer->ping<1) peer->ping = 1; // RTT sub-ms (peers locais)
+#ifdef PEERLIST
+							ipeer_update(cache);
+#endif
 							mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,peer->id), " cache: sending card data to peer (%s:%d)\n", peer->host->name, peer->port );
 							// Send CARDS DATA
 							buf[0] = TYPE_CARD_LIST;

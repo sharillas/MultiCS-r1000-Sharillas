@@ -127,12 +127,95 @@ struct srvtab_data
 	int val; // sid value
 	unsigned int ecmtime; // Card Ecmtime
 	uint32_t ecmperhr;
+	int health; // health score 0-1000 (0 = nao calculado)
+	int prorank; // posicao do protocolo no FALLBACK ORDER (255 = nao listado)
 };
 
 
 struct srvtab_data srvlist[MAXSRVTAB];
 struct srvtab_data *psrvlist[MAXSRVTAB];
 struct srvtab_data *srvtemp;
+
+
+// posicao do protocolo do server no FALLBACK ORDER do perfil (255 = nao listado)
+int srv_fallback_rank(struct cardserver_data *cs, struct server_data *srv)
+{
+	int i;
+	for (i=0; i<8; i++) {
+		if (!cs->option.fallback.order[i]) break;
+		if (cs->option.fallback.order[i]==srv->type) return i;
+	}
+	return 255;
+}
+
+
+// Health score do server: 0-1000 (maior = melhor)
+// 0 = nao calculado (sem amostras suficientes ou health desligado)
+int srv_healthscore(struct cardserver_data *cs, struct server_data *srv)
+{
+	if (!cs->option.health.enable) return 0;
+	int ecmnb = srv->ecmnb;
+	if (ecmnb < cs->option.health.minecms) return 0;
+
+	int wsuc = cs->option.health.wsuc;
+	int wlat = cs->option.health.wlat;
+	int wsta = cs->option.health.wsta;
+	int werr = cs->option.health.werr;
+	if (!(wsuc+wlat+wsta+werr)) { wsuc = 40; wlat = 30; wsta = 10; werr = 20; }
+
+	// Sucesso: racio de ECMs com DCW
+	int suc = (srv->ecmok*1000)/ecmnb;
+
+	// Latencia: tempo medio de resposta (0ms -> 1000, >=4000ms -> 0)
+	int avg = srv->ecmok>0 ? srv->ecmoktime/srv->ecmok : 4000;
+	int lat = 1000 - (avg*1000)/4000;
+	if (lat<0) lat = 0;
+
+	// Estabilidade: uptime (10min = max)
+	uint32_t ticks = GetTickCount();
+	uint32_t uptime = ((ticks - srv->connection.time) + srv->connection.uptime) / 1000;
+	int sta = (int)((uptime*1000)/600);
+	if (sta>1000) sta = 1000;
+
+	// Erros: timeouts + bad dcw (20 erros = penalizacao maxima)
+	int err = (srv->ecmtimeout + srv->ecmerrdcw) * 50;
+	if (err>1000) err = 1000;
+
+	int score = (suc*wsuc + lat*wlat + sta*wsta - err*werr)/100;
+	if (score<0) score = 0;
+	if (score>1000) score = 1000;
+	return score;
+}
+
+
+// a deve ficar antes de b por health? (1 = sim)
+inline int health_better(struct srvtab_data *a, struct srvtab_data *b)
+{
+	if (a->health && b->health && a->health!=b->health) return a->health < b->health;
+	return 0;
+}
+
+
+// score para a GUI: usa os pesos do primeiro perfil com HEALTH que usa este server
+int srv_healthscore_gui(struct server_data *srv, int *enabled)
+{
+	struct cardserver_data *cs = cfg.cardserver;
+	while (cs) {
+		if (cs->option.health.enable) {
+			int i;
+			for (i=0; i<MAX_CSPORTS; i++) {
+				if (!srv->csport[i]) break;
+				if (srv->csport[i]==cs->newcamd.port) {
+					*enabled = 1;
+					return srv_healthscore(cs, srv);
+				}
+			}
+		}
+		cs = cs->next;
+	}
+	*enabled = 0;
+	return 0;
+}
 
 
 int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
@@ -255,6 +338,38 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 	}
 	//mlogf(LOGDEBUG,0, " B*srvtab_arrange(%04x:%06x:%04x) Servers = %d\n", ecm->caid, ecm->provid, ecm->sid, nbsrv);
 
+	// FALLBACK CROSS-PROTOCOL: filtrar por protocolo preferido
+	if (cs->option.fallback.enable && cs->option.fallback.order[0]) {
+		ticks = GetTickCount();
+		int haveprimary = 0;
+		for(j=0; j<nbsrv; j++) {
+			psrvlist[j]->prorank = srv_fallback_rank(cs, psrvlist[j]->srv);
+			if (psrvlist[j]->prorank==0) haveprimary = 1;
+		}
+		// excluir protocolos fora da lista
+		i=0;
+		for(j=0; j<nbsrv; j++) {
+			if (psrvlist[j]->prorank!=255) {
+				if (i<j) psrvlist[i] = psrvlist[j];
+				i++;
+			}
+		}
+		psrvlist[i] = NULL;
+		nbsrv = i;
+		// adiar fallbacks enquanto existir protocolo primario e o ECM for recente
+		if (haveprimary && ((uint32_t)(ticks - ecm->recvtime) < (uint32_t)cs->option.fallback.timeout)) {
+			i=0;
+			for(j=0; j<nbsrv; j++) {
+				if (psrvlist[j]->prorank==0) {
+					if (i<j) psrvlist[i] = psrvlist[j];
+					i++;
+				}
+			}
+			psrvlist[i] = NULL;
+			nbsrv = i;
+		}
+	}
+
 #ifndef PUBLIC
 	// Store number of available servers, Runtime ADD SIDS
 	if (ecm->sid) {
@@ -311,6 +426,35 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 	for(i=0; i<nbsrv; i++)
 		psrvlist[i]->ecmperhr = (psrvlist[i]->srv->ecmnb*3600*1000) / ( 1+ (ticks-psrvlist[i]->srv->connection.time)+psrvlist[i]->srv->connection.uptime );
 
+	// HEALTH SCORING: pontua cada server e remove os doentes (dropoff)
+	if (cs->option.health.enable) {
+		for(i=0; i<nbsrv; i++) {
+			psrvlist[i]->health = srv_healthscore(cs, psrvlist[i]->srv);
+			mlogf(LOGDEBUG,getdbgflagpro(DBG_SERVER,0,psrvlist[i]->srv->id,cs->id)," health: server (%s:%d) score=%d (ok=%d/%d tmo=%d baddcw=%d)\n",
+				psrvlist[i]->srv->host->name, psrvlist[i]->srv->port, psrvlist[i]->health,
+				psrvlist[i]->srv->ecmok, psrvlist[i]->srv->ecmnb, psrvlist[i]->srv->ecmtimeout, psrvlist[i]->srv->ecmerrdcw);
+		}
+
+		if (cs->option.health.dropoff>0) {
+			int havegood = 0;
+			for(j=0; j<nbsrv; j++)
+				if (psrvlist[j]->health >= cs->option.health.dropoff) { havegood = 1; break; }
+			if (havegood) {
+				i=0;
+				for(j=0; j<nbsrv; j++) {
+					if (psrvlist[j]->health >= cs->option.health.dropoff) {
+						if (i<j) psrvlist[i] = psrvlist[j];
+						i++;
+					}
+					else mlogf(LOGDEBUG,getdbgflagpro(DBG_SERVER,0,psrvlist[j]->srv->id,cs->id)," [!] server (%s:%d) health=%d abaixo de dropoff=%d, fora deste pedido\n",
+						psrvlist[j]->srv->host->name, psrvlist[j]->srv->port, psrvlist[j]->health, cs->option.health.dropoff);
+				}
+				psrvlist[i] = NULL;
+				nbsrv = i;
+			}
+		}
+	}
+
 	if (!bestone)
 
 		// Arrange by ECM LAST SENT TIME && unbusy state & sid ok
@@ -331,6 +475,16 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
 						}
+						else if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
 						else if  ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
@@ -345,7 +499,17 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 						psrvlist[j] = srvtemp;
 					}
 					else if (psrvlist[j]->val==-1) {
-						if  ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) {
+						if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if  ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
@@ -359,7 +523,17 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 						psrvlist[j] = srvtemp;
 					}
 					else {
-						if  ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) {
+						if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if  ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
@@ -382,7 +556,17 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 						psrvlist[j] = srvtemp;
 					}
 					else if (psrvlist[j]->val>0) {
-						if  ( ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) ) {
+						if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if  ( ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
@@ -396,7 +580,17 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 						psrvlist[j] = srvtemp;
 					}
 					else if (psrvlist[j]->val==0) {
-						if  ( ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) ) {
+						if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if  ( ( psrvlist[i]->ecmperhr > psrvlist[j]->ecmperhr ) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;

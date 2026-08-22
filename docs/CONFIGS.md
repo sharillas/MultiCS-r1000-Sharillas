@@ -189,3 +189,71 @@ ss -tlnp | grep multics              # portas a escutar
 ```
 
 Na GUI: Dashboard (estado geral) → Servers (readers) → Newcamd/CCcam (clientes) → Debug (paths e log).
+
+---
+
+## 9. Opcoes v1.0.10 (CWC / HEALTH / FALLBACK / TIMING)
+
+Todas sao por perfil (ou DEFAULT) e vao OFF por default.
+
+### CWC — CW Cycle Check (estilo OSCam)
+
+Protege contra CWs fakes/replay aprendendo o cycletime do canal.
+
+``cfg
+DEFAULT ENABLE CWC: 0          # default = disabled
+DEFAULT CWC SENSITIVE: 3       # bytes iguais na metade que NAO devia mudar (0=off, 1-8)
+DEFAULT CWC DROPOLD: 1         # drop ECM antigo (replay) e same CW fora da janela
+DEFAULT CWC DROPBAD: 1         # drop bad CW cycle (1=drop, 0=so log)
+DEFAULT CWC KEEPCYCLETIME: 5   # minutos que mantem o cycletime aprendido (0=off)
+
+[Meu Perfil]
+ENABLE CWC: 1                  # activa neste perfil
+``
+
+### HEALTH — health scoring dos readers
+
+Ordena os readers por saude e exclui os doentes (dropoff).
+
+``cfg
+DEFAULT ENABLE HEALTH: 0
+DEFAULT HEALTH WEIGHTS: 40 30 10 20   # sucesso latencia estabilidade erros (%)
+DEFAULT HEALTH MINECMS: 20            # amostras minimas antes de pontuar
+DEFAULT HEALTH DROPOFF: 0             # score minimo para participar (0=off)
+
+[Meu Perfil]
+ENABLE HEALTH: 1
+HEALTH DROPOFF: 200
+``
+
+### FALLBACK — cross-protocol
+
+Preferencia de protocolos por perfil; os fallbacks entram apos
+FALLBACK TIMEOUT (ou de imediato se nao houver primario disponivel).
+
+``cfg
+DEFAULT ENABLE FALLBACK: 0
+DEFAULT FALLBACK ORDER: NEWCAMD CCCAM CS378X CAMD35 RADEGAST
+DEFAULT FALLBACK TIMEOUT: 800
+
+[Meu Perfil]
+ENABLE FALLBACK: 1
+FALLBACK ORDER: NEWCAMD CCCAM
+``
+
+### TIMING — timing budget por canal
+
+Estima o cryptoperiod e falha dentro do ciclo (decode failed cedo),
+para o cliente pedir o proximo ECM a tempo.
+
+``cfg
+DEFAULT ENABLE TIMING: 0
+DEFAULT TIMING FRACTION: 60    # % do cryptoperiod como budget de decode
+DEFAULT TIMING MINPERIOD: 3000 # aplica so quando o periodo estimado >= este (ms)
+
+[Meu Perfil]
+ENABLE TIMING: 1
+
+# na seccao CACHE:
+CACHE ADAPTIVETTL: 1           # entradas da cache expiram ao fim do cryptoperiod
+``
