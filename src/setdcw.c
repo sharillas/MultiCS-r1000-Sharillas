@@ -528,6 +528,9 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	sid_newecm(ecm);
 	memcpy( ecm->cw, dcw, 16 );
 
+	// TIMING BUDGET: observar mudanca de CW para estimar o cryptoperiod
+	chnbudget_observe( ecm->caid, ecm->provid, ecm->sid, dcw );
+
 	pthread_mutex_unlock(&prg.lockecm);
 
 	// Check timeout

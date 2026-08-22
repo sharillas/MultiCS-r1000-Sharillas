@@ -148,6 +148,10 @@ void cs378x_srv_recvmsg(struct server_data *srv)
 			//
 			if (buf[5]!=0x10) {
 				mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from cs378x server (%s:%d), wrong length!!!\n",srv->host->name,srv->port);
+				srv->ecmerrdcw++;
+				pthread_mutex_lock(&prg.lockecm); //###
+				if (srv->ecm.request) ecm_setsrvflag(srv->ecm.request, srv->id, ECM_SRV_REPLY_FAIL);
+				pthread_mutex_unlock(&prg.lockecm); //###
 				break;
 			}
 			// Check Stored ECM
@@ -173,6 +177,9 @@ void cs378x_srv_recvmsg(struct server_data *srv)
 			if (!acceptDCW( buf+24, isnanoe0 ) ) {
 				mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from cs378x server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid, isnanoe0);
 				srv->ecmerrdcw++;
+				pthread_mutex_lock(&prg.lockecm); //###
+				ecm_setsrvflagdcw( ecm, srv->id, ECM_SRV_REPLY_FAIL, buf+24 );
+				pthread_mutex_unlock(&prg.lockecm); //###
 				break;
 			}
 			//

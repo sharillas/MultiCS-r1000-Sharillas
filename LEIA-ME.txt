@@ -1,4 +1,4 @@
-MultiCS r1000 v1.0.9 - by Sharillas@2026
+MultiCS r1000 v1.0.10 - by Sharillas@2026
 =========================================
 
 Cardserver proxy (fork multi-cs/multics) com GUI web moderna.

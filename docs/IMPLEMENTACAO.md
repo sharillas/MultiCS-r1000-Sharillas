@@ -1,4 +1,4 @@
-# Implementação — o que foi feito nesta build (v1.0.9)
+# Implementação — o que foi feito nesta build (v1.0.10)
 
 Base: fork multi-cs/multics (evileyes). Compilação: Zig 0.15.2 cross-compile (Windows → Linux), binários estáticos musl x64/x32.
 
@@ -25,6 +25,36 @@ Base: fork multi-cs/multics (evileyes). Compilação: Zig 0.15.2 cross-compile (
 - Checksum DCW, null DCW, bad DCW, nanoE0 (viaccess), filtros cache CAID 0500
 - DCWCHECK2/3, CacheEX (mode 2/3), hitcache, maxhop
 
+### CWC — CW Cycle Check (estilo OSCam, v1.0.10)
+- Máquina de estados 0-4 por canal: aprendizagem do cycletime (±2s, lock 3s),
+  verificação de ciclos (metade âncora), `sensitive` (countCWpart), replay
+  (histórico 15 ECMs), keepcycletime (stage 4)
+- Config por perfil: `ENABLE CWC`, `CWC SENSITIVE`, `CWC DROPOLD`,
+  `CWC DROPBAD`, `CWC KEEPCYCLETIME` (+ `DEFAULT ...`)
+- Validado e2e: bad CW cycle → DROP; old ECM replay → DROP
+
+### Health scoring (v1.0.10)
+- Score 0-1000 por reader: sucesso (ecmok/ecmnb), latência média,
+  estabilidade (uptime), penalização de erros (timeouts + bad DCWs)
+- Ordenação por score no loadbalance + `HEALTH DROPOFF` exclui os doentes
+- Config por perfil: `ENABLE HEALTH`, `HEALTH WEIGHTS: suc lat sta err`,
+  `HEALTH MINECMS`, `HEALTH DROPOFF` (+ `DEFAULT ...`); score na GUI
+
+### Fallback cross-protocol (v1.0.10)
+- `FALLBACK ORDER` define a preferência de protocolos por perfil; só os
+  protocolos listados participam; `FALLBACK TIMEOUT` adia os fallbacks
+  enquanto existirem servers do protocolo primário
+- Validado e2e: morte do reader newcamd → failover automático para CCcam
+  (cliente manteve 100% de DCWs)
+
+### Timing budget por canal (v1.0.10)
+- Estimador de cryptoperiod (EWMA) alimentado pelas mudanças de CW entregues
+- Timeout de decode adaptativo: min(DCW TIMEOUT, cryptoperiod×fraction) —
+  o cliente recebe o decode failed dentro do ciclo e pede o próximo ECM a tempo
+- `CACHE ADAPTIVETTL`: entradas da cache expiram ao fim do cryptoperiod
+- Config por perfil: `ENABLE TIMING`, `TIMING FRACTION`, `TIMING MINPERIOD`
+- Validado e2e: decode failed 8008ms → 6104ms após aprender o período
+
 ### Robustez
 - **Restart fiável**: exec direto (mesmo PID — compatível com systemd/crontab), caminho via `/proc/self/exe` + fallback, fds fechados antes do exec, delay 2s para a resposta HTTP sair
 - **Parsing de configs** robusto: paths com/sem aspas (`parse_path`), `CONSTCW FILE:` e `BLOCKEDIP FILE:` como top-level, `version=` em F-lines, valores com aspas nas opções, erros de parse com nome do ficheiro
@@ -48,6 +78,8 @@ Base: fork multi-cs/multics (evileyes). Compilação: Zig 0.15.2 cross-compile (
 13. **Caches de 302** (browser preso no /login) — Cache-Control no-store em tudo
 14. **Badge Newcamd/Cs378x** contava listas erradas — httpserver.c
 15. **i18n/parsing dos configs de exemplo** — ordem de INCLUDEs corrigida, sintaxe de users camd35/cs378x/cacheex corrigida
+16. **Bad DCW de reader newcamd/radegast/camd35/cs378x nunca marcava REPLY_FAIL** — com SERVER MAX ≥ 1 o ECM nunca expirava e o cliente pendurava para sempre (causa provável de vários "não puxa ecms") — cli-*.c
+17. **Peer CSP com RTT sub-milissegundo nunca entrava na peerReq** (ipeer_update antes do ping++) — clustredcache.c
 
 ## Estrutura
 
@@ -70,4 +102,4 @@ tools_generate_httpstyle.py   gera src/httpstyle.c (CSS/JS embutidos)
 
 ## Versão
 
-**v1.0.9** — agosto 2026
+**v1.0.10** — agosto 2026
