@@ -2292,7 +2292,7 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.cwc.dropold = parse_boolean();
 				}
-				else if (!strcmp(str,"DROPBAD")) {
+				else if (!strcmp(str,"DROPBAD") || !strcmp(str,"ONBAD")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
 						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
@@ -4256,7 +4256,7 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.cwc.dropold = parse_boolean();
 			}
-			else if (!strcmp(str,"DROPBAD")) {
+			else if (!strcmp(str,"DROPBAD") || !strcmp(str,"ONBAD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
