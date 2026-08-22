@@ -250,6 +250,9 @@ void cs_srv_recvmsg(struct server_data *srv)
 				//
 				if (srvcd.msgid!=srv->ecm.msgid) {
 					mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from server (%s:%d), wrong message-id!!!\n",srv->host->name,srv->port);
+					pthread_mutex_lock(&prg.lockecm); //###
+					if (srv->ecm.request) ecm_setsrvflag(srv->ecm.request, srv->id, ECM_SRV_REPLY_FAIL);
+					pthread_mutex_unlock(&prg.lockecm); //###
 					break;
 				}
 				//
@@ -277,6 +280,7 @@ void cs_srv_recvmsg(struct server_data *srv)
 					if (!acceptDCW(buf+3, isnanoe0)) {
 						mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from newcamd server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid, isnanoe0);
 						srv->ecmerrdcw ++;
+						ecm_setsrvflagdcw( ecm, srv->id, ECM_SRV_REPLY_FAIL, buf+3 );
 						pthread_mutex_unlock(&prg.lockecm); //###
 						break;
 					}

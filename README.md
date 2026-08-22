@@ -1,8 +1,8 @@
-# MultiCS r1000 v1.0.9 - by Sharillas
+# MultiCS r1000 v1.0.10 - by Sharillas
 
 Cardserver proxy (fork do multi-cs/multics de evileyes) com GUI web moderna, Emulator BISS/Tandberg, proteção SKIPCWC contra CWs falsas, login com sessões, temas Dark/Light e dezenas de fixes.
 
-> **Versão:** v1.0.9 | **Licença:** a do fork original (multi-cs/multics)
+> **Versão:** v1.0.10 | **Licença:** a do fork original (multi-cs/multics)
 
 ---
 
@@ -93,6 +93,10 @@ Fluxo mínimo para funcionar:
 - **GUI moderna**: Dashboard com estatísticas, tabelas sortáveis, temas Dark/Light, login com sessões, logout
 - **Emulator**: upload SoftCam.Key (Convert & Load), chaves BISS/Tandberg, página própria
 - **SKIPCWC** (default ON): ignora CWs idênticas repetidas (fakes) — configurável por perfil
+- **CWC — CW Cycle Check** (estilo OSCam): aprende o cycletime por canal e rejeita CWs fora do ciclo / replays (por perfil: `ENABLE CWC`, `CWC SENSITIVE/DROPOLD/DROPBAD/KEEPCYCLETIME`)
+- **Health scoring**: pontua os readers por sucesso/latência/estabilidade/erros e ordena ou exclui os doentes (`ENABLE HEALTH`, `HEALTH WEIGHTS/MINECMS/DROPOFF`)
+- **Fallback cross-protocol**: preferência de protocolos por perfil com timeout (`ENABLE FALLBACK`, `FALLBACK ORDER`, `FALLBACK TIMEOUT`) — ex. newcamd → CCcam automático
+- **Timing budget por canal**: estima o cryptoperiod e falha dentro do ciclo para o cliente pedir o próximo ECM a tempo (`ENABLE TIMING`, `TIMING FRACTION/MINPERIOD` + `CACHE ADAPTIVETTL`)
 - **Edit Config / Edit Profiles** com aplicação imediata (sem restart)
 - **Restart fiável** em qualquer setup (systemd, crontab, paths diferentes)
 - **Linhas de debug por cliente** (botão DBG em todas as tabelas)
@@ -134,4 +138,4 @@ Build flags (equivalentes ao Makefile original):
 
 ## Créditos
 
-Base: [multi-cs/multics](https://github.com/multi-cs/multics) (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.0.9
+Base: [multi-cs/multics](https://github.com/multi-cs/multics) (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.0.10

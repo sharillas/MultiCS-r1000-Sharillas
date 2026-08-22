@@ -51,6 +51,8 @@
 
 #include "main.h"
 #include "emu.h"
+#include "cwc.h"
+#include "chnbudget.h"
 #include "ipblock.h"
 
 #include "dcw.h"
@@ -515,6 +517,8 @@ void forward_cs378x(ECM_DATA *ecm);
 #include "th-date.c"
 #endif
 #include "emu.c"   // Emulator (constcw / BISS)
+#include "cwc.c"   // CW Cycle Check (estilo OSCam)
+#include "chnbudget.c" // Timing budget por canal (cryptoperiod adaptativo)
 #include "ipblock.c" // Lista de IPs bloqueados (Iptables)
 
 ///////////////////////////////////////////////////////////////////////////////

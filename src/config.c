@@ -1900,6 +1900,145 @@ sid accept:
 				}
 #endif
 			}
+			else if (!strcmp(str,"HEALTH")) {
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"ENABLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.health.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"WEIGHTS")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					int w1=0,w2=0,w3=0,w4=0;
+					if (parse_int(str)>0) w1 = atoi(str);
+					if (parse_int(str)>0) w2 = atoi(str);
+					if (parse_int(str)>0) w3 = atoi(str);
+					if (parse_int(str)>0) w4 = atoi(str);
+					if (w1<0) w1=0; else if (w1>100) w1=100;
+					if (w2<0) w2=0; else if (w2>100) w2=100;
+					if (w3<0) w3=0; else if (w3>100) w3=100;
+					if (w4<0) w4=0; else if (w4>100) w4=100;
+					if (!(w1+w2+w3+w4)) { w1=40; w2=30; w3=10; w4=20; }
+					defaultcs.option.health.wsuc = w1;
+					defaultcs.option.health.wlat = w2;
+					defaultcs.option.health.wsta = w3;
+					defaultcs.option.health.werr = w4;
+				}
+				else if (!strcmp(str,"MINECMS")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.health.minecms = atoi(str);
+					if (defaultcs.option.health.minecms<1) defaultcs.option.health.minecms=1;
+					else if (defaultcs.option.health.minecms>10000) defaultcs.option.health.minecms=10000;
+				}
+				else if (!strcmp(str,"DROPOFF")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.health.dropoff = atoi(str);
+					if (defaultcs.option.health.dropoff<0) defaultcs.option.health.dropoff=0;
+					else if (defaultcs.option.health.dropoff>1000) defaultcs.option.health.dropoff=1000;
+				}
+			}
+			else if (!strcmp(str,"FALLBACK")) {
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"ENABLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fallback.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"ORDER")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					int oi = 0;
+					memset(defaultcs.option.fallback.order, 0, 8);
+					while (oi<8) {
+						parse_name(str);
+						uppercase(str);
+						if (!str[0]) break;
+						int t = 0;
+						if (!strcmp(str,"NEWCAMD")) t = TYPE_NEWCAMD;
+						else if (!strcmp(str,"CCCAM")) t = TYPE_CCCAM;
+						else if (!strcmp(str,"RADEGAST")) t = TYPE_RADEGAST;
+						else if (!strcmp(str,"CAMD35")) t = TYPE_CAMD35;
+						else if (!strcmp(str,"CS378X")) t = TYPE_CS378X;
+						if (t) {
+							int dup = 0;
+							int dk;
+							for (dk=0; dk<oi; dk++) if (defaultcs.option.fallback.order[dk]==t) dup = 1;
+							if (!dup) defaultcs.option.fallback.order[oi++] = t;
+						}
+						else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): unknown fallback protocol '%s'\n",file->nbline,iparser-currentline,str);
+					}
+				}
+				else if (!strcmp(str,"TIMEOUT")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.fallback.timeout = atoi(str);
+					if (defaultcs.option.fallback.timeout<0) defaultcs.option.fallback.timeout=0;
+					else if (defaultcs.option.fallback.timeout>10000) defaultcs.option.fallback.timeout=10000;
+				}
+			}
+			else if (!strcmp(str,"TIMING")) {
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"ENABLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.timing.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"FRACTION")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.timing.fraction = atoi(str);
+					if (defaultcs.option.timing.fraction<10) defaultcs.option.timing.fraction=10;
+					else if (defaultcs.option.timing.fraction>100) defaultcs.option.timing.fraction=100;
+				}
+				else if (!strcmp(str,"MINPERIOD")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.timing.minperiod = atoi(str);
+					if (defaultcs.option.timing.minperiod<1000) defaultcs.option.timing.minperiod=1000;
+					else if (defaultcs.option.timing.minperiod>60000) defaultcs.option.timing.minperiod=60000;
+				}
+			}
 			else if ( !strcmp(str,"SERVER") ) {
 				parse_name(str);
 				uppercase(str);
@@ -2115,6 +2254,64 @@ sid accept:
 				}
 #endif
 			}
+			else if ( !strcmp(str,"CWC") ) {
+				parse_name(str);
+				uppercase(str);
+				if (!str[0]) { // DEFAULT CWC: 1
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"ENABLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"SENSITIVE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.cwc.sensitive = atoi(str);
+					if (defaultcs.option.cwc.sensitive<0) defaultcs.option.cwc.sensitive=0;
+					else if (defaultcs.option.cwc.sensitive>8) defaultcs.option.cwc.sensitive=8;
+				}
+				else if (!strcmp(str,"DROPOLD")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.dropold = parse_boolean();
+				}
+				else if (!strcmp(str,"DROPBAD")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.dropbad = parse_boolean();
+				}
+				else if (!strcmp(str,"KEEPCYCLETIME")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.cwc.keepcycletime = atoi(str);
+					if (defaultcs.option.cwc.keepcycletime<0) defaultcs.option.cwc.keepcycletime=0;
+					else if (defaultcs.option.cwc.keepcycletime>600) defaultcs.option.cwc.keepcycletime=600;
+				}
+			}
 			else if ( !strcmp(str,"ACCEPT") ) {
 				parse_name(str);
 				uppercase(str);
@@ -2275,6 +2472,38 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowskipcwc = parse_boolean();
+				}
+				else if (!strcmp(str,"CWC")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"HEALTH")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.health.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"FALLBACK")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fallback.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"TIMING")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.timing.enable = parse_boolean();
 				}
 #ifdef CACHEEX
 				else if (!strcmp(str,"CACHEEX")) {
@@ -2987,6 +3216,14 @@ link_mgcamd_user:
 				}
 				else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Invalid integer (ALIVETIME)\n",file->nbline,iparser-currentline);
 			}
+			else if (!strcmp(str,"ADAPTIVETTL")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cfg->cache.adaptivettl = parse_boolean();
+			}
 			else if (!strcmp(str,"AUTOADD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3442,6 +3679,161 @@ link_mgcamd_user:
 #endif
 		}
 
+		else if (!strcmp(str,"HEALTH")) {
+			if (!cardserver) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip HEALTH, undefined profile\n",file->nbline,iparser-currentline);
+				continue;
+			}
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"ENABLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.health.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"WEIGHTS")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				int w1=0,w2=0,w3=0,w4=0;
+				if (parse_int(str)>0) w1 = atoi(str);
+				if (parse_int(str)>0) w2 = atoi(str);
+				if (parse_int(str)>0) w3 = atoi(str);
+				if (parse_int(str)>0) w4 = atoi(str);
+				if (w1<0) w1=0; else if (w1>100) w1=100;
+				if (w2<0) w2=0; else if (w2>100) w2=100;
+				if (w3<0) w3=0; else if (w3>100) w3=100;
+				if (w4<0) w4=0; else if (w4>100) w4=100;
+				if (!(w1+w2+w3+w4)) { w1=40; w2=30; w3=10; w4=20; }
+				cardserver->option.health.wsuc = w1;
+				cardserver->option.health.wlat = w2;
+				cardserver->option.health.wsta = w3;
+				cardserver->option.health.werr = w4;
+			}
+			else if (!strcmp(str,"MINECMS")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.health.minecms = atoi(str);
+				if (cardserver->option.health.minecms<1) cardserver->option.health.minecms=1;
+				else if (cardserver->option.health.minecms>10000) cardserver->option.health.minecms=10000;
+			}
+			else if (!strcmp(str,"DROPOFF")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.health.dropoff = atoi(str);
+				if (cardserver->option.health.dropoff<0) cardserver->option.health.dropoff=0;
+				else if (cardserver->option.health.dropoff>1000) cardserver->option.health.dropoff=1000;
+			}
+		}
+
+		else if (!strcmp(str,"FALLBACK")) {
+			if (!cardserver) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip FALLBACK, undefined profile\n",file->nbline,iparser-currentline);
+				continue;
+			}
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"ENABLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.fallback.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"ORDER")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				int oi = 0;
+				memset(cardserver->option.fallback.order, 0, 8);
+				while (oi<8) {
+					parse_name(str);
+					uppercase(str);
+					if (!str[0]) break;
+					int t = 0;
+					if (!strcmp(str,"NEWCAMD")) t = TYPE_NEWCAMD;
+					else if (!strcmp(str,"CCCAM")) t = TYPE_CCCAM;
+					else if (!strcmp(str,"RADEGAST")) t = TYPE_RADEGAST;
+					else if (!strcmp(str,"CAMD35")) t = TYPE_CAMD35;
+					else if (!strcmp(str,"CS378X")) t = TYPE_CS378X;
+					if (t) {
+						// nao repetir protocolo
+						int dup = 0;
+						int dk;
+						for (dk=0; dk<oi; dk++) if (cardserver->option.fallback.order[dk]==t) dup = 1;
+						if (!dup) cardserver->option.fallback.order[oi++] = t;
+					}
+					else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): unknown fallback protocol '%s'\n",file->nbline,iparser-currentline,str);
+				}
+			}
+			else if (!strcmp(str,"TIMEOUT")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.fallback.timeout = atoi(str);
+				if (cardserver->option.fallback.timeout<0) cardserver->option.fallback.timeout=0;
+				else if (cardserver->option.fallback.timeout>10000) cardserver->option.fallback.timeout=10000;
+			}
+		}
+
+		else if (!strcmp(str,"TIMING")) {
+			if (!cardserver) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip TIMING, undefined profile\n",file->nbline,iparser-currentline);
+				continue;
+			}
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"ENABLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.timing.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"FRACTION")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.timing.fraction = atoi(str);
+				if (cardserver->option.timing.fraction<10) cardserver->option.timing.fraction=10;
+				else if (cardserver->option.timing.fraction>100) cardserver->option.timing.fraction=100;
+			}
+			else if (!strcmp(str,"MINPERIOD")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.timing.minperiod = atoi(str);
+				if (cardserver->option.timing.minperiod<1000) cardserver->option.timing.minperiod=1000;
+				else if (cardserver->option.timing.minperiod>60000) cardserver->option.timing.minperiod=60000;
+			}
+		}
+
 		else if (!strcmp(str,"SERVER")) {
 			if (!cardserver) {
 				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip SERVER, undefined profile\n",file->nbline,iparser-currentline);
@@ -3781,6 +4173,38 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fallowskipcwc = parse_boolean();
 			}
+			else if (!strcmp(str,"CWC")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.cwc.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"HEALTH")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.health.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"FALLBACK")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.fallback.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"TIMING")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.timing.enable = parse_boolean();
+			}
 #ifdef CACHEEX
 			else if (!strcmp(str,"CACHEEX")) {
 				parse_spaces();
@@ -3793,6 +4217,65 @@ link_mgcamd_user:
 #endif
 		}
 
+
+			else if (!strcmp(str,"CWC")) {
+				parse_name(str);
+				uppercase(str);
+				if (!str[0]) { // CWC: 1
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					cardserver->option.cwc.enable = parse_boolean();
+				}
+			else if (!strcmp(str,"ENABLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.cwc.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"SENSITIVE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.cwc.sensitive = atoi(str);
+				if (cardserver->option.cwc.sensitive<0) cardserver->option.cwc.sensitive=0;
+				else if (cardserver->option.cwc.sensitive>8) cardserver->option.cwc.sensitive=8;
+			}
+			else if (!strcmp(str,"DROPOLD")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.cwc.dropold = parse_boolean();
+			}
+			else if (!strcmp(str,"DROPBAD")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.cwc.dropbad = parse_boolean();
+			}
+			else if (!strcmp(str,"KEEPCYCLETIME")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.cwc.keepcycletime = atoi(str);
+				if (cardserver->option.cwc.keepcycletime<0) cardserver->option.cwc.keepcycletime=0;
+				else if (cardserver->option.cwc.keepcycletime>600) cardserver->option.cwc.keepcycletime=600;
+			}
+		}
 
 		else if (!strcmp(str,"SHARE")) {
 			if (!cardserver) {
@@ -6229,6 +6712,7 @@ void reread_config( struct config_data *cfg )
 	cfg->cache.autoadd = newcfg.cache.autoadd;
 	cfg->cache.autoenable = newcfg.cache.autoenable;
 	cfg->cache.alivetime = newcfg.cache.alivetime;
+	cfg->cache.adaptivettl = newcfg.cache.adaptivettl;
 	cfg->cache.threshold = newcfg.cache.threshold;
 	cfg->cache.filter = newcfg.cache.filter;
 	cfg->cache.filtertime = newcfg.cache.filtertime;

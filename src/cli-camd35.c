@@ -121,6 +121,9 @@ void camd35_srv_recvmsg(struct server_data *srv)
 				srv->ecmerrdcw++;
 				// Log abnormal case when dcw is rejected
 				mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from camd35 server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid,isnanoe0);
+				pthread_mutex_lock(&prg.lockecm); //###
+				ecm_setsrvflagdcw( ecm, srv->id, ECM_SRV_REPLY_FAIL, buf+24 );
+				pthread_mutex_unlock(&prg.lockecm); //###
 				break;
 			}
 			//

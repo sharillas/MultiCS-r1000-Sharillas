@@ -1,4 +1,18 @@
 
+// TIMING BUDGET: timeout efetivo do ECM = min(dcw.timeout*period,
+// cryptoperiod estimado * fraction/100) quando TIMING ativo no perfil
+uint32_t dcwtimeout(struct cardserver_data *cs, ECM_DATA *ecm)
+{
+	uint32_t t = cs->option.dcw.timeout*ecm->period;
+	if (!cs->option.timing.enable) return t;
+	int period = chnbudget_getperiod( ecm->caid, ecm->provid, ecm->sid );
+	if (period >= cs->option.timing.minperiod) {
+		uint32_t budget = ((uint32_t)period * cs->option.timing.fraction)/100;
+		if (budget < t) return budget;
+	}
+	return t;
+}
+
 void clients_check_sendcw(ECM_DATA *ecm)
 {
 #ifdef TESTCHANNEL
@@ -118,10 +132,10 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 					ecm->cachestatus = ECM_CACHE_REP;
 				}
 			}
-			else ecm->checktime = ecm->recvtime + cs->option.dcw.timeout*ecm->period;
+			else ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 		}
 		// Check for ECM TimeOut
-		else if ( (ticks-ecm->recvtime) >= cs->option.dcw.timeout*ecm->period ) {
+		else if ( (ticks-ecm->recvtime) >= dcwtimeout(cs, ecm) ) {
 			ecm->statusmsg = "Decode failed, dcw timeout";
 			ecm_faileddcw( ecm );
 			// Send DCW to Cache if not sent
@@ -158,7 +172,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 					}
 					else
 #endif   */
-					ecm->checktime = ecm->recvtime + cs->option.dcw.timeout*ecm->period;
+					ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 					return;
 				}
 				else if (psrvlist[0] && psrvlist[0]->srv) {
@@ -253,7 +267,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 					if ( cs->option.server.first > (ecm->server_totalsent+1) ) ecm->checktime = ticks + 10;
 					else {
 						ecm->checktime = ticks + cs->option.server.interval;
-						if ( (ecm->checktime-ecm->recvtime) > (cs->option.server.timeout*ecm->period) ) ecm->checktime = ecm->recvtime + cs->option.dcw.timeout*ecm->period;
+						if ( (ecm->checktime-ecm->recvtime) > (cs->option.server.timeout*ecm->period) ) ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 					}
 				}
 				else {
@@ -263,7 +277,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 
 					// PROBLEM HERE ??????
 					ecm->waitserver = 1; // XXX
-					ecm->checktime = ecm->recvtime + cs->option.dcw.timeout*ecm->period; // till the end if there is no server
+					ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm); // till the end if there is no server
 
 #ifdef BUSY_SERVER
 					if (!ecm->server_totalwait && !ecm->server_totalsent) {
@@ -277,7 +291,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 			}
 			else {
 				ecm->checktime = ecm->lastsendtime + cs->option.server.interval;
-				if ( (ecm->checktime-ecm->recvtime) > (cs->option.server.timeout*ecm->period) ) ecm->checktime = ecm->recvtime + cs->option.dcw.timeout*ecm->period;
+				if ( (ecm->checktime-ecm->recvtime) > (cs->option.server.timeout*ecm->period) ) ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 			}
 		}
 #ifndef PUBLIC
@@ -293,10 +307,10 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 		else if ( cs->option.fallowcache && cs->option.cacheresendreq && (ecm->cachestatus==ECM_CACHE_REQ) ) {
 			pipe_cache_resendreq(ecm, cs);
 			ecm->cachestatus = ECM_CACHE_REQ2;
-			ecm->checktime = ecm->recvtime + cs->option.dcw.timeout*ecm->period;
+			ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 		}
 #endif
-		else ecm->checktime = ecm->recvtime + cs->option.dcw.timeout*ecm->period;
+		else ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 	}
 }
 
