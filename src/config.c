@@ -190,7 +190,7 @@ void init_config(struct config_data *cfg)
 #ifdef HTTP_SRV
 	cfg->http.port = 5500;
 	cfg->http.handle = -1;
-	cfg->http.autorefresh = 0;
+	cfg->http.autorefresh = 15;
 	strcpy(cfg->http.title, "Multi CardServer");
 #endif
 
@@ -1550,9 +1550,9 @@ sid accept:
 				uppercase(str);
 				if (!strcmp(str,"OFF")) cfg->http.autorefresh = 0;
 				else {
-					cfg->http.autorefresh = atoi(str);
-					if (cfg->http.autorefresh<0) cfg->http.autorefresh = 0;
-					else if (cfg->http.autorefresh>600) cfg->http.autorefresh = 600;
+		cfg->http.autorefresh = atoi(str);
+		if (cfg->http.autorefresh<0) cfg->http.autorefresh = 0;
+		else if (cfg->http.autorefresh>100) cfg->http.autorefresh = 100;
 				}
 			}
 
