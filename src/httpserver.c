@@ -2365,6 +2365,64 @@ char *providerID( unsigned short caid, unsigned int provid )
 	return NULL;
 }
 
+// nome do pacote/operadora por CAID (posicao + pais) - coluna Cards
+static struct { unsigned short caid; char *name; } caid_pkg_table[] = {
+	{ 0x1814, "NOS ID (30W Portugal)" },
+	{ 0x1813, "MEO (30W Portugal)" },
+	{ 0x1810, "Movistar+ (19.2E Espanha)" },
+	{ 0x1830, "HD+ (19.2E Alemanha)" },
+	{ 0x1843, "HD+ (19.2E Alemanha)" },
+	{ 0x098D, "Sky DE (19.2E Alemanha)" },
+	{ 0x0D95, "ORF Digital (19.2E Austria)" },
+	{ 0x0D96, "Skylink (23.5E)" },
+	{ 0x0648, "ORF Digital (19.2E Austria)" },
+	{ 0x0650, "ORF Digital (19.2E Austria)" },
+	{ 0x1702, "BetaDigital (19.2E Alemanha)" },
+	{ 0x1722, "BetaDigital (19.2E Alemanha)" },
+	{ 0x1811, "Canal+ FR (19.2E Franca)" },
+	{ 0x0500, "Viaccess/TNTSAT (19.2E Franca)" },
+	{ 0x0963, "Sky UK (28.2E Reino Unido)" },
+	{ 0x0960, "Sky UK (28.2E Reino Unido)" },
+	{ 0x0961, "Sky UK (28.2E Reino Unido)" },
+	{ 0x0B00, "M7 Group (13E)" },
+	{ 0x0B01, "Orange/M7 (13E Polonia)" },
+	{ 0x0B02, "Focus Sat (0.8W Romenia)" },
+	{ 0x1884, "Platforma Canal+ (13E Polonia)" },
+	{ 0x0100, "SECA/Mediaguard (13E)" },
+	{ 0x1803, "Polsat Box (13E Polonia)" },
+	{ 0x1861, "Polsat Box (13E Polonia)" },
+	{ 0x186C, "Polsat Box (13E Polonia)" },
+	{ 0x0604, "Nova (13E Grecia)" },
+	{ 0x0699, "Nova (13E Grecia)" },
+	{ 0x4A70, "KABELIO (13E Suica)" },
+	{ 0x4AFC, "SSR/SRG (13E Suica)" },
+	{ 0x183D, "TivuSat/RAI (13E Italia)" },
+	{ 0x183E, "TivuSat/RAI (13E Italia)" },
+	{ 0x0919, "Sky Italia (13E Italia)" },
+	{ 0x093B, "Sky Italia (13E Italia)" },
+	{ 0x09CD, "Sky Italia (13E Italia)" },
+	{ 0x09BD, "Vivacom (13E Bulgaria)" },
+	{ 0x1802, "Digi TV (0.8W Hungria)" },
+	{ 0x1880, "Digi TV (0.8W Hungria)" },
+	{ 0x0624, "Skylink/Irdeto (23.5E)" },
+	{ 0x090F, "Viasat (4.8E)" },
+	{ 0x093E, "Viasat (4.8E)" },
+	{ 0x1887, "HD+ Astra (19.2E Alemanha)" },
+	{ 0x1819, "NAGRA (Europa)" },
+	{ 0x4AEE, "Bulsatcom (1.9E Bulgaria)" },
+	{ 0x0D00, "Cryptoworks/Turksat (42E)" },
+	{ 0, NULL }
+};
+
+char *caid_pkg_name( unsigned short caid )
+{
+	int i;
+	for (i=0; caid_pkg_table[i].caid; i++) {
+		if (caid_pkg_table[i].caid==caid) return caid_pkg_table[i].name;
+	}
+	return NULL;
+}
+
 void getservercells(struct server_data *srv, char cell[8][2048] )
 {
 	char temp[2048];
@@ -2481,7 +2539,11 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 					break;
 				}
 				char *provname = providerID(card->caid,card->prov[0]);
-				if (provname) sprintf( temp,"<br><b>%04x:</b> %x <font color=#CC3300>%s</font>",card->caid,card->prov[0], provname); else sprintf( temp,"<br><b>%04x:</b> %x",card->caid,card->prov[0]);
+				char *pkgname = caid_pkg_name(card->caid);
+				if (provname && pkgname) sprintf( temp,"<br><b>%04x:</b> %x <font color=#CC3300>%s</font> <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",card->caid,card->prov[0], provname, pkgname);
+				else if (provname) sprintf( temp,"<br><b>%04x:</b> %x <font color=#CC3300>%s</font>",card->caid,card->prov[0], provname);
+				else if (pkgname) sprintf( temp,"<br><b>%04x:</b> %x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",card->caid,card->prov[0], pkgname);
+				else sprintf( temp,"<br><b>%04x:</b> %x",card->caid,card->prov[0]);
 				strcat( cell[6], temp );
 				for(i=1; i<card->nbprov; i++) {
 					char *provname = providerID(card->caid,card->prov[i]);
@@ -2777,6 +2839,7 @@ void http_send_server(int sock, http_request *req)
 	char http_buf[2048];
 	struct tcp_buffer_data tcpbuf;
 	char *provname;
+	char *pkgname;
 
 	//
 	int get_id;
@@ -3031,8 +3094,11 @@ void http_send_server(int sock, http_request *req)
 				while(card) {
 					if (alt==1) alt=2; else alt=1;
 					provname = providerID(card->caid,card->prov[0]);
-					if (provname) sprintf( http_buf,"<tr><td class=alt%d><b>%04x:</b> %x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
-					else sprintf( http_buf,"<tr><td class=alt%d><b>%04x:</b> %x",alt,card->caid,card->prov[0]);
+					pkgname = caid_pkg_name(card->caid);
+					if (provname && pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x <font color=#CC3300>%s</font> <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], provname, pkgname);
+					else if (provname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
+					else if (pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], pkgname);
+					else sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x",alt,card->caid,card->prov[0]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 					int i;
 					for(i=1; i<card->nbprov; i++) {
