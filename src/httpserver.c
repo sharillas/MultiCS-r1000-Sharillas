@@ -640,11 +640,42 @@ int total_cs378x_nb()
 int total_cacheex_servers()
 {
 	int nb=0;
-	struct server_data *srv=cfg.server;
+	struct server_data *srv=cfg.cacheexserver;
 	while (srv) {
-		if (srv->cacheex_mode) nb++;
+		if (!(srv->flags&FLAG_DELETE)) if (srv->cacheex_mode) nb++;
 		srv=srv->next;
 	}
+	struct cccam_server_data *cccam=cfg.cccam.server;
+	while (cccam) {
+		struct cc_client_data *cli=cccam->cacheexclient;
+		while (cli) {
+			if (cli->cacheex_mode) nb++;
+			cli=cli->next;
+		}
+		cccam=cccam->next;
+	}
+#ifdef CAMD35_SRV
+	struct camd35_server_data *c35=cfg.camd35.server;
+	while (c35) {
+		struct camd35_client_data *cli=c35->cacheexclient;
+		while (cli) {
+			if (cli->cacheex_mode) nb++;
+			cli=cli->next;
+		}
+		c35=c35->next;
+	}
+#endif
+#ifdef CS378X_SRV
+	struct camd35_server_data *c37=cfg.cs378x.server;
+	while (c37) {
+		struct camd35_client_data *cli=c37->cacheexclient;
+		while (cli) {
+			if (cli->cacheex_mode) nb++;
+			cli=cli->next;
+		}
+		c37=c37->next;
+	}
+#endif
 	return nb;
 }
 #endif
@@ -6975,7 +7006,7 @@ void http_send_camd35_client(int sock, http_request *req)
 
 #ifdef CACHEEX
 
-void cacheex_server_cells(struct server_data *srv, char cell[10][2048] )
+void cacheex_server_cells(struct server_data *srv, char cell[10][2048], int off )
 {
 	char temp[2048];
 	unsigned int ticks = GetTickCount();
@@ -7091,9 +7122,20 @@ void cacheex_server_cells(struct server_data *srv, char cell[10][2048] )
 		}
 		else strcpy( cell[8], " ");
 	}
+	strcat( cell[8], "<span style='float:right;'>");
+	if (srv->flags&FLAG_DISABLE) {
+		sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cacheex?action=enable&id=%d',this);setTimeout('updateDiv()',600)\">ON</span>",srv->id+off);
+	}
+	else {
+		sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/cacheex?action=disable&id=%d',this);setTimeout('updateDiv()',600)\">OFF</span>",srv->id+off);
+	}
+	strcat( cell[8], temp );
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cacheex?action=dbginfo&id=%d')\">DBG</span>",srv->id+off,srv->id+off);
+	strcat( cell[8], temp );
+	strcat( cell[8], "</span>");
 }
 
-void cacheex_cccamclient_cells(struct cc_client_data *cli, char cell[10][2048])
+void cacheex_cccamclient_cells(struct cc_client_data *cli, char cell[10][2048], int off)
 {
 	char temp[2048];
 	unsigned int ticks = GetTickCount();
@@ -7184,11 +7226,22 @@ void cacheex_cccamclient_cells(struct cc_client_data *cli, char cell[10][2048])
 		}
 		else strcpy( cell[8], " ");
 	}
+	strcat( cell[8], "<span style='float:right;'>");
+	if (cli->flags&FLAG_DISABLE) {
+		sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cacheex?action=enable&id=%d',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id+off);
+	}
+	else {
+		sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/cacheex?action=disable&id=%d',this);setTimeout('updateDiv()',600)\">OFF</span>",cli->id+off);
+	}
+	strcat( cell[8], temp );
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cacheex?action=dbginfo&id=%d')\">DBG</span>",cli->id+off,cli->id+off);
+	strcat( cell[8], temp );
+	strcat( cell[8], "</span>");
 }
 
 #if defined(CAMD35_SRV) || defined(CS378X_SRV)
 
-void cacheex_camd35client_cells(struct camd35_client_data *cli, char cell[10][2048])
+void cacheex_camd35client_cells(struct camd35_client_data *cli, char cell[10][2048], int off)
 {
 	char temp[2048];
 	unsigned int ticks = GetTickCount();
@@ -7278,6 +7331,17 @@ void cacheex_camd35client_cells(struct camd35_client_data *cli, char cell[10][20
 		}
 		else strcpy( cell[8], " ");
 	}
+	strcat( cell[8], "<span style='float:right;'>");
+	if (cli->flags&FLAG_DISABLE) {
+		sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cacheex?action=enable&id=%d',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id+off);
+	}
+	else {
+		sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/cacheex?action=disable&id=%d',this);setTimeout('updateDiv()',600)\">OFF</span>",cli->id+off);
+	}
+	strcat( cell[8], temp );
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cacheex?action=dbginfo&id=%d')\">DBG</span>",cli->id+off,cli->id+off);
+	strcat( cell[8], temp );
+	strcat( cell[8], "</span>");
 }
 
 #endif
@@ -7294,9 +7358,76 @@ void http_send_cacheex(int sock, http_request *req)
 	int get_action;
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
+		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
+		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
+		else if (!strcmp(str_action,"dbginfo")) get_action = 8;
 		else str_action = NULL;
 	}
 	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
+
+	// OFF/ON/DBG por linha (id codificado: 1=cccam, 2=camd35, 3=cs378x, 4=server)
+	if ( (get_action==ACTION_DISABLE)||(get_action==ACTION_ENABLE)||(get_action==8) ) {
+		char dbg[1024] = "";
+		char *sid = isset_get( req, "id");
+		if (sid) {
+			int enc = atoi(sid);
+			int kind = enc>>16;
+			int iid = enc&0xffff;
+			int on = (get_action==ACTION_ENABLE);
+			if (kind==4) {
+				struct server_data *srv = cfg.cacheexserver;
+				while (srv) { if (!(srv->flags&FLAG_DELETE) && srv->id==iid) break; srv=srv->next; }
+				if (srv) {
+					if (get_action==8)
+						sprintf( dbg, "<div class='dbginfo'><b>%s:%d</b> (id %d) | Mode: %d | Status: %s<br>Push: %d | Got: %d | Hits: %d | Last ch: %04x:%06x:%04x (%dms)</div>",
+							srv->host->name, srv->port, srv->id, srv->cacheex_mode,
+							(srv->flags&FLAG_DISABLE)?"DISABLED":"ENABLED",
+							srv->cacheex.push[0], srv->cacheex.got[0], srv->cacheex.hits,
+							srv->cacheex.lastcaid, srv->cacheex.lastprov, srv->cacheex.lastsid, srv->cacheex.lastdecodetime);
+					else { if (on) srv->flags &= ~FLAG_DISABLE; else srv->flags |= FLAG_DISABLE; }
+				}
+			}
+			else if (kind==1) {
+				struct cccam_server_data *cc = cfg.cccam.server;
+				struct cc_client_data *cli = NULL;
+				while (cc && !cli) {
+					struct cc_client_data *c = cc->cacheexclient;
+					while (c) { if (c->id==iid) { cli=c; break; } c=c->next; }
+					cc = cc->next;
+				}
+				if (cli) {
+					if (get_action==8)
+						sprintf( dbg, "<div class='dbginfo'><b>%s</b> (id %d) | Mode: %d | Status: %s<br>Push: %d | Got: %d | Hits: %d | Last ch: %04x:%06x:%04x (%dms)</div>",
+							cli->user, cli->id, cli->cacheex_mode,
+							(cli->flags&FLAG_DISABLE)?"DISABLED":"ENABLED",
+							cli->cacheex.push[0], cli->cacheex.got[0], cli->cacheex.hits,
+							cli->cacheex.lastcaid, cli->cacheex.lastprov, cli->cacheex.lastsid, cli->cacheex.lastdecodetime);
+					else { if (on) cli->flags &= ~FLAG_DISABLE; else cli->flags |= FLAG_DISABLE; }
+				}
+			}
+			else if ((kind==2)||(kind==3)) {
+				struct camd35_server_data *csx = (kind==2) ? cfg.camd35.server : cfg.cs378x.server;
+				struct camd35_client_data *cli = NULL;
+				while (csx && !cli) {
+					struct camd35_client_data *c = csx->cacheexclient;
+					while (c) { if (c->id==iid) { cli=c; break; } c=c->next; }
+					csx = csx->next;
+				}
+				if (cli) {
+					if (get_action==8)
+						sprintf( dbg, "<div class='dbginfo'><b>%s</b> (id %d) | Mode: %d | Status: %s<br>Push: %d | Got: %d | Hits: %d | Last ch: %04x:%06x:%04x (%dms)</div>",
+							cli->user, cli->id, cli->cacheex_mode,
+							(cli->flags&FLAG_DISABLE)?"DISABLED":"ENABLED",
+							cli->cacheex.push[0], cli->cacheex.got[0], cli->cacheex.hits,
+							cli->cacheex.lastcaid, cli->cacheex.lastprov, cli->cacheex.lastsid, cli->cacheex.lastdecodetime);
+					else { if (on) cli->flags &= ~FLAG_DISABLE; else cli->flags |= FLAG_DISABLE; }
+				}
+			}
+		}
+		if (get_action==8) http_send_text(sock, dbg);
+		else http_send_ok(sock);
+		return;
+	}
 
 	char *id = isset_get( req, "id");
 	if (id) {
@@ -7308,7 +7439,7 @@ void http_send_cacheex(int sock, http_request *req)
 					struct cc_client_data *cli = cccam->cacheexclient;
 					while (cli) {
 						if ( !(cli->flags&FLAG_DELETE) && cli->id==(i&0xffff) ) {
-			                cacheex_cccamclient_cells(cli,cell);
+			                cacheex_cccamclient_cells(cli,cell,0x10000);
 			                for(i=0; i<10; i++) xmlescape( cell[i] );
 			                sprintf( http_buf, "<cacheex>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4_c>%s</c4_c>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6><c7>%s</c7><c8>%s</c8>\n</cacheex>\n",cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8] );
 			                http_send_xml( sock, req, http_buf, strlen(http_buf));
@@ -7327,7 +7458,7 @@ void http_send_cacheex(int sock, http_request *req)
 					struct camd35_client_data *cli = camd35->cacheexclient;
 					while (cli) {
 						if ( !(cli->flags&FLAG_DELETE) && cli->id==(i&0xffff) ) {
-			                cacheex_camd35client_cells(cli,cell);
+			                cacheex_camd35client_cells(cli,cell,0x20000);
 			                for(i=0; i<10; i++) xmlescape( cell[i] );
 			                sprintf( http_buf, "<cacheex>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4_c>%s</c4_c>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6><c7>%s</c7><c8>%s</c8>\n</cacheex>\n",cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8] );
 			                http_send_xml( sock, req, http_buf, strlen(http_buf));
@@ -7346,7 +7477,7 @@ void http_send_cacheex(int sock, http_request *req)
 					struct camd35_client_data *cli = cs378x->cacheexclient;
 					while (cli) {
 						if ( !(cli->flags&FLAG_DELETE) && cli->id==(i&0xffff) ) {
-			                cacheex_camd35client_cells(cli,cell);
+			                cacheex_camd35client_cells(cli,cell,0x30000);
 			                for(i=0; i<10; i++) xmlescape( cell[i] );
 			                sprintf( http_buf, "<cacheex>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4_c>%s</c4_c>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6><c7>%s</c7><c8>%s</c8>\n</cacheex>\n",cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8] );
 			                http_send_xml( sock, req, http_buf, strlen(http_buf));
@@ -7362,7 +7493,7 @@ void http_send_cacheex(int sock, http_request *req)
 			struct server_data *srv = cfg.cacheexserver;
 			while (srv) {
 				if ( !(srv->flags&FLAG_DELETE) && srv->id==(i&0xffff) ) {
-					cacheex_server_cells(srv,cell);
+					cacheex_server_cells(srv,cell,0x40000);
 					for(i=0; i<10; i++) xmlescape( cell[i] );
 					sprintf( http_buf, "<cacheex>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4_c>%s</c4_c>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6><c7>%s</c7><c8>%s</c8>\n</cacheex>\n",cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8] );
 					http_send_xml( sock, req, http_buf, strlen(http_buf));
@@ -7434,7 +7565,7 @@ void http_send_cacheex(int sock, http_request *req)
 			while (cli) {
 				if (cli->cacheex_mode) {
 					if (alt==1) alt=2; else alt=1;
-					cacheex_cccamclient_cells(cli,cell);
+					cacheex_cccamclient_cells(cli,cell,0x10000);
 					sprintf( http_buf,"\n<tr class=alt%d id=\"Row%d\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",alt,(cli->id+0x10000),(cli->id+0x10000),cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 				}
@@ -7461,7 +7592,7 @@ void http_send_cacheex(int sock, http_request *req)
 			while (cli) {
 				if (cli->cacheex_mode) {
 					if (alt==1) alt=2; else alt=1;
-					cacheex_camd35client_cells(cli,cell);
+					cacheex_camd35client_cells(cli,cell,0x20000);
 					sprintf( http_buf,"\n<tr class=alt%d id=\"Row%d\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",alt,(cli->id+0x20000),(cli->id+0x20000),cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 				}
@@ -7489,7 +7620,7 @@ void http_send_cacheex(int sock, http_request *req)
 			while (cli) {
 				if (cli->cacheex_mode) {
 					if (alt==1) alt=2; else alt=1;
-					cacheex_camd35client_cells(cli,cell);
+					cacheex_camd35client_cells(cli,cell,0x30000);
 					sprintf( http_buf,"\n<tr class=alt%d id=\"Row%d\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",alt,(cli->id+0x30000),(cli->id+0x30000),cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 				}
@@ -7532,7 +7663,7 @@ void http_send_cacheex(int sock, http_request *req)
 			)
 			if (srv->cacheex_mode) {
 				if (alt==1) alt=2; else alt=1;
-				cacheex_server_cells(srv,cell);
+				cacheex_server_cells(srv,cell,0x40000);
 				sprintf( http_buf,"<tr class=alt%d id=\"Row%d\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",alt,(srv->id+0x40000),(srv->id+0x40000),cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8]);
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
