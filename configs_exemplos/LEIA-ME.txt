@@ -43,8 +43,11 @@ Notas:
     parse deve ler tem de estar la descritos (FILE ... ou INCLUDE "...").
   - Alteracoes nos cfgs sao detectadas automaticamente (inotify).
   - A GUI (porto 5500) tem uma pagina unica "Configurations" com:
-      * 1a div: IPs bloqueados (block/unblock)
-      * 2a div: edicao de todos os ficheiros de config (multics.cfg,
+      * 1a div: Upload Configs (envia ficheiros para /var/etc com backup
+        automatico .bak-<timestamp> e reload; um ficheiro unico com todas
+        as seccoes carrega-se como multics.cfg)
+      * 2a div: IPs bloqueados (block/unblock)
+      * 3a div: edicao de todos os ficheiros de config (multics.cfg,
         profiles.cfg, CCcam.channelinfo, ...) com save sem restart
       * botao Update Channel Info (KingOfSat) + Load Channel Info + Reread
   - A pagina "Softcam" gere as chaves BISS/Tandberg (upload SoftCam.Key,
