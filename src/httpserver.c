@@ -952,7 +952,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 
 	//
 	if ( (selected!=PAGE_RESTART)&&(selected!=PAGE_EDITOR)&&(selected!=PAGE_CONFIGURATIONS) ) {
-		tcp_writestr(tcpbuf, sock, "<div class='toolbar'><span class='toolbar-label'>Autorefresh</span><input id='ar_slider' type=range min=0 max=30 value=");
+		tcp_writestr(tcpbuf, sock, "<div class='toolbar'><span class='toolbar-label'>Autorefresh</span><input id='ar_slider' type=range min=0 max=100 value=");
 		sprintf( buf, "%d", cfg.http.autorefresh);
 		tcp_writestr(tcpbuf, sock, buf);
 		tcp_writestr(tcpbuf, sock, " oninput='var v=this.value;document.getElementById(\"ar_val\").innerHTML=v==0?\"OFF\":v+\"s\";setautorefresh(v*1000);'> <span id=ar_val class='toolbar-badge'>");
@@ -3761,6 +3761,22 @@ static int profile_is_rendered(int *rendered, int nrendered, int id)
 	return 0;
 }
 
+// decode %XX e '+' num string de query
+void urldecode(char *dst, const char *src, int max)
+{
+	int i = 0;
+	while (*src && i<max-1) {
+		if (*src=='%' && src[1] && src[2]) {
+			char h[3] = { src[1], src[2], 0 };
+			dst[i++] = (char)strtol(h, NULL, 16);
+			src += 3;
+		}
+		else if (*src=='+') { dst[i++] = ' '; src++; }
+		else dst[i++] = *src++;
+	}
+	dst[i] = 0;
+}
+
 
 void http_send_profiles(int sock, http_request *req)
 {
@@ -3783,7 +3799,11 @@ void http_send_profiles(int sock, http_request *req)
 	}
 	if (get_action==ACTION_ENABLE) {
 		char *pname = isset_get( req, "name");
-		if (pname && pname[0]) profile_config_toggle(pname, 1);
+		if (pname && pname[0]) {
+			char namebuf[128];
+			urldecode(namebuf, pname, sizeof(namebuf));
+			profile_config_toggle(namebuf, 1);
+		}
 		http_send_ok(sock);
 		return;
 	}
@@ -3934,8 +3954,16 @@ void http_send_profiles(int sock, http_request *req)
 									if (nrendered<128) rendered[nrendered++] = fcs->id;
 								}
 								else if (commented) {
+									char encname[160];
+									int a = 0, b = 0;
+									while (secname[b] && a<155) {
+										if (secname[b]==' ') { encname[a++]='%'; encname[a++]='2'; encname[a++]='0'; }
+										else encname[a++] = secname[b];
+										b++;
+									}
+									encname[a] = 0;
 									if (alt==1) alt=2; else alt=1;
-									sprintf( http_buf,"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span></span></td></tr>", alt, secname, secname);
+									sprintf( http_buf,"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span></span></td></tr>", alt, secname, encname);
 									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 								}
 							}
