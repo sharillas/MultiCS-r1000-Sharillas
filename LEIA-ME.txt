@@ -1,21 +1,40 @@
-MultiCS r1000 v1.0.10.2 - by Sharillas@2026
-===========================================
+MultiCS r1000 v1.10.9 - by Sharillas@2026
+==========================================
 
-Cardserver proxy (fork multi-cs/multics) com GUI web moderna.
+Pacote de release (ultima build, bugs corrigidos)
 
-INSTALACAO RAPIDA (qualquer VPS Linux):
-  git clone https://github.com/sharillas/MultiCS-r1000-Sharillas.git
-  cd MultiCS-r1000-Sharillas
-  sudo bash install.sh
+CONTEM:
+  bin/multics.x64        binario 64-bit (static musl - corre em qualquer
+                         Debian/Ubuntu x86_64 sem dependencias)
+  bin/multics.x32        binario 32-bit
+  configs/               multics.cfg, profiles.cfg, CSS, ip2country.csv, etc.
+  install.sh             instalador (configs para /var/etc, binarios para /opt/multics)
 
-WEB UI:  http://SEU_IP:5500   (user: admin / pass: admin - MUDAR!)
+INSTALACAO NA VPS (Debian/Ubuntu, como root):
+  cd /tmp && tar xzf multics-r1000-v1.10.9.tar.gz && cd multics-r1000
+  bash install.sh /opt/multics
+  /opt/multics/multics.x64 -b -C /var/etc/multics.cfg
+
+WEB UI:  http://IP:5500   (user: admin / pass: admin - mudar no multics.cfg)
+         Depois do login vai para /dashboard
 
 Portas: HTTP 5500, Telnet 5600, CCcam 16000, MGcamd 21000,
-        camd35 7502, cs378x 8600, cache 5599, perfis 15001+
+        camd35 7502, cs378x 8600, cache 5599
 
-Documentacao:
-  README.md                visao geral + instalacao
-  docs/CONFIGS.md          guia exato de configuracao do cardserver
-  docs/IMPLEMENTACAO.md    features e fixes da build
-
-Hash SHA256 (build/multics.x64): ver build/
+NOVO/FIXES desta build (v1.10.9):
+  - Upload Configs na pagina Configs com validacao: linhas com erro sao
+    comentadas automaticamente, opcoes default ativas, e em ultimo recurso
+    faz rollback do backup (.bak) - nunca crasha nem fica sem arrancar
+  - Editor com TODOS os ficheiros (whitelist do upload, incl. CCcam.lite,
+    ip2country.csv, multics.css) com save sem restart
+  - Ficheiros de exemplo totalmente comentados (configs_exemplos no repo)
+  - Blocked IPs: coluna Blocked since em DD:HH:MM:SS
+  - Top menu fixo (sticky) - sempre visivel ao fazer scroll
+  - Botoes ON/OFF/DBG com cantos 4px; cores offline/online/busy corrigidas
+  - Fix pipeline BISS NOK: com readers/cache tenta as outras fontes
+    (antes falhava imediatamente)
+  - DCW TIMEOUT 2500ms nos perfis NAGRA (NOK mais rapido)
+  - Opcoes legadas de builds antigas aceites como no-op
+  - Fixes anteriores: SKIPCWC, CWC, NAGRA protection, Health, Fallback,
+    Timing, BUILD LITE, Emulator BISS, anti-fake XOR 0xF0, SIG_HANDLER,
+    CSCACHE, restart fiavel, login com sessoes, temas Dark/Light

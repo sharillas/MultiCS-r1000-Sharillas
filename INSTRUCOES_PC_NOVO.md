@@ -1,4 +1,4 @@
-# MultiCS r1000 v1.0.10.2 by Sharillas — usar noutro PC (opencode)
+# MultiCS r1000 v1.10.9 by Sharillas — usar noutro PC (opencode)
 
 ## O que está neste ZIP
 
@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File package.ps1
 powershell -ExecutionPolicy Bypass -File deploy.ps1 -Host "IP_VPS"
 ```
 
-## Estado atual (v1.0.10.2)
+## Estado atual (v1.10.9)
 
 - Build = VPS = GitHub
 - Features: GUI/light-dark, Emulator (SoftCam.Key + Update SoftCam.Key remoto),
@@ -47,15 +47,19 @@ powershell -ExecutionPolicy Bypass -File deploy.ps1 -Host "IP_VPS"
   BUILD LITE (CCcam.lite), ENABLE EMULATOR BISS por perfil,
   ferramentas GUI (Update/Load Channel Info, Update SoftCam.Key),
   restart fiável, debug rows, editor com save imediato, 0 erros de parsing
-- Fix crítico v1.0.10.2: bad DCW de readers marca ECM_SRV_REPLY_FAIL
+- Fix crítico v1.0.10.3: bad DCW de readers marca ECM_SRV_REPLY_FAIL
   (corrige o "não puxa ecms" da build antiga)
+- v1.10.9: editor com todos os ficheiros (whitelist), validação de upload
+  (comenta linhas más, defaults, rollback .bak — sem crash), Blocked since
+  DD:HH:MM:SS, top menu sticky, fix pipeline BISS NOK (tenta readers/cache),
+  DCW TIMEOUT 2500ms nos perfis NAGRA, exemplos comentados completos
 - Testes e2e validados na VPS: base, cwc, health, fallback, timing, nagra, lite, dcw
 
 ## Contexto importante (build antiga do PC antigo)
 
 - A build antiga (v15-v18b/v20, binário b3bc2878) foi feita NOUTRO PC e tinha
   NAGRA/LITE/EMULATOR BISS/tools implementados lá; essas implementações foram
-  re-escritas/portadas para esta build (v1.0.10.2) — ver Prompt_old_Build.md
+  re-escritas/portadas para esta build (v1.10.9) — ver Prompt_old_Build.md
   e a engenharia reversa em C:\TMP\opencode\old_multics.x64
 - Os ficheiros de produção da VPS (/var/etc) são a fonte de verdade das configs:
   multics.cfg, profiles.cfg (DEFAULT ENABLE CWC/HEALTH/TIMING/FALLBACK/NAGRA),
