@@ -1,0 +1,26 @@
+# ============================================================
+# ip2country.csv - BASE DE DADOS IP -> PAIS (bandeiras na GUI)
+# Ficheiro de dados (nao e um config). Usado pela GUI para
+# mostrar a bandeira e o nome do pais de cada IP.
+#
+# FORMATO (CSV): IP_INICIO,IP_FIM,CODIGO_PAIS_2_LETRAS
+#   Cada linha cobre um intervalo de IPs (inclusive).
+#   Ordenacao: crescente por IP de inicio (obrigatorio).
+#   Codigos: ISO 3166-1 alpha-2 (PT, DE, GB, FR, ...).
+#   ZZ = desconhecido/nao atribuido.
+#
+# A base completa tem ~700 mil linhas e e distribuida com a
+# build (/var/etc/ip2country.csv). Esta e apenas uma amostra
+# minima para ver o formato. As bandeiras (gifs redondos) ja
+# estao embutidas no binario - este ficheiro so faz o mapa
+# IP -> codigo do pais.
+# ============================================================
+
+0.0.0.0,0.255.255.255,ZZ
+1.0.0.0,1.0.0.255,AU
+1.0.1.0,1.0.3.255,CN
+1.0.4.0,1.0.7.255,AU
+1.0.8.0,1.0.15.255,CN
+2.16.32.0,2.16.35.255,DE
+5.43.128.0,5.43.135.255,PT
+8.20.224.0,8.20.231.255,FR

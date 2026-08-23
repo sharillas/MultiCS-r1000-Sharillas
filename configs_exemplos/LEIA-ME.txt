@@ -1,36 +1,47 @@
 # ============================================================
-# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.0.10.2)
+# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.0.10.3)
 # ============================================================
 
-Ficheiros e funcao de cada um:
+Ficheiros e funcao de cada um (todos com explicacoes detalhadas
+comentadas dentro do proprio ficheiro):
 
-  multics.cfg          -> FICHEIRO MESTRE. Define portas, credenciais,
-                          cache, telnet, HTTP e inclui os restantes.
+  multics.cfg          -> FICHEIRO MESTRE. Portas, credenciais, cache,
+                          telnet, HTTP e INCLUDEs dos restantes.
                           Autorefresh da GUI: 15s por defeito (max 100).
+                          Pode conter tudo (perfis, users, F/N/C-lines)
+                          num ficheiro so - como mestre carrega tudo.
   profiles.cfg         -> PERFIS de saida (portas virtuais) com todas as
-                          opcoes por protocolo (DCW, SERVER, CACHEEX,
-                          SKIPCWC, SID lists, CWC, NAGRA, HEALTH, FALLBACK,
-                          TIMING, EMULATOR BISS, LITE...).
+                          opcoes por protocolo (DCW, SERVER, CACHE,
+                          CACHEEX, SKIPCWC, SID lists, CWC, NAGRA, HEALTH,
+                          FALLBACK, TIMING, EMULATOR BISS, LITE...).
                           Usa [DEFAULT] + [NOME]. Perfis desactivados com
                           #[NOME] aparecem na GUI com botao ON.
-  Cache.cfg            -> PEERS de cache (partilha de CWs entre servers).
-  CacheEX.cfg          -> PEERS CacheEX (protocolo CacheEX, maxhop...).
+  Cache.cfg            -> PEERS de cache (partilha de CWs entre servers):
+                          CACHE: host porta user pass { opcoes }
+  CacheEX.cfg          -> PEERS CacheEX: C: host porta user pass
+                          { cacheex_mode=3 ... }
   1-Clients.cfg        -> F-LINES (clientes CCcam) com todas as opcoes.
-  Nlines.cfg           -> N-LINES (clientes newcamd).
-  users.cfg            -> Utilizadores globais (valem para todos os profiles).
+  Nlines.cfg           -> N-LINES (clientes newcamd + readers).
+  users.cfg            -> Utilizadores globais (valem para todos os
+                          profiles; INCLUDE antes do profiles.cfg).
   Mgcamd.cfg           -> Utilizadores MGcamd.
-  Camd35.cfg           -> Utilizadores Camd35.
-  Softcam.cfg          -> Chaves CONSTCW (BISS/Tandberg) do Softcam (pagina Softcam da GUI).
-  blocked_ips.cfg      -> IPs bloqueados (gerido na pagina Configurations).
-  CCcam.channelinfo    -> Nomes de canais para a GUI (editavel na Configurations).
+  Camd35.cfg           -> Utilizadores Camd35 (UDP) e CS378x (TCP).
+  Softcam.cfg          -> Chaves CONSTCW (BISS/Tandberg) do Softcam
+                          (pagina Softcam da GUI).
+  blocked_ips.cfg      -> IPs bloqueados (gerido na pagina Configs).
+  CCcam.channelinfo    -> Nomes de canais para a GUI (editavel na Configs).
   CCcam.providers      -> Nomes de providers para a GUI.
+  CCcam.lite           -> BUILD LITE: lista de canais activos
+                          (CAID:PROVID:SID, FFFE = qualquer CAID).
+                          Gerada pela ferramenta Update Channel Info.
+  ip2country.csv       -> Base IP -> pais para as bandeiras da GUI
+                          (IP_INICIO,IP_FIM,CC; amostra minima aqui -
+                          a completa vai no pacote da build).
   multics.css          -> Tema externo (copiar de ../Configs/).
-  CCcam.lite           -> BUILD LITE: canais activos (gerada pela ferramenta
-                          Update Channel Info; opcional).
 
 Instalacao na VPS (Debian/Ubuntu):
   mkdir -p /var/etc
-  copiar todos os *.cfg e auxiliares para /var/etc/
+  copiar todos os ficheiros para /var/etc/
   chmod -R 775 /var/etc/
   executar: ./multics.x64 -b -C /var/etc/multics.cfg
 
@@ -39,17 +50,20 @@ Actualizacao automatica de chaves BISS (opcional):
   0 */6 * * * root /usr/bin/python3 /var/etc/biss_updater.py >> /var/log/biss_updater.log 2>&1
 
 Notas:
-  - O multics.cfg e o ficheiro MESTRE: todos os ficheiros de config que o
-    parse deve ler tem de estar la descritos (FILE ... ou INCLUDE "...").
+  - O multics.cfg e o ficheiro MESTRE: todos os ficheiros que o parse
+    deve ler tem de estar la descritos (FILE ... ou INCLUDE "...").
   - Alteracoes nos cfgs sao detectadas automaticamente (inotify).
-  - A GUI (porto 5500) tem uma pagina unica "Configurations" com:
-      * 1a div: Upload Configs (envia ficheiros para /var/etc com backup
-        automatico .bak-<timestamp> e reload; um ficheiro unico com todas
-        as seccoes carrega-se como multics.cfg)
-      * 2a div: IPs bloqueados (block/unblock)
-      * 3a div: edicao de todos os ficheiros de config (multics.cfg,
-        profiles.cfg, CCcam.channelinfo, ...) com save sem restart
-      * botao Update Channel Info (KingOfSat) + Load Channel Info + Reread
+  - A pagina "Configs" da GUI tem 3 seccoes:
+      * Upload Configs: envia qualquer um dos ficheiros acima para
+        /var/etc (backup automatico .bak-<timestamp>). Se o ficheiro
+        tiver erros, as linhas mas sao comentadas automaticamente e as
+        opcoes default ficam ativas; se nao der para corrigir, o upload
+        e rejeitado e o anterior e reposto (nunca crasha/fica sem arrancar).
+      * Blocked IPs: bloquear/desbloquear IPs (com pais e tempo de
+        bloqueio em formato DD:HH:MM:SS).
+      * Edit Config: edicao de TODOS os ficheiros acima (dropdown) com
+        save sem restart, e os botoes Update Channel Info (KingOfSat),
+        Load Channel Info e Reload Main Config.
   - A pagina "Softcam" gere as chaves BISS/Tandberg (upload SoftCam.Key,
     Update SoftCam.Key remoto, Reload Keys).
   - Mudar sempre HTTP USER/PASS e TELNET USER/PASS antes de expor na net.

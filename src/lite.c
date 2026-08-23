@@ -33,14 +33,22 @@ void lite_load()
 	}
 
 	char line[256];
+	int nbline = 0;
 	while (fgets(line, sizeof(line), fp)) {
+		nbline++;
+		strncpy( g_parse_filename, cfg.lite_file, sizeof(g_parse_filename)-1 );
+		g_parse_filename[sizeof(g_parse_filename)-1] = 0;
+		g_parse_nbline = nbline;
 		char *p = line;
 		while (*p==' '||*p=='\t') p++;
 		if (!p[0] || p[0]=='#' || p[0]==';' || p[0]=='\n' || p[0]=='\r') continue;
 		char *cmt = strchr(p, '#'); if (cmt) *cmt = 0;
 		cmt = strchr(p, ';'); if (cmt) *cmt = 0;
 		unsigned int caid=0, provid=0, sid=0;
-		if (sscanf(p, "%x:%x:%x", &caid, &provid, &sid)!=3) continue;
+		if (sscanf(p, "%x:%x:%x", &caid, &provid, &sid)!=3) {
+			mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): invalid lite line '%s'\n", nbline, 0, p);
+			continue;
+		}
 		if (!sid) continue;
 		if (caid==0xFFFF || caid==0) continue; // FTA nao entra na lista
 		struct lite_entry *ne = (struct lite_entry *)calloc(1, sizeof(struct lite_entry));
