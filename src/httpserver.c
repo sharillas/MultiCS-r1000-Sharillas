@@ -787,7 +787,7 @@ char html_title[] = "<title>%s - %s</title>\n";
 
 char http_link[] = "<meta http-equiv=\"Content-type\" content=\"text/html; charset=utf-8\"/>\n";
 
-char http_style[] = "<link rel=\"stylesheet\" href=\"style.css\" type=\"text/css\" />\n";
+char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1109\" type=\"text/css\" />\n";
 
 char http_javascript[] = "<script src=\"/customjs.js\"></script>\n";
 
