@@ -9516,6 +9516,85 @@ void http_send_configurations(int sock, http_request *req)
 		dynbuf_free(&db);
 		return;
 	}
+	if (str_action && !strcmp(str_action,"upload")) {
+		// upload de ficheiro de config (whitelist) para /var/etc/
+		static const char *upload_whitelist[] = {
+			"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.lite",
+			"Nlines.cfg","users.cfg","Mgcamd.cfg","Camd35.cfg","Cache.cfg",
+			"CacheEX.cfg","1-Clients.cfg","Softcam.cfg","blocked_ips.cfg",
+			"ip2country.csv","multics.css", NULL };
+		char *fnameparam = isset_get( req, "file");
+		int okname = 0;
+		if (fnameparam) {
+			int w = 0;
+			while (upload_whitelist[w]) {
+				if (!strcmp(upload_whitelist[w], fnameparam)) { okname = 1; break; }
+				w++;
+			}
+		}
+		if (!okname) {
+			http_send_text(sock, "<span class='miss'>Ficheiro nao permitido</span>");
+			return;
+		}
+		if (req->type==HTTP_POST) {
+			char *content = isset_header(req, "Content-Type");
+			if (content && !memcmp(content,"multipart/form-data",19)) {
+				while (*content!=';') { if (*content==0) break; content++; }
+				if (*content==';') {
+					content++;
+					while (*content==' ') content++;
+					if (!memcmp(content,"boundary",8)) {
+						while (*content!='=') { if (*content==0) break; content++; }
+						if (*content=='=') {
+							content++;
+							while (*content==' '||*content=='\t') content++;
+							char boundary[255];
+							char endboundary[255];
+							sprintf( boundary, "--%s", content);
+							sprintf( endboundary, "\r\n--%s", content);
+							char *p = req->dbf.data;
+							p = (char*) boyermoore_horspool_memmem( (uint8_t*)p, req->dbf.datasize, (uint8_t*)boundary, strlen(boundary) );
+							if (p) {
+								p += strlen(boundary);
+								if ( *p=='\r' && *(p+1)=='\n' ) {
+									p += 2;
+									char *h = p;
+									while ( !(h[0]=='\r'&&h[1]=='\n'&&h[2]=='\r'&&h[3]=='\n') ) {
+										if (h[0]==0) break;
+										h++;
+									}
+									char *pdata = h+4;
+									char *end = (char*) boyermoore_horspool_memmem( (uint8_t*)pdata, req->dbf.datasize-(pdata-(char*)req->dbf.data), (uint8_t*)endboundary, strlen(endboundary) );
+									if (end && end>pdata) {
+										char fname[512];
+										sprintf( fname, "/var/etc/%s", fnameparam );
+										char backup[600];
+										sprintf( backup, "%s.bak-%ld", fname, (long)time(NULL) );
+										rename( fname, backup );
+										FILE *fd = fopen( fname, "wb");
+										if (fd) {
+											fwrite( pdata, 1, end-pdata, fd );
+											fclose(fd);
+											mlogf(LOGINFO, DBG_HTTP, " http: upload '%s' (%d bytes, backup %s)\n", fname, (int)(end-pdata), backup);
+											free_filenames( &cfg );
+											reread_config( &cfg );
+											check_config( &cfg );
+											cfg_set_id_counters( &cfg );
+											emu_load();
+											lite_load();
+											ipblock_load();
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		http_send_redirect(sock, "/configurations");
+		return;
+	}
 
 	// ===== ficheiro selecionado =====
 	int index = 0;
@@ -9615,6 +9694,29 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
 	tcp_write_menu(&tcpbuf, sock, PAGE_CONFIGURATIONS);
 	tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+
+	// ---- DIV 0: Upload Configs ----
+	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
+	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle>Upload Configs</h3><div class=stat-value>");
+	tcp_writestr(&tcpbuf, sock, "<form method='POST' enctype='multipart/form-data' action='/configurations?action=upload' onsubmit=\"this.action='/configurations?action=upload&file='+this.elements['file'].value;\">");
+	tcp_writestr(&tcpbuf, sock, "Ficheiro de destino: <select name='file' style='width:250px;'>");
+	tcp_writestr(&tcpbuf, sock, "<option value='multics.cfg'>multics.cfg (mestre - pode conter tudo)</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='profiles.cfg'>profiles.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.channelinfo'>CCcam.channelinfo</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.lite'>CCcam.lite</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='Nlines.cfg'>Nlines.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='users.cfg'>users.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='Mgcamd.cfg'>Mgcamd.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='Camd35.cfg'>Camd35.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='Cache.cfg'>Cache.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='CacheEX.cfg'>CacheEX.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='1-Clients.cfg'>1-Clients.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='Softcam.cfg'>Softcam.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='blocked_ips.cfg'>blocked_ips.cfg</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='ip2country.csv'>ip2country.csv</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='multics.css'>multics.css</option>");
+	tcp_writestr(&tcpbuf, sock, "</select>&nbsp; <input type='file' name='uploadfile'>&nbsp;<input type='submit' value='Upload'></form>");
+	tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;'>envia o teu ficheiro para /var/etc/ (faz backup automatico do anterior). A config e recarregada apos o upload. Um ficheiro unico com todas as seccoes (servers, perfis, clientes) carrega-se como multics.cfg.</span></div>");
 
 	// ---- DIV 1: Iptables ----
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
