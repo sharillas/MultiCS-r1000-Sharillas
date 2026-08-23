@@ -19,7 +19,7 @@ Copy-Item (Join-Path $PSScriptRoot "Configs/ip2country.csv") $CfgDir
 # install script para a VPS
 @'
 #!/bin/bash
-# MultiCS r1000 v1.0.10.2 - instalador VPS (Debian/Ubuntu)
+# MultiCS r1000 v1.0.10.3 - instalador VPS (Debian/Ubuntu)
 # Uso: sudo bash install.sh [/caminho/instalacao]
 DIR=${1:-/opt/multics}
 if [ "$(id -u)" -ne 0 ]; then echo "executa como root"; exit 1; fi
