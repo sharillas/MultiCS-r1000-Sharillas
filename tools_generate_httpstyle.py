@@ -26,15 +26,29 @@ js = r'''function imgrequest( url, el )
 	catch (trymicrosoft) { try { httpRequest = new ActiveXObject('Msxml2.XMLHTTP'); } catch (oldermicrosoft) { try { httpRequest = new ActiveXObject('Microsoft.XMLHTTP'); } catch(failed) { httpRequest = false; } } }
 	if (!httpRequest) { alert('Your browser does not support Ajax.'); return false; }
 	if ( typeof(el)!='undefined' ) {
-		el.onclick = null;
 		el.style.opacity = '0.7';
 		httpRequest.onreadystatechange = function()
 		{
-			if (httpRequest.readyState == 4) if (httpRequest.status == 200) el.style.opacity = '0.3';
+			if (httpRequest.readyState == 4) el.style.opacity = '1.0';
 		}
 	}
 	httpRequest.open('GET', url, true);
 	httpRequest.send(null);
+}
+function btnrequest( url, sid )
+{
+	var s = document.getElementById(sid);
+	if (s) s.innerHTML = '<span class=busy>A executar...</span>';
+	var x = new XMLHttpRequest();
+	x.open('GET', url, true);
+	x.onreadystatechange = function()
+	{
+		if (x.readyState == 4) {
+			if (x.status == 200) { if (s) s.innerHTML = x.responseText; }
+			else if (s) s.innerHTML = '<span class=failed>Erro HTTP ' + x.status + '</span>';
+		}
+	};
+	x.send(null);
 }
 function sortTable(el,n){var t=el.closest?el.closest('table'):null;if(!t)return;var tb=t.tBodies[0]||t;var r=t.tHead?t.tHead.rows[0].cells:t.rows[0].cells;var h=r[n];if(!h)return;var b=Array.from(tb.rows);var a=window['sortAsc']=(window['sortCol']==n)?-window['sortAsc']:1;window['sortCol']=n;b.sort(function(x,y){var p=x.cells[n].textContent.trim(),q=y.cells[n].textContent.trim();var pn=parseFloat(p),qn=parseFloat(q);return isNaN(pn)||isNaN(qn)?(p>q?1:p<q?-1:0)*a:(pn-qn)*a});b.forEach(function(r){tb.appendChild(r)});}
 function bindSortable(){var ts=document.querySelectorAll('table.maintable');for(var k=0;k<ts.length;k++){(function(t){var ths=t.querySelectorAll('th');for(var i=0;i<ths.length;i++){(function(n){ths[n].style.cursor='pointer';ths[n].title='Click to sort';ths[n].onclick=function(){sortTable(this,n);};})(i);}})(ts[k]);}}

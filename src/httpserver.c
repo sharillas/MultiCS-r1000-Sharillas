@@ -2004,7 +2004,8 @@ void http_send_emulator(int sock, http_request *req)
 	}
 	if (str_action && !strcmp(str_action,"applykeys")) {
 		emu_load();
-		http_send_text(sock, "<span class='success'>OK keys</span>");
+		sprintf( http_buf, "<span class='success'>Reload Keys OK (%d chaves carregadas)</span>", emu_keycount);
+		http_send_text(sock, http_buf);
 		return;
 	}
 
@@ -2114,7 +2115,7 @@ void http_send_emulator(int sock, http_request *req)
 
 	// Upload + add forms
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >SoftCam.Key Upload</h3><div class=stat-value><form id='softcamform' method='POST' enctype='multipart/form-data' action='/emulator' onsubmit='return uploadSoftcam(event)'><input type='file' name='softcamkey' accept='.key'>&nbsp;<input type='submit' value='Convert &amp; Load'>&nbsp;<span id='softcamstatus'></span></form><br><input type='button' class='sbutton' value='Update SoftCam.Key' title='Descarrega o SoftCam.Key mais recente e aplica; chaves manuais sao preservadas' onclick=\"imgrequest('/emulator?action=updatekey',this)\">&nbsp;<span style='font-size:11px;'>download + parse automatico do SoftCam.Key remoto</span><br><input type='button' class='sbutton' value='Reload Keys' title='Rele o Softcam.cfg do disco' onclick=\"imgrequest('/emulator?action=applykeys',this)\"></div>");
+	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >SoftCam.Key Upload</h3><div class=stat-value><form id='softcamform' method='POST' enctype='multipart/form-data' action='/emulator' onsubmit='return uploadSoftcam(event)'><input type='file' name='softcamkey' accept='.key'>&nbsp;<input type='submit' value='Convert &amp; Load'>&nbsp;<span id='softcamstatus'></span></form><br><input type='button' class='sbutton' value='Update SoftCam.Key' title='Descarrega o SoftCam.Key mais recente e aplica; chaves manuais sao preservadas' onclick=\"btnrequest('/emulator?action=updatekey','keystatus')\">&nbsp;<input type='button' class='sbutton' value='Reload Keys' title='Rele o Softcam.cfg do disco' onclick=\"btnrequest('/emulator?action=applykeys','keystatus')\">&nbsp;<span id='keystatus'></span>&nbsp;<span style='font-size:11px;'>update: download + parse automatico do SoftCam.Key remoto (resultado no Debug Log)</span></div>");
 	tcp_writestr(&tcpbuf, sock, "</div>");
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
 	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Add BISS Key (CAID 2600)</h3><div class=stat-value><form method='GET' action='/emulator'><input type='hidden' name='action' value='add'><input type='hidden' name='addkey_type' value='biss'>SID: <input type='text' name='sid' placeholder='17ED' style='width:60px;margin-right:8px'>CW (16 or 32 hex): <input type='text' name='cw' placeholder='1A2B3C81...' style='width:280px;margin-right:8px'><input type='submit' value='Add BISS Key'></form></div>");
