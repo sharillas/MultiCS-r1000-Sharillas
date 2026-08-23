@@ -9293,6 +9293,64 @@ void http_send_editor(int sock, http_request *req, int index)
 // ============================================================
 // CONFIGURATIONS: pagina unica com Iptables (1a div) + Edit Config (2a div)
 // ============================================================
+
+// fragmento da div de edicao (select + save + textarea) - escreve num dyn_buffer
+void http_send_editdiv(struct dyn_buffer *db, int index)
+{
+	char http_buf[2048];
+	struct filename_data *fs = cfg.files;
+	int i;
+	for (i=0; i<index; i++) {
+		if (!fs) break;
+		fs = fs->next;
+	}
+	if ((i!=index)||(!fs)) { fs = cfg.files; index = 0; }
+	char fname[512];
+	strcpy( fname, fs->name );
+	int noeditor = fs->noeditor;
+
+	dynbuf_write( db, (unsigned char*)"<div class=stat-section style='margin:10px 0'> <input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\">&nbsp;<span style='font-size:11px;'>parse do teu CCcam.channelinfo sem restart</span><br><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\">&nbsp;<span style='font-size:11px;'>reconstroi CCcam.channelinfo do KingOfSat + reload automatico</span><br><input type=button class='sbutton' value='Reread Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\">&nbsp;<span style='font-size:11px;'>aplica o multics.cfg e includes sem restart</span></div>", strlen("<div class=stat-section style='margin:10px 0'> <input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\">&nbsp;<span style='font-size:11px;'>parse do teu CCcam.channelinfo sem restart</span><br><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\">&nbsp;<span style='font-size:11px;'>reconstroi CCcam.channelinfo do KingOfSat + reload automatico</span><br><input type=button class='sbutton' value='Reread Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\">&nbsp;<span style='font-size:11px;'>aplica o multics.cfg e includes sem restart</span></div>") );
+
+	sprintf( http_buf, "<form enctype=\"multipart/form-data\" method=\"post\" action=\"/configurations?file=%d\">", index);
+	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
+
+	dynbuf_write( db, (unsigned char*)"<span style='float:right'><select onchange=\"loadEditor(this.value)\" style='width:250px;'>", strlen("<span style='float:right'><select onchange=\"loadEditor(this.value)\" style='width:250px;'>") );
+	fs = cfg.files;
+	i = 0;
+	while (fs) {
+		if (!fs->noeditor) {
+			if (i==index) sprintf( http_buf, "<option value=\"/configurations?file=%d\" selected>%s</option>",i, fs->name);
+			else sprintf( http_buf, "<option value=\"/configurations?file=%d\">%s</option>",i, fs->name);
+			dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
+		}
+		i++;
+		fs = fs->next;
+	}
+	dynbuf_write( db, (unsigned char*)"</select></span>", strlen("</select></span>") );
+
+	sprintf( http_buf, "<input type=submit id='submitbutton' value=\"Save '%s'\" disabled><br>",fname);
+	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
+
+	if (!noeditor) {
+		FILE *fd = fopen(fname, "r");
+		if (fd) {
+			dynbuf_write( db, (unsigned char*)"<center><textarea cols=\"40\" wrap=\"off\" rows=\"9\" spellcheck=\"false\" name=\"textedit\">", strlen("<center><textarea cols=\"40\" wrap=\"off\" rows=\"9\" spellcheck=\"false\" name=\"textedit\">") );
+			while( !feof(fd) ) {
+				int len = fread(http_buf, 1, sizeof(http_buf), fd);
+				if (len<=0) break;
+				dynbuf_write( db, (unsigned char*)http_buf, len );
+			}
+			fclose(fd);
+			sprintf( http_buf, "</textarea></center></form>");
+			dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
+		}
+		else {
+			sprintf( http_buf, "<br>Cant open file '%s'", fname);
+			dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
+		}
+	}
+}
+
 void http_send_configurations(int sock, http_request *req)
 {
 	char http_buf[2048];
@@ -9354,6 +9412,18 @@ void http_send_configurations(int sock, http_request *req)
 			http_send_text(sock, "<span class='success'>OK</span>");
 		}
 		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (/opt/multics/tools_update_channelinfo.py)</span>");
+		return;
+	}
+	if (str_action && !strcmp(str_action,"editdiv")) {
+		// so a div de edicao (sem refresh da pagina)
+		int idx = 0;
+		char *sf = isset_get( req, "file");
+		if (sf) idx = atoi(sf);
+		struct dyn_buffer db;
+		dynbuf_init(&db, 16384);
+		http_send_editdiv(&db, idx);
+		http_send_answer(sock, req, "text/html", db.data, db.datasize);
+		dynbuf_free(&db);
 		return;
 	}
 
@@ -9449,6 +9519,7 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
 	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
 	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 document.getElementById('submitbutton').disabled=false;\n}");
+	tcp_writestr(&tcpbuf, sock, "\nfunction loadEditor(url)\n{\n	var f = url.split('file=')[1];\n	var x = new XMLHttpRequest();\n	x.open('GET','/configurations?action=editdiv&file='+f,true);\n	x.onreadystatechange=function()\n	{\n		if (x.readyState==4 && x.status==200) {\n			var d=document.getElementById('editsection');\n			if (d) d.innerHTML = x.responseText;\n			var b=document.getElementById('submitbutton');\n			if (b) b.disabled = false;\n		}\n	};\n	x.send(null);\n}");
 	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
 	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
 	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
@@ -9483,47 +9554,16 @@ void http_send_configurations(int sock, http_request *req)
 		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=4 style='text-align:center;color:#888'>No blocked IPs</td></tr>");
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
 
-	// ---- DIV 2: Edit Config ----
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'> <input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\">&nbsp;<span style='font-size:11px;'>parse do teu CCcam.channelinfo sem restart</span><br><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\">&nbsp;<span style='font-size:11px;'>reconstroi CCcam.channelinfo do KingOfSat + reload automatico</span><br><input type=button class='sbutton' value='Reread Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\">&nbsp;<span style='font-size:11px;'>aplica o multics.cfg e includes sem restart</span></div>");
-
-	sprintf( http_buf, "<form enctype=\"multipart/form-data\" method=\"post\" action=\"/configurations?file=%d\">", index);
-	tcp_writestr(&tcpbuf, sock, http_buf);
-
-	tcp_writestr(&tcpbuf, sock, "<span style='float:right'><select onchange=\"window.location=this.value\" style='width:250px;'>");
-	fs = cfg.files;
-	i = 0;
-	while (fs) {
-		if (!fs->noeditor) {
-			if (i==index) sprintf( http_buf, "<option value=\"/configurations?file=%d\" selected>%s</option>",i, fs->name);
-			else sprintf( http_buf, "<option value=\"/configurations?file=%d\">%s</option>",i, fs->name);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		}
-		i++;
-		fs = fs->next;
+	// ---- DIV 2: Edit Config (div com id para refresh ajax) ----
+	tcp_writestr(&tcpbuf, sock, "<div id='editsection'>");
+	{
+		struct dyn_buffer db;
+		dynbuf_init(&db, 16384);
+		http_send_editdiv(&db, index);
+		tcp_write(&tcpbuf, sock, db.data, db.datasize );
+		dynbuf_free(&db);
 	}
-	tcp_writestr(&tcpbuf, sock, "</select></span>");
-
-	sprintf( http_buf, "<input type=submit id='submitbutton' value=\"Save '%s'\" disabled><br>",fname);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-	if (!noeditor) {
-		FILE *fd = fopen(fname, "r");
-		if (fd) {
-			tcp_writestr(&tcpbuf, sock, "<center><textarea cols=\"40\" wrap=\"off\" rows=\"9\" spellcheck=\"false\" name=\"textedit\">");
-			while( !feof(fd) ) {
-				int len = fread(http_buf, 1, sizeof(http_buf), fd);
-				if (len<=0) break;
-				tcp_write(&tcpbuf, sock, http_buf, len );
-			}
-			fclose(fd);
-			sprintf( http_buf, "</textarea></center></form>");
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		}
-		else {
-			sprintf( http_buf, "<br>Cant open file '%s'", fname);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		}
-	}
+	tcp_writestr(&tcpbuf, sock, "</div>");
 
 	// footer adicionado pelo JS (fora do mainDiv)
 	tcp_writestr(&tcpbuf, sock, "</div></body></html>");
