@@ -241,6 +241,12 @@ void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 
 	if ( dcwcmp8(dcw,nullcw) && dcwcmp8(dcw+8,nullcw) ) return;
 
+	// FILTRO EMBUTIDO (nao configuravel): fake cw com ultimo byte XOR 0xF0
+	if ( isfakecw_xorF0(dcw) && !acceptDCW_nanoe0(dcw) ) {
+		mlogf(LOGWARNING,0," !!! fake cw detected in setdcw (last byte XOR 0xF0) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
+		return;
+	}
+
 	int cwpart = 2;
 	if (ecm->cw1cycle) {
 		if (ecm->ecm[0]==ecm->cw1cycle) cwpart = 1; else cwpart = 0;
@@ -531,6 +537,12 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	if (!cs) return;
 
 	if ( dcwcmp8(dcw,nullcw) && dcwcmp8(dcw+8,nullcw) ) return;
+
+	// FILTRO EMBUTIDO (nao configuravel): fake cw com ultimo byte XOR 0xF0
+	if ( isfakecw_xorF0(dcw) && !acceptDCW_nanoe0(dcw) ) {
+		mlogf(LOGWARNING,0," !!! fake cw detected in setdcw (last byte XOR 0xF0) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
+		return;
+	}
 
 	int cwpart = 2;
 	if (ecm->cw1cycle) {
