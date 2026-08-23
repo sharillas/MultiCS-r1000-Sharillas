@@ -1546,6 +1546,7 @@ void http_send_debug(int sock, http_request *req)
 		if (!strcmp(str_action,"div")) get_action = 1;
 		else if (!strcmp(str_action,"row")) get_action = 2;
 		else if (!strcmp(str_action,"log")) get_action = 8;
+		else if (!strcmp(str_action,"download")) get_action = 9;
 		else if (!strcmp(str_action,"debug")) {
 			get_action = 3;
 			char *str_value = isset_get( req, "value");
@@ -1598,6 +1599,29 @@ void http_send_debug(int sock, http_request *req)
 		tcp_flush(&tcpbuf, sock);
 		return;
 	}
+
+	// Download do log completo (ring buffer) como ficheiro txt
+	if (get_action==9) {
+		tcp_init(&tcpbuf);
+		sprintf( http_buf, "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Disposition: attachment; filename=\"multics-debug.txt\"\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\n\r\n");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_writestr(&tcpbuf, sock, "========================================\n");
+		tcp_writestr(&tcpbuf, sock, " MultiCS r1000 debug log (ultimas entradas)\n");
+		sprintf( http_buf, " %s\n", cfg.http.title);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_writestr(&tcpbuf, sock, "========================================\n\n");
+		int current = idbgline;
+		int i = current - (MAX_DBGLINES-1);
+		if (i<0) i += MAX_DBGLINES;
+		do {
+			if (dbgline[i][0]) tcp_write(&tcpbuf, sock, dbgline[i], strlen(dbgline[i]) );
+			i++;
+			if (i>=MAX_DBGLINES) i=0;
+		} while (i!=current);
+		tcp_flush(&tcpbuf, sock);
+		return;
+	}
+
 	//
 	tcp_init(&tcpbuf);
 	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
@@ -1656,14 +1680,14 @@ void http_send_debug(int sock, http_request *req)
 		tcp_writestr(&tcpbuf, sock, "<div id='dbglog'>");
 		sprintf( http_buf, "<pre style=\"font-size:13px;\">"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		int current = idbgline;
-		int i = current - 35;
-		if (i<0) i += 70;
+		int i = current - 50;
+		if (i<0) i += MAX_DBGLINES;
 		do {
 			sprintf( http_buf, "%s", dbgline[i] ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			i++;
 			if (i>=MAX_DBGLINES) i=0;
 		} while (i!=current);
-		sprintf( http_buf, "</pre></div></fieldset>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "</pre></div><br><a class='sbutton' href='/debug?action=download'>Download Log (txt)</a>&nbsp;<span style='font-size:11px;'>guarda as ultimas %d entradas do log num ficheiro multics-debug.txt</span></fieldset>", MAX_DBGLINES); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 
 	// Paths (binario + ficheiros de config) - diagnostico
@@ -9406,6 +9430,38 @@ static int editor_in_cfgfiles(const char *name)
 	return 0;
 }
 
+// resolve o caminho REAL de um ficheiro de config (basename) a partir
+// da config em execucao - funciona com qualquer layout (-C /emu/multics/...)
+// ordem: ficheiros especiais -> lista do parse (INCLUDE/FILE) -> pasta do multics.cfg
+static void resolve_cfg_path(const char *name, char *out, int outsz)
+{
+	const char *wanted = NULL;
+	if (!strcmp(name,"multics.cfg")) wanted = config_file;
+	else if (!strcmp(name,"CCcam.channelinfo")) wanted = cfg.channelinfo_file;
+	else if (!strcmp(name,"CCcam.lite")) wanted = cfg.lite_file;
+	else if (!strcmp(name,"Softcam.cfg")) wanted = cfg.constcw_file;
+	else if (!strcmp(name,"blocked_ips.cfg")) wanted = cfg.blockedip_file;
+	else if (!strcmp(name,"ip2country.csv")) wanted = cfg.ip2country_file;
+	else if (!strcmp(name,"multics.css")) wanted = cfg.stylesheet_file;
+	if (wanted && wanted[0]) {
+		snprintf(out, outsz, "%s", wanted);
+		return;
+	}
+	struct filename_data *fs = cfg.files;
+	while (fs) {
+		const char *b = strrchr(fs->name, '/');
+		const char *base = b ? b+1 : fs->name;
+		if (!strcmp(base, name)) {
+			snprintf(out, outsz, "%s", fs->name);
+			return;
+		}
+		fs = fs->next;
+	}
+	const char *sl = strrchr(config_file, '/');
+	if (sl) snprintf(out, outsz, "%.*s/%s", (int)(sl-config_file), config_file, name);
+	else snprintf(out, outsz, "%s", name);
+}
+
 // resolve o ficheiro do editor pelo index:
 //   devolve 1 = ficheiro da lista do parse (index < n)
 //   devolve 2 = ficheiro extra em /var/etc/ (index >= n)
@@ -9426,7 +9482,7 @@ static int editor_get_filename(int index, char *fname, int fname_sz, int *noedit
 	}
 	int e = index - n;
 	if (e>=0 && editor_extra_files[e]) {
-		snprintf(fname, fname_sz, "/var/etc/%s", editor_extra_files[e]);
+		resolve_cfg_path(editor_extra_files[e], fname, fname_sz);
 		if (noeditor) *noeditor = 0;
 		return 2;
 	}
@@ -9497,12 +9553,12 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 		i++;
 		fs = fs->next;
 	}
-	int e = 0;
+		int e = 0;
 	while (editor_extra_files[e]) {
 		if (!editor_in_cfgfiles(editor_extra_files[e])) {
 			int x = i + e;
-			if (x==index) sprintf( http_buf, "<option value=\"/configurations?file=%d\" selected>%s (/var/etc)</option>",x, editor_extra_files[e]);
-			else sprintf( http_buf, "<option value=\"/configurations?file=%d\">%s (/var/etc)</option>",x, editor_extra_files[e]);
+			if (x==index) sprintf( http_buf, "<option value=\"/configurations?file=%d\" selected>%s (pasta da config)</option>",x, editor_extra_files[e]);
+			else sprintf( http_buf, "<option value=\"/configurations?file=%d\">%s (pasta da config)</option>",x, editor_extra_files[e]);
 			dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 		}
 		e++;
@@ -9659,7 +9715,7 @@ void http_send_configurations(int sock, http_request *req)
 									char *end = (char*) boyermoore_horspool_memmem( (uint8_t*)pdata, req->dbf.datasize-(pdata-(char*)req->dbf.data), (uint8_t*)endboundary, strlen(endboundary) );
 									if (end && end>pdata) {
 										char fname[512];
-										sprintf( fname, "/var/etc/%s", fnameparam );
+										resolve_cfg_path( fnameparam, fname, sizeof(fname) );
 										char backup[600];
 										sprintf( backup, "%s.bak-%ld", fname, (long)time(NULL) );
 										rename( fname, backup );
@@ -9856,7 +9912,7 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "<option value='ip2country.csv'>ip2country.csv</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='multics.css'>multics.css</option>");
 	tcp_writestr(&tcpbuf, sock, "</select>&nbsp; <input type='file' name='uploadfile'>&nbsp;<input type='submit' value='Upload'></form>");
-	tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;'>envia o teu ficheiro para /var/etc/ (faz backup automatico do anterior). A config e recarregada apos o upload. Um ficheiro unico com todas as seccoes (servers, perfis, clientes) carrega-se como multics.cfg.</span></div>");
+	tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;'>envia o teu ficheiro para o caminho real da config (onde o parse o le). Faz backup automatico do anterior. A config e recarregada apos o upload. Um ficheiro unico com todas as seccoes (servers, perfis, clientes) carrega-se como multics.cfg.</span></div>");
 
 	// ---- DIV 1: Iptables ----
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
