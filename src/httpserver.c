@@ -913,13 +913,13 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (selected==PAGE_EDITOR) class = cSelected; else class = cNormal;
 		sprintf( buf, class, "/editor", "Edit Config"); tcp_writestr(tcpbuf, sock, buf);
 	}
-	if (!cfg.http.show.norestart) {
-		if (selected==PAGE_RESTART) class = cSelected; else class = cNormal;
-		sprintf( buf, class, "/restart", "Restart"); tcp_writestr(tcpbuf, sock, buf);
-	}
-
-	tcp_writestr(tcpbuf, sock, "<li><button id='themeToggle' class='mbtn' onclick='toggleTheme()'>Dark</button></li>");
-	tcp_writestr(tcpbuf, sock, "<li><a class='logout-btn' href='/login?action=logout'>Logout</a></li>");
+	// grupo lateral direito: Restart | tema | Logout (template do logout-btn)
+	tcp_writestr(tcpbuf, sock, "<li class='menu-right'>");
+	if (!cfg.http.show.norestart)
+		tcp_writestr(tcpbuf, sock, "<a class='logout-btn' href='/restart'>Restart</a>");
+	tcp_writestr(tcpbuf, sock, "<button id='themeToggle' class='logout-btn' onclick='toggleTheme()'>Dark</button>");
+	tcp_writestr(tcpbuf, sock, "<a class='logout-btn' href='/login?action=logout'>Logout</a>");
+	tcp_writestr(tcpbuf, sock, "</li>");
 	tcp_writestr(tcpbuf, sock, "</ul>");
 	tcp_writestr(tcpbuf, sock, "<div class='brand-line'><span class='brand'>MultiCS r"REVISION_STR"</span> <span class='brand-by'>by Sharillas</span></div></div>\n");
 
