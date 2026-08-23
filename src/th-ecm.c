@@ -82,6 +82,22 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				ecm_setdcw( ecm, ecm->cw, DCW_SOURCE_EMU, 0 );
 				return;
 			}
+			// BISS (2600) sem chave -> NOK imediato (amarelo na GUI)
+			if (ecm->caid==0x2600) {
+				ecm->statusmsg = "NOK (BISS EMU): no key";
+				ecm->nokbiss = 1;
+				mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ecm: BISS EMU NOK ch %04x:%06x:%04x (%s)\n", ecm->caid, ecm->provid, ecm->sid, ecm->statusmsg);
+				ecm_faileddcw( ecm );
+				return;
+			}
+		}
+		else if (ecm->caid==0x2600) {
+			// emulador desligado neste perfil -> NOK imediato
+			ecm->statusmsg = "NOK (BISS EMU): emulator disabled";
+			ecm->nokbiss = 1;
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ecm: BISS EMU NOK ch %04x:%06x:%04x (%s)\n", ecm->caid, ecm->provid, ecm->sid, ecm->statusmsg);
+			ecm_faileddcw( ecm );
+			return;
 		}
 	}
 
