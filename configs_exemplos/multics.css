@@ -138,3 +138,11 @@ body.light-mode .cfgbtns .cfgbtns-info { color:#575d62; }
 body.light-mode .maintable td.offline { color:#a02020 !important; }
 body.light-mode .maintable td.online { color:#2e6b3d !important; }
 body.light-mode .maintable td.busy { color:#9a7b00 !important; }
+
+/* linhas offline com fundo vermelho suave (linha toda) */
+.maintable tr:has(td.offline) td { background:rgba(242,139,130,0.10) !important; }
+.maintable tr:has(td.online) td { background:rgba(129,201,149,0.08) !important; }
+.maintable tr:has(td.busy) td { background:rgba(253,214,99,0.08) !important; }
+body.light-mode .maintable tr:has(td.offline) td { background:rgba(217,83,79,0.12) !important; }
+body.light-mode .maintable tr:has(td.online) td { background:rgba(60,122,79,0.10) !important; }
+body.light-mode .maintable tr:has(td.busy) td { background:rgba(200,160,0,0.10) !important; }
