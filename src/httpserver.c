@@ -9283,7 +9283,7 @@ void http_send_editor(int sock, http_request *req, int index)
 			}
 		}
 		// footer (igual as outras pages)
-		tcp_writestr(&tcpbuf, sock, "<div class='home-footer'><span class='hf-ver'>MultiCS r1000 v1.0 @ All Rights Reserved @ by Sharillas@2026</span></div>");
+		tcp_writestr(&tcpbuf, sock, "<div class='home-footer'><span class='hf-ver'>MultiCS r1000 v"VERSION_STR" - All Rights Reserved - Sharillas@2026</span></div>");
 		tcp_writestr(&tcpbuf, sock, "</body></html>");
 		tcp_flush(&tcpbuf, sock);
 	}
