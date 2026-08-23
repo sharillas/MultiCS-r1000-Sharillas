@@ -1936,6 +1936,13 @@ void http_send_emulator(int sock, http_request *req)
 		return;
 	}
 	if (str_action && !strcmp(str_action,"updatekey")) {
+		static uint32_t lastupdatekey = 0;
+		uint32_t now = GetTickCount();
+		if (lastupdatekey && ((now-lastupdatekey)<300000)) {
+			http_send_text(sock, "<span class='miss'>Aguarda 5 minutos entre atualizacoes</span>");
+			return;
+		}
+		lastupdatekey = now;
 		if (!access("/opt/multics/tools_update_softcam.py", F_OK)) {
 			system("python3 /opt/multics/tools_update_softcam.py >/var/tmp/softcam_update.log 2>&1 &");
 			http_send_text(sock, "<span class='success'>Update SoftCam.Key iniciado. Resultado no Debug Log.</span>");
@@ -8754,7 +8761,26 @@ void http_send_editor(int sock, http_request *req, int index)
 		http_send_text(sock, "<span class='success'>OK</span>");
 		return;
 	}
+	if (str_action && !strcmp(str_action,"reread")) {
+		free_filenames( &cfg );
+		reread_config( &cfg );
+		check_config( &cfg );
+		cfg_set_id_counters( &cfg );
+		emu_load();
+		lite_load();
+		ipblock_load();
+		mlogf(LOGINFO, DBG_HTTP, " http: config reread from disk\n");
+		http_send_text(sock, "<span class='success'>OK</span>");
+		return;
+	}
 	if (str_action && !strcmp(str_action,"updatechinfo")) {
+		static uint32_t lastupdatechinfo = 0;
+		uint32_t now = GetTickCount();
+		if (lastupdatechinfo && ((now-lastupdatechinfo)<300000)) {
+			http_send_text(sock, "<span class='miss'>Aguarda 5 minutos entre atualizacoes</span>");
+			return;
+		}
+		lastupdatechinfo = now;
 		if (!access("/opt/multics/tools_update_channelinfo.py", F_OK)) {
 			system("python3 /opt/multics/tools_update_channelinfo.py --apply >/var/tmp/chinfo_update.log 2>&1 &");
 			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat)\n");
