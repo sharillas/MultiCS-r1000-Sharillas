@@ -9572,7 +9572,7 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 		"</div></div>");
 	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 
-	sprintf( http_buf, "<form enctype=\"multipart/form-data\" method=\"post\" action=\"/configurations?file=%d\">", index);
+	sprintf( http_buf, "<form id='editform' enctype=\"multipart/form-data\" method=\"post\" action=\"/configurations?file=%d\">", index);
 	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 
 	dynbuf_write( db, (unsigned char*)"<span style='float:right'><select onchange=\"loadEditor(this.value)\" style='width:250px;'>", strlen("<span style='float:right'><select onchange=\"loadEditor(this.value)\" style='width:250px;'>") );
@@ -9599,7 +9599,9 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 	}
 	dynbuf_write( db, (unsigned char*)"</select></span>", strlen("</select></span>") );
 
-	sprintf( http_buf, "<input type=submit id='submitbutton' value=\"Save '%s'\" disabled><br>",fname);
+	sprintf( http_buf, "<input type=hidden id='edfileidx' value='%d'>", index);
+	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
+	sprintf( http_buf, "<input type=button id='submitbutton' value=\"Save '%s'\" onclick=\"saveEditor()\">&nbsp;<span id='savestatus'></span><br>",fname);
 	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 
 	if (!noeditor) {
@@ -9943,6 +9945,7 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
 	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
 	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 document.getElementById('submitbutton').disabled=false;\n}");
+	tcp_writestr(&tcpbuf, sock, "\nfunction saveEditor()\n{\n	var f=document.getElementById('editform');\n	if(!f)return;\n	var s=document.getElementById('savestatus');\n	if(s)s.innerHTML='<span class=busy>A guardar...</span>';\n	var x=new XMLHttpRequest();\n	x.open('POST',f.action,true);\n	x.onreadystatechange=function()\n	{\n		if(x.readyState==4){\n			var m='';\n			if(x.status==200){\n				var t=x.responseText;\n				if(t.indexOf('Successfully Saved')>=0)m='<span class=success>Guardado com sucesso!</span>';\n				else if(t.indexOf('ERRO')>=0){var em=t.match(/ERRO[^<]*/);m='<span class=failed>'+(em?em[0]:'Erro ao guardar')+'</span>';}\n				else m='<span class=failed>Resposta inesperada do servidor</span>';\n			}else m='<span class=failed>Erro HTTP '+x.status+'</span>';\n			if(s)s.innerHTML=m;\n			setTimeout(function(){\n				var idx=document.getElementById('edfileidx');\n				var d=document.getElementById('editsection');\n				if(d&&idx){\n					var x2=new XMLHttpRequest();\n					x2.open('GET','/configurations?action=editdiv&file='+idx.value+'&t='+new Date().getTime(),true);\n					x2.onreadystatechange=function(){if(x2.readyState==4&&x2.status==200)d.innerHTML=x2.responseText;};\n					x2.send(null);\n				}\n			},1500);\n		}\n	};\n	x.send(new FormData(f));\n}");
 	tcp_writestr(&tcpbuf, sock, "\nfunction loadEditor(url)\n{\n	var f = url.split('file=')[1];\n	var x = new XMLHttpRequest();\n	x.open('GET','/configurations?action=editdiv&file='+f+'&t='+new Date().getTime(),true);\n	x.onreadystatechange=function()\n	{\n		if (x.readyState==4 && x.status==200) {\n			var d=document.getElementById('editsection');\n			if (d) d.innerHTML = x.responseText;\n			var b=document.getElementById('submitbutton');\n			if (b) b.disabled = false;\n		}\n	};\n	x.send(null);\n}");
 	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
 	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
