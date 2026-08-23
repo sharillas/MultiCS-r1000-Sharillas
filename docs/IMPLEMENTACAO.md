@@ -102,7 +102,8 @@ tools_generate_httpstyle.py   gera src/httpstyle.c (CSS/JS embutidos)
 
 ## Versão
 
-**v1.0.10.2** — agosto 2026
+**v1.0.10.3** — agosto 2026
 
 - v1.0.10: GUI, emulator, SKIPCWC, restart fiável, parsing robusto
-- v1.0.10.2: CWC, NAGRA, Health, Fallback, Timing, DCW MINTIME/CYCLE_CHECK, BUILD LITE, ENABLE EMULATOR BISS, ferramentas GUI, fix REPLY_FAIL (não puxa ecms)
+- v1.0.10.2: CWC, NAGRA, Health, Fallback, Timing, DCW MINTIME/CYCLE_CHECK, BUILD LITE, ENABLE EMULATOR BISS, ferramentas GUI, fix REPLY_FAIL (não puxa ecms), filtro embutido fake CW (XOR 0xF0) + CRC nano e0
+- v1.0.10.3 (port r82): SIG_HANDLER com registos (RIP/CR2) no log de crash, CLI_CSCACHE/SRV_CSCACHE ativos (CWs de/para clientes e readers newcamd — negociação CH/OK via keepalive), lite/channelinfo expandidos a todos os satélites (30W/13E/19.2E/23.5E/28.2E/0.8W/4.8E/5W/9E/16E/39E/42E/...), perfis por CAID com filtros por tipo de encryptação (NAGRA 18xx, Viaccess 0500, NDS 09xx, SECA/Conax/CryptoWorks/Irdeto, BISS 2600)

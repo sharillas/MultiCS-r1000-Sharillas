@@ -856,10 +856,13 @@ void mainprocess()
 
 #ifdef SIG_HANDLER
 
-#include <execinfo.h>
+// nota: sem execinfo.h no musl - guardamos registos (RIP/CR2) no log,
+// suficientes para localizar o crash com objdump/addr2line
 #include <ucontext.h>
 
-static void x64_sighandlerPrint(int signo, int code, ucontext_t *context, void *bt [], int bt_size)
+#ifdef __x86_64__
+// indices do gregs[] (ABI x86_64 do kernel): RIP=16, RSP=15, CR2=22
+static void x64_sighandlerPrint(int signo, int code, ucontext_t *context)
 {
 	time_t ttime = time (NULL);
 
@@ -873,74 +876,39 @@ static void x64_sighandlerPrint(int signo, int code, ucontext_t *context, void *
 	fprintf(fd, "PID=%d\n", getpid ());
 	fprintf(fd, "signo=%d/%s\n", signo, strsignal (signo));
 	fprintf(fd, "code=%d (not always applicable)\n", code);
-	fprintf(fd, "\nContext: 0x%08lx\n", (unsigned long) context);
-
-	fprintf(fd,
-		"R8= 0x%08lx\n"
-		"R9= 0x%08lx\n"
-		"R10= 0x%08lx\n"
-		"R11= 0x%08lx\n"
-		"R12= 0x%08lx\n"
-		"R13= 0x%08lx\n"
-		"R14= 0x%08lx\n"
-		"R15= 0x%08lx\n"
-		"RDI= 0x%08lx\n"
-		"RSI= 0x%08lx\n"
-		"RBP= 0x%08lx\n"
-		"RBX= 0x%08lx\n"
-		"RDX= 0x%08lx\n"
-		"RAX= 0x%08lx\n"
-		"RCX= 0x%08lx\n"
-		"RSP= 0x%08lx\n"
-		"RIP= 0x%08lx\n"
-		"EFL= 0x%08lx\n"
-		"CSGSFS= 0x%08lx\n"
-		"ERR= 0x%08lx\n"
-		"TRAPNO= 0x%08lx\n"
-		"OLDMASK= 0x%08lx\n"
-		"CR2= 0x%08lx\n",
-		(uint64_t)context->uc_mcontext.gregs[REG_R8],
-		(uint64_t)context->uc_mcontext.gregs[REG_R9],
-		(uint64_t)context->uc_mcontext.gregs[REG_R10],
-		(uint64_t)context->uc_mcontext.gregs[REG_R11],
-		(uint64_t)context->uc_mcontext.gregs[REG_R12],
-		(uint64_t)context->uc_mcontext.gregs[REG_R13],
-		(uint64_t)context->uc_mcontext.gregs[REG_R14],
-		(uint64_t)context->uc_mcontext.gregs[REG_R15],
-		(uint64_t)context->uc_mcontext.gregs[REG_RDI],
-		(uint64_t)context->uc_mcontext.gregs[REG_RSI],
-		(uint64_t)context->uc_mcontext.gregs[REG_RBP],
-		(uint64_t)context->uc_mcontext.gregs[REG_RBX],
-		(uint64_t)context->uc_mcontext.gregs[REG_RDX],
-		(uint64_t)context->uc_mcontext.gregs[REG_RAX],
-		(uint64_t)context->uc_mcontext.gregs[REG_RCX],
-		(uint64_t)context->uc_mcontext.gregs[REG_RSP],
-		(uint64_t)context->uc_mcontext.gregs[REG_RIP],
-		(uint64_t)context->uc_mcontext.gregs[REG_EFL],
-		(uint64_t)context->uc_mcontext.gregs[REG_CSGSFS],
-		(uint64_t)context->uc_mcontext.gregs[REG_ERR],
-		(uint64_t)context->uc_mcontext.gregs[REG_TRAPNO],
-		(uint64_t)context->uc_mcontext.gregs[REG_OLDMASK],
-		(uint64_t)context->uc_mcontext.gregs[REG_CR2]
-	);
-	fprintf(fd, "\n%d elements in backtrace\n", bt_size);
-
-	backtrace_symbols_fd (bt, bt_size, fileno (fd));
+	fprintf(fd, "RIP= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[16]);
+	fprintf(fd, "RSP= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[15]);
+	fprintf(fd, "RBP= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[10]);
+	fprintf(fd, "RAX= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[13]);
+	fprintf(fd, "RBX= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[11]);
+	fprintf(fd, "RCX= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[14]);
+	fprintf(fd, "RDX= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[12]);
+	fprintf(fd, "RSI= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[9]);
+	fprintf(fd, "RDI= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[8]);
+	fprintf(fd, "CR2= 0x%08lx\n", (uint64_t)context->uc_mcontext.gregs[22]);
 
 	fprintf(fd, "\n");
 	fflush( fd );
 	fclose(fd);
 }
-
-void sighandler(int signo, struct siginfo *si, void *ctx)
+#else
+static void x64_sighandlerPrint(int signo, int code, ucontext_t *context)
 {
-	void *bt[128];
-	int bt_size;
+	time_t ttime = time (NULL);
+	FILE *fd = fopen(debug_file, "at");
+	if (!fd) fd = stderr;
+	fprintf(fd, "\n## %s", ctime (&ttime));
+	fprintf(fd, "PID=%d\nsigno=%d/%s\n", getpid (), signo, strsignal (signo));
+	fprintf(fd, "\n");
+	fflush( fd );
+	if (fd!=stderr) fclose(fd);
+}
+#endif
 
-	bt_size = backtrace (bt, sizeof(bt) );
-
-	x64_sighandlerPrint (signo, si->si_code, (ucontext_t *) ctx, bt, bt_size);
-	exit (1);
+void sighandler(int signo, siginfo_t *si, void *ctx)
+{
+	x64_sighandlerPrint (signo, si->si_code, (ucontext_t *) ctx);
+	_exit (1);
 }
 
 void install_handler (void)
@@ -950,19 +918,15 @@ void install_handler (void)
 	sa.sa_sigaction = (void *)sighandler;
 	sigemptyset (&sa.sa_mask);
 	sa.sa_flags = SA_RESTART | SA_SIGINFO; //SA_ONESHOT
+	// so sinais de crash (SIGTERM/INT ficam com o comportamento normal
+	// para o systemd/crontab pararem o servico de forma limpa)
 	sigaction(SIGSEGV, &sa, NULL);
 	sigaction(SIGFPE, &sa, NULL);
 	sigaction(SIGABRT, &sa, NULL);
-	sigaction(SIGTERM, &sa, NULL);
-	sigaction(SIGQUIT, &sa, NULL);
-
 	sigaction(SIGILL, &sa, NULL);
-	sigaction(SIGFPE, &sa, NULL);
-	sigaction(SIGUSR1, &sa, NULL);
-	sigaction(SIGUSR2, &sa, NULL);
-	sigaction(SIGSTOP, &sa, NULL);
-	sigaction(SIGTSTP, &sa, NULL);
-	sigaction(SIGINT, &sa, NULL);
+#ifdef SIGBUS
+	sigaction(SIGBUS, &sa, NULL);
+#endif
 }
 
 #endif
