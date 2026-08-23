@@ -938,8 +938,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	// Configurations (Iptables + Edit Config)
 	{
 		if (selected==PAGE_CONFIGURATIONS) class = cSelected; else class = cNormal;
-		sprintf( label, "Configurations [<span class='badge-count'> %d </span>]", ipblock_count);
-		sprintf( buf, class, "/configurations", label); tcp_writestr(tcpbuf, sock, buf);
+		sprintf( buf, class, "/configurations", "Configs"); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// grupo lateral direito: Restart | tema | Logout (template do logout-btn)
 	tcp_writestr(tcpbuf, sock, "<li class='menu-right'>");
@@ -3921,9 +3920,7 @@ void http_send_profiles(int sock, http_request *req)
 	sprintf( http_buf,"<td>%d</td>", totcacheihits*60/ticks); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf, "<td colspan=2> </td></tr>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
-	sprintf( http_buf, "\n</table>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-	// Perfis comentados (#[seccao] no profiles.cfg) -> botao ON para reativar
+	// Perfis comentados (#[seccao] no profiles.cfg) -> linhas na tabela com botao ON
 	{
 		char *fname = NULL;
 		struct filename_data *fsx = cfg.files;
@@ -3941,9 +3938,6 @@ void http_send_profiles(int sock, http_request *req)
 					pfilebuf[sz] = 0;
 					char *p = pfilebuf;
 					int any = 0;
-					char listbuf[8192];
-					int lb = 0;
-					listbuf[0] = 0;
 					while (*p) {
 						char *start = p;
 						while (*p && *p!='\n') p++;
@@ -3963,24 +3957,25 @@ void http_send_profiles(int sock, http_request *req)
 								while (*a && *a!=']' && n<120) secname[n++] = *a++;
 								secname[n] = 0;
 								if (secname[0]) {
-									if (!any) any = 1;
-									if (lb < (int)sizeof(listbuf)-256)
-										lb += sprintf( listbuf+lb, "<tr><td>%s</td><td><span class='icobtn on' title='Ativar (remove o #)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000)\">ON</span></td></tr>", secname, secname);
+									if (!any) {
+										any = 1;
+										sprintf( http_buf,"\n<tr class=alt3><td colspan=10 align=left>Commented Profiles</td></tr>");
+										tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+									}
+									sprintf( http_buf,"\n<tr class=alt2><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o #)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000)\">ON</span></span></td></tr>", secname, secname);
+									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 								}
 							}
 						}
 						if (hasnl) *eol = '\n';
-					}
-					if (any) {
-						tcp_writestr(&tcpbuf, sock, "<br><table class=maintable width=100%%><tr><th>Commented Profiles</th><th></th></tr>");
-						tcp_write(&tcpbuf, sock, listbuf, lb);
-						tcp_writestr(&tcpbuf, sock, "</table>");
 					}
 				}
 			}
 			pthread_mutex_unlock(&pfile_mutex);
 		}
 	}
+
+	sprintf( http_buf, "\n</table>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
 	if (get_action==ACTION_PAGE) {
 		tcp_writestr(&tcpbuf, sock, "\n</div></body></html>");
