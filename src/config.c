@@ -1688,6 +1688,7 @@ sid accept:
 				parse_spaces();
 				if ( parse_path(str) ) {
 					strcpy( cfg->lite_file, str );
+					add_filename( cfg, str );
 				}
 			}
 			else if (!strcmp(str,"CHANNELINFO")) {
@@ -1809,6 +1810,7 @@ sid accept:
 			if ( parse_path(str) ) {
 				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: read LITE file %s\n",str);
 				strcpy( cfg->lite_file, str );
+				add_filename( cfg, str );
 			}
 		}
 
