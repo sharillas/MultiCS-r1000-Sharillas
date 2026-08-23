@@ -91,6 +91,55 @@ SECTIONS = ['oscam.srvid', 'oscam.srvid.new', 'oscam.srvid2', 'multi.srvid2',
             'oscam.srvid2.canalplus', 'oscam.srvid2.pl', 'oscam.srvid2.polsatbox',
             'oscam.srvid2.server', 'oscam.srvid2.xxx']
 
+# descricao por CAID para os cabecalhos do ficheiro
+CAIDDESC = {
+    '0100': 'SECA Mediaguard',
+    '0500': 'Viaccess',
+    '0604': 'Irdeto', '0624': 'Irdeto', '0648': 'Irdeto', '0650': 'Irdeto', '0699': 'Irdeto',
+    '090F': 'NDS Videoguard (CD NL)', '0919': 'NDS Videoguard (Sky IT)', '093B': 'NDS Videoguard (Sky IT)',
+    '0960': 'NDS Videoguard (Sky UK)', '0961': 'NDS Videoguard (Sky UK)', '0963': 'NDS Videoguard (Sky UK)',
+    '098C': 'NDS Videoguard (Sky DE)', '098D': 'NDS Videoguard (Sky DE)',
+    '09BD': 'NDS Videoguard (Vivacom)', '09CD': 'NDS Videoguard (Sky IT)',
+    '0B00': 'Conax', '0B01': 'Conax', '0B02': 'Conax',
+    '0D00': 'CryptoWorks (Turksat)', '0D01': 'CryptoWorks (Turksat)', '0D03': 'CryptoWorks (Turksat)',
+    '0D95': 'CryptoWorks (ORF/Austriasat)', '0D96': 'CryptoWorks (Skylink)',
+    '1702': 'Betacrypt (BetaDigital)', '1722': 'Betacrypt (BetaDigital)',
+    '1802': 'NAGRA (Digi TV)', '1803': 'NAGRA (Polsat)', '1810': 'NAGRA (Movistar+)',
+    '1811': 'NAGRA (Canal+ FR)', '1813': 'NAGRA (MEO)', '1814': 'NAGRA (NOS)',
+    '1830': 'NAGRA (HD+)', '183D': 'NAGRA (RAI/TivuSat)', '183E': 'NAGRA (RAI/TivuSat)',
+    '1843': 'NAGRA (HD+)', '1861': 'NAGRA (Polsat)', '186C': 'NAGRA (Polsat)',
+    '1880': 'NAGRA (Digi TV)', '1884': 'NAGRA (Platforma Canal+)',
+    '2600': 'BISS',
+    '4A70': 'Bulcrypt (Kabelio)', '4AEE': 'Bulcrypt (Bulsatcom)', '4AFC': 'Bulcrypt (SRG)',
+    '5581': 'Bulcrypt (Bulsatcom)',
+    'FFFF': 'FTA (canais abertos)',
+}
+
+# nomes dos satelites para os cabecalhos
+SATNAMES = {
+    '30W': 'Hispasat 30W', '13E': 'Hotbird 13E', '19.2E': 'Astra 19.2E',
+    '28.2E': 'Astra 28.2E', '23.5E': 'Astra 23.5E', '0.8W': 'Thor 0.8W',
+    '4.8E': 'Astra 4.8E', '5W': 'Eutelsat 5W', '9E': 'Eutelsat 9E',
+    '16E': 'Eutelsat 16E', '39E': 'Hellas Sat 39E', '42E': 'Turksat 42E',
+    '1.9E': 'BulgariaSat 1.9E', '3.1E': 'Eutelsat 3.1E', '7E': 'Eutelsat 7E',
+    '10E': 'Eutelsat 10E', '21.5E': 'Eutelsat 21.5E', '26E': 'Badr 26E',
+    '31.5E': 'Astra 31.5E', '33E': 'Eutelsat 33E', '36E': 'Eutelsat 36E',
+    '45E': 'Intelsat 45E', '46E': 'Azerspace 46E', '52E': 'TurkmenAlem 52E',
+    '7W': 'Nilesat 7W', '8W': 'Eutelsat 8W', '12.5W': 'Eutelsat 12.5W',
+    '14W': 'Express 14W', '15W': 'Telstar 15W', '22W': 'SES 22W',
+    '27.5W': 'Intelsat 27.5W', '34.5W': 'Intelsat 34.5W', '37.5W': 'Telstar 37.5W',
+    '40.5W': 'SES 40.5W', '43.1W': 'Intelsat 43.1W', '45W': 'Intelsat 45W',
+    '47.5W': 'SES 47.5W', '55.5W': 'Intelsat 55.5W', '58W': 'Intelsat 58W',
+    '61W': 'Amazonas 61W', '63W': 'Telstar 63W', '70W': 'Star One 70W',
+}
+
+# posicoes por CAID (preenchido durante o harvest do KingOfSat)
+CAIDPOS = {}
+
+def caidpos_add(caid, pos):
+    if caid and pos:
+        CAIDPOS.setdefault(caid, set()).add(pos.strip())
+
 stats = {'ativos': 0, 'inativos': 0, 'fta': 0, 'mapeados': 0, 'biss': 0, 'caid_lite': 0}
 
 # mapa SID -> {CAID:PROVID} (das listas comunitarias multi-CAID)
@@ -236,6 +285,7 @@ def harvest_kos(chans, order, positions, ftapositions, lite):
                     stats['biss'] += 1
                     add_chan(chans, order, '2600:000000:%s' % sid, name)
                     lite['2600:000000:%s' % sid] = 1
+                    caidpos_add('2600', pos)
                     continue
                 # canal codificado (qualquer CAS): entra na lite com wildcard
                 # FFFE = qualquer CAID + CAIDs reais (tabela curada PKGCAID)
@@ -247,11 +297,13 @@ def harvest_kos(chans, order, positions, ftapositions, lite):
                         continue
                     # nome KOS correto para o canal em TODOS os CAIDs candidatos
                     add_chan(chans, order, '%s:%s' % (caprov, sid), name)
+                    caidpos_add(caprov.split(':')[0], pos)
                 # entradas especificas da tabela curada (CAIDs confirmados)
                 for pkg in pkgs:
                     if pkg in PKGCAID:
                         for caid in PKGCAID[pkg]:
                             lite['%s:000000:%s' % (caid.upper(), sid)] = 1
+                            caidpos_add(caid.upper(), pos)
                         for caid in PKGCAID[pkg]:
                             PKGREP.setdefault(pkg, set())
                             PKGREP[pkg].add(caid.upper())
@@ -261,10 +313,28 @@ def harvest_kos(chans, order, positions, ftapositions, lite):
                 for caprov in caids:
                     add_chan(chans, order, '%s:%s' % (caprov, sid), name)
                     lite['%s:%s' % (caprov, sid)] = 1
+                    caidpos_add(caprov.split(':')[0], pos)
                     stats['mapeados'] += 1
         print('  pos-%s : ativos=%d inativos(saltados)=%d fta=%d mapeados=%d'
               % (pos, stats['ativos'] - s0['ativos'], stats['inativos'] - s0['inativos'],
                  stats['fta'] - s0['fta'], stats['mapeados'] - s0['mapeados']))
+
+def caid_header(caid, satnames):
+    desc = CAIDDESC.get(caid, '')
+    if caid == 'FFFE':
+        desc = 'Canais codificados (qualquer CAID)'
+    elif caid == '0000':
+        desc = 'Sem CAID (listas comunitarias)'
+    elif not desc:
+        desc = ''
+    line = desc + (' ' if desc else '') + 'CAID: %s' % caid
+    if satnames:
+        line += ' | %s' % ', '.join(satnames)
+    return [
+        '############################',
+        '#  ' + line,
+        '############################',
+    ]
 
 def main():
     ap = argparse.ArgumentParser()
@@ -289,11 +359,27 @@ def main():
         '# %s' % time.strftime('%Y-%m-%d/%H:%M:%S'),
         '# Consolidado de: KingOfSat feeds ATIVOS (%s) + listas comunitarias' % args.positions,
         '# Formato: CAID:PROVID:SID "NOME"',
+        '# Ficheiro agrupado por CAID (cabecalhos por seccao)',
         '# Feed inativo (Occasional/data/inactive) e excluido automaticamente',
         '# FFFF:000000:SID "FTA" = canal aberto (skip rapido, sem decode)',
         '# ============================================================',
     ]
-    lines = hdr + ['%s "%s"' % (k, chans[k]) for k in order]
+    # agrupar por CAID com cabecalhos (ignora caids invalidos < 0x0100)
+    bycaid = {}
+    for k in order:
+        caid = k.split(':')[0]
+        if caid in ('FFFF', 'FFFE'):
+            pass
+        elif int(caid, 16) < 0x100:
+            continue
+        bycaid.setdefault(caid, []).append(k)
+    lines = list(hdr)
+    for caid in sorted(bycaid.keys()):
+        satnames = [SATNAMES.get(p, p) for p in sorted(CAIDPOS.get(caid, []))]
+        lines.append('')
+        lines += caid_header(caid, satnames)
+        for k in bycaid[caid]:
+            lines.append('%s "%s"' % (k, chans[k]))
     with open(args.out, 'w', encoding='ascii', errors='replace') as fh:
         fh.write('\n'.join(lines) + '\n')
     print('')
@@ -308,7 +394,7 @@ def main():
             print('%-28s : (sem CAID confirmado - coberto pelo wildcard FFFE)' % pkg)
         else:
             print('%-28s : %s' % (pkg, ', '.join(sorted(PKGREP[pkg]))))
-    # lista LITE (satelites permitidos)
+    # lista LITE (satelites permitidos) - agrupada por CAID
     import os
     liteout = os.path.join(os.path.dirname(args.out) or '.', 'CCcam.lite')
     with open(liteout, 'w', encoding='ascii', errors='replace') as fh:
@@ -319,8 +405,17 @@ def main():
         fh.write('# FFFE:000000:SID = canal codificado de posicao permitida (qualquer CAID)\n')
         fh.write('# Posicoes: %s\n' % args.positions)
         fh.write('# ============================================================\n')
-        for k in sorted(lite.keys()):
-            fh.write('%s\n' % k)
+        byc = {}
+        for k in lite.keys():
+            caid = k.split(':')[0]
+            byc.setdefault(caid, []).append(k)
+        for caid in sorted(byc.keys()):
+            satnames = [SATNAMES.get(p, p) for p in sorted(CAIDPOS.get(caid, []))]
+            fh.write('\n')
+            for hl in caid_header(caid, satnames):
+                fh.write(hl + '\n')
+            for k in sorted(byc[caid]):
+                fh.write('%s\n' % k)
     print('LITE: %d canais permitidos -> %s' % (len(lite), liteout))
     if args.apply:
         import base64
