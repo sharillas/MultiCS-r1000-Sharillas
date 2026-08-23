@@ -3413,6 +3413,22 @@ link_mgcamd_user:
 				if (cfg->cache.threshold<1) cfg->cache.threshold = 1;
 				else if (cfg->cache.threshold>30) cfg->cache.threshold = 30;
 			}
+			else if (!strcmp(str,"DCWCHECK2")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cfg->cache.dcwcheck2 = parse_boolean();
+			}
+			else if (!strcmp(str,"DCWCHECK3")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cfg->cache.dcwcheck3 = parse_boolean();
+			}
 
 			else if (!strcmp(str,"FILTER")) {
 				parse_spaces();
