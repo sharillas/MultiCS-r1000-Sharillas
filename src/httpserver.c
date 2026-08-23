@@ -808,6 +808,7 @@ char http_javascript[] = "<script src=\"/customjs.js\"></script>\n";
 #define PAGE_DEBUG     14
 #define PAGE_EMULATOR  15
 #define PAGE_IPTABLES  16
+#define PAGE_CONFIGURATIONS 17
 
 
 char *yesno( int a )
@@ -928,21 +929,17 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		sprintf( label, "Profiles [<span class='badge-count'> %d </span>]", cfg.totalprofiles);
 		sprintf( buf, class, "/profiles", label); tcp_writestr(tcpbuf, sock, buf);
 	}
-	// Emulator
+	// Softcam
 	{
 		if (selected==PAGE_EMULATOR) class = cSelected; else class = cNormal;
-		sprintf( label, "Emulator [<span class='badge-count'> %d </span>]", emu_keycount);
+		sprintf( label, "Softcam [<span class='badge-count'> %d </span>]", emu_keycount);
 		sprintf( buf, class, "/emulator", label); tcp_writestr(tcpbuf, sock, buf);
 	}
-	// Iptables
+	// Configurations (Iptables + Edit Config)
 	{
-		if (selected==PAGE_IPTABLES) class = cSelected; else class = cNormal;
-		sprintf( label, "Iptables [<span class='badge-count'> %d </span>]", ipblock_count);
-		sprintf( buf, class, "/iptables", label); tcp_writestr(tcpbuf, sock, buf);
-	}
-	if (!cfg.http.show.noeditor) {
-		if (selected==PAGE_EDITOR) class = cSelected; else class = cNormal;
-		sprintf( buf, class, "/editor", "Edit Config"); tcp_writestr(tcpbuf, sock, buf);
+		if (selected==PAGE_CONFIGURATIONS) class = cSelected; else class = cNormal;
+		sprintf( label, "Configurations [<span class='badge-count'> %d </span>]", ipblock_count);
+		sprintf( buf, class, "/configurations", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// grupo lateral direito: Restart | tema | Logout (template do logout-btn)
 	tcp_writestr(tcpbuf, sock, "<li class='menu-right'>");
@@ -955,7 +952,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	tcp_writestr(tcpbuf, sock, "<div class='brand-line'><span class='brand'>MultiCS r"REVISION_STR"</span> <span class='brand-by'>by Sharillas</span></div></div>\n");
 
 	//
-	if ( (selected!=PAGE_RESTART)&&(selected!=PAGE_EDITOR) ) {
+	if ( (selected!=PAGE_RESTART)&&(selected!=PAGE_EDITOR)&&(selected!=PAGE_CONFIGURATIONS) ) {
 		tcp_writestr(tcpbuf, sock, "<div class='toolbar'><span class='toolbar-label'>Autorefresh</span><input id='ar_slider' type=range min=0 max=30 value=");
 		sprintf( buf, "%d", cfg.http.autorefresh);
 		tcp_writestr(tcpbuf, sock, buf);
@@ -2034,7 +2031,7 @@ void http_send_emulator(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-	sprintf( http_buf, html_title, cfg.http.title, "Emulator"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf, html_title, cfg.http.title, "Softcam"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
 	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
 	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
@@ -2051,7 +2048,7 @@ void http_send_emulator(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "<div style='display:flex;gap:15px;flex-wrap:wrap;margin:10px 0'>");
 	// Emulator Settings
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Emulator Settings</h3><div class=stat-value>");
+	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Softcam Settings</h3><div class=stat-value>");
 	if (cfg.constcw_file[0]) {
 		sprintf( http_buf, "Softcam.cfg: <b>%s</b><br>", cfg.constcw_file);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -9293,6 +9290,247 @@ void http_send_editor(int sock, http_request *req, int index)
 }
 
 
+// ============================================================
+// CONFIGURATIONS: pagina unica com Iptables (1a div) + Edit Config (2a div)
+// ============================================================
+void http_send_configurations(int sock, http_request *req)
+{
+	char http_buf[2048];
+	struct tcp_buffer_data tcpbuf;
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+
+	// ===== ACTIONS =====
+	char *str_action = isset_get( req, "action");
+	if (str_action && !strcmp(str_action,"block")) {
+		char *ip = isset_get( req, "ip");
+		if (ip && ip[0]) {
+			uint32_t ipv4 = inet_addr(ip);
+			if (ipv4!=INADDR_NONE) ipblock_add(ipv4);
+		}
+		http_send_redirect(sock, "/configurations");
+		return;
+	}
+	if (str_action && !strcmp(str_action,"unblock")) {
+		char *ip = isset_get( req, "ip");
+		if (ip && ip[0]) {
+			uint32_t ipv4 = inet_addr(ip);
+			if (ipv4!=INADDR_NONE) ipblock_del(ipv4);
+		}
+		http_send_redirect(sock, "/configurations");
+		return;
+	}
+	if (str_action && !strcmp(str_action,"reloadchinfo")) {
+		read_chinfo( &cfg );
+		mlogf(LOGINFO, DBG_HTTP, " http: channelinfo reloaded from disk\n");
+		http_send_text(sock, "<span class='success'>OK</span>");
+		return;
+	}
+	if (str_action && !strcmp(str_action,"reread")) {
+		free_filenames( &cfg );
+		reread_config( &cfg );
+		check_config( &cfg );
+		cfg_set_id_counters( &cfg );
+		emu_load();
+		lite_load();
+		ipblock_load();
+		mlogf(LOGINFO, DBG_HTTP, " http: config reread from disk\n");
+		http_send_text(sock, "<span class='success'>OK</span>");
+		return;
+	}
+	if (str_action && !strcmp(str_action,"updatechinfo")) {
+		static uint32_t lastupdatechinfo = 0;
+		uint32_t now = GetTickCount();
+		if (lastupdatechinfo && ((now-lastupdatechinfo)<300000)) {
+			http_send_text(sock, "<span class='miss'>Aguarda 5 minutos entre atualizacoes</span>");
+			return;
+		}
+		lastupdatechinfo = now;
+		if (!access("/opt/multics/tools_update_channelinfo.py", F_OK)) {
+			system("python3 /opt/multics/tools_update_channelinfo.py --apply >/var/tmp/chinfo_update.log 2>&1 &");
+			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat)\n");
+			http_send_text(sock, "<span class='success'>OK</span>");
+		}
+		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (/opt/multics/tools_update_channelinfo.py)</span>");
+		return;
+	}
+
+	// ===== ficheiro selecionado =====
+	int index = 0;
+	char *str_file = isset_get( req, "file");
+	if (str_file) index = atoi(str_file);
+	struct filename_data *fs = cfg.files;
+	int i;
+	for (i=0; i<index; i++) {
+		if (!fs) break;
+		fs = fs->next;
+	}
+	if ((i!=index)||(!fs)) index = 0;
+	fs = cfg.files;
+	for (i=0; i<index; i++) {
+		if (!fs) break;
+		fs = fs->next;
+	}
+	if ((i!=index)||(!fs)) fs = cfg.files; // fallback primeiro ficheiro
+	char fname[512];
+	strcpy( fname, fs->name );
+	int noeditor = fs->noeditor;
+
+	// ===== POST multipart (save) =====
+	if ( (req->type==HTTP_POST) && !noeditor ) {
+		char *content = isset_header(req, "Content-Type");
+		if (content && !memcmp(content,"multipart/form-data",19)) {
+			while (*content!=';') { if (*content==0) break; content++; }
+			if (*content==';') {
+				content++;
+				while (*content==' ') content++;
+				if (!memcmp(content,"boundary",8)) {
+					while (*content!='=') { if (*content==0) break; content++; }
+					if (*content=='=') {
+						content++;
+						while (*content==' '||*content=='\t') content++;
+						char boundary[255];
+						char endboundary[255];
+						sprintf( boundary, "--%s", content);
+						sprintf( endboundary, "\r\n--%s", content);
+						char *p = req->dbf.data;
+						p = (char*) boyermoore_horspool_memmem( (uint8_t*)p, req->dbf.datasize, (uint8_t*)boundary, strlen(boundary) );
+						if (p) {
+							p += strlen(boundary);
+							if ( *p=='\r' && *(p+1)=='\n' ) {
+								p += 2;
+								char *h = p;
+								while ( !(h[0]=='\r'&&h[1]=='\n'&&h[2]=='\r'&&h[3]=='\n') ) {
+									if (h[0]==0) break;
+									h++;
+								}
+								char *pdata = h+4;
+								char *end = (char*) boyermoore_horspool_memmem( (uint8_t*)pdata, req->dbf.datasize-(pdata-(char*)req->dbf.data), (uint8_t*)endboundary, strlen(endboundary) );
+								if (end && end>pdata) {
+									FILE *cfgfd = fopen( fname, "w");
+									if (cfgfd) {
+										int k;
+										for (k=0;k<end-pdata;k++) {
+											if ( ( *(pdata+k)=='\r' ) && ( (k+1) < (end-pdata) ) ) {
+												if ( *(pdata+k+1) =='\n' ) k++;
+											}
+											fwrite( pdata+k,1,1,cfgfd);
+										}
+										fclose(cfgfd);
+										sprintf( http_buf, "<script type=\"text/JavaScript\"><!--\nsetTimeout(\"location.href = '/configurations?file=%d';\",3000);\n--></script>\n<h3><center>file '%s' is Successfully Saved</center></h3>", index, fname);
+										tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		tcp_flush(&tcpbuf, sock);
+		// aplicar alteracoes imediatamente (sem restart)
+		mlogf(LOGINFO, DBG_HTTP, " http: config saved '%s' - reloading config...\n", fname);
+		free_filenames( &cfg );
+		reread_config( &cfg );
+		check_config( &cfg );
+		cfg_set_id_counters( &cfg );
+		emu_load();
+		lite_load();
+		ipblock_load();
+		return;
+	}
+
+	// ===== PAGE =====
+	sprintf( http_buf, html_title, cfg.http.title, "Configurations"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
+	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 document.getElementById('submitbutton').disabled=false;\n}");
+	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
+	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
+	tcp_write_menu(&tcpbuf, sock, PAGE_CONFIGURATIONS);
+	tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+
+	// ---- DIV 1: Iptables ----
+	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
+	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Block IP</h3><div class=stat-value><form method='GET' action='/configurations'><input type='hidden' name='action' value='block'>IP Address: <input type='text' name='ip' placeholder='192.168.1.100' style='width:200px;margin-right:8px'><input type='submit' value='Block IP'></form></div>");
+	tcp_writestr(&tcpbuf, sock, "</div>");
+	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Blocked IPs (%d)</h3>", ipblock_count);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	if (cfg.blockedip_file[0]) {
+		sprintf( http_buf, "<div class=stat-value>File: <b>%s</b><br></div>", cfg.blockedip_file);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+	tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>IP</th><th>Country</th><th>Blocked since</th><th>Actions</th></tr>");
+	for (i=0; i<ipblock_count; i++) {
+		char *pc = getcountrycodebyip(ipblock_list[i].ip);
+		char country[64] = "-";
+		if (pc) {
+			char *n = getcountryname(pc);
+			snprintf(country, sizeof(country), "<img src='/flag_%s.gif' title='%s'> %s", pc, n?n:pc, pc);
+		}
+		sprintf( http_buf, "<tr><td>%s</td><td>%s</td><td>%us ago</td><td><a href='/configurations?action=unblock&ip=%s' class='btn-del'>Unblock</a></td></tr>",
+			(char*)ip2string(ipblock_list[i].ip), country,
+			(GetTickCount()-ipblock_list[i].time)/1000,
+			(char*)ip2string(ipblock_list[i].ip));
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+	if (!ipblock_count)
+		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=4 style='text-align:center;color:#888'>No blocked IPs</td></tr>");
+	tcp_writestr(&tcpbuf, sock, "</table></div>");
+
+	// ---- DIV 2: Edit Config ----
+	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'> <input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\">&nbsp;<span style='font-size:11px;'>parse do teu CCcam.channelinfo sem restart</span><br><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\">&nbsp;<span style='font-size:11px;'>reconstroi CCcam.channelinfo do KingOfSat + reload automatico</span><br><input type=button class='sbutton' value='Reread Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\">&nbsp;<span style='font-size:11px;'>aplica o multics.cfg e includes sem restart</span></div>");
+
+	sprintf( http_buf, "<form enctype=\"multipart/form-data\" method=\"post\" action=\"/configurations?file=%d\">", index);
+	tcp_writestr(&tcpbuf, sock, http_buf);
+
+	tcp_writestr(&tcpbuf, sock, "<span style='float:right'><select onchange=\"window.location=this.value\" style='width:250px;'>");
+	fs = cfg.files;
+	i = 0;
+	while (fs) {
+		if (!fs->noeditor) {
+			if (i==index) sprintf( http_buf, "<option value=\"/configurations?file=%d\" selected>%s</option>",i, fs->name);
+			else sprintf( http_buf, "<option value=\"/configurations?file=%d\">%s</option>",i, fs->name);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		i++;
+		fs = fs->next;
+	}
+	tcp_writestr(&tcpbuf, sock, "</select></span>");
+
+	sprintf( http_buf, "<input type=submit id='submitbutton' value=\"Save '%s'\" disabled><br>",fname);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+	if (!noeditor) {
+		FILE *fd = fopen(fname, "r");
+		if (fd) {
+			tcp_writestr(&tcpbuf, sock, "<center><textarea cols=\"40\" wrap=\"off\" rows=\"9\" spellcheck=\"false\" name=\"textedit\">");
+			while( !feof(fd) ) {
+				int len = fread(http_buf, 1, sizeof(http_buf), fd);
+				if (len<=0) break;
+				tcp_write(&tcpbuf, sock, http_buf, len );
+			}
+			fclose(fd);
+			sprintf( http_buf, "</textarea></center></form>");
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		else {
+			sprintf( http_buf, "<br>Cant open file '%s'", fname);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+	}
+
+	// footer adicionado pelo JS (fora do mainDiv)
+	tcp_writestr(&tcpbuf, sock, "</div></body></html>");
+	tcp_flush(&tcpbuf, sock);
+}
+
+
 int atoint(char *index)
 {
   int n=0;
@@ -9463,6 +9701,9 @@ void *gererClient(struct connect_data *param)
 #endif
 				else if ( !memcmp(req.path,"/emulator",9) ) {
 					http_send_emulator(sock,&req);
+				}
+				else if (strcmp(req.path,"/configurations")==0) {
+					http_send_configurations(sock,&req);
 				}
 				else if (strcmp(req.path,"/iptables")==0) {
 					http_send_iptables(sock,&req);
