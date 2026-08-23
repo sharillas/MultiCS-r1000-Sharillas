@@ -1,14 +1,18 @@
 # ============================================================
-# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000)
+# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.0.10.2)
 # ============================================================
 
 Ficheiros e funcao de cada um:
 
   multics.cfg          -> FICHEIRO MESTRE. Define portas, credenciais,
                           cache, telnet, HTTP e inclui os restantes.
+                          Autorefresh da GUI: 15s por defeito (max 100).
   profiles.cfg         -> PERFIS de saida (portas virtuais) com todas as
                           opcoes por protocolo (DCW, SERVER, CACHEEX,
-                          SKIPCWP, SID lists...). Usa [DEFAULT] + [NOME].
+                          SKIPCWC, SID lists, CWC, NAGRA, HEALTH, FALLBACK,
+                          TIMING, EMULATOR BISS, LITE...).
+                          Usa [DEFAULT] + [NOME]. Perfis desactivados com
+                          #[NOME] aparecem na GUI com botao ON.
   Cache.cfg            -> PEERS de cache (partilha de CWs entre servers).
   CacheEX.cfg          -> PEERS CacheEX (protocolo CacheEX, maxhop...).
   1-Clients.cfg        -> F-LINES (clientes CCcam) com todas as opcoes.
@@ -16,12 +20,13 @@ Ficheiros e funcao de cada um:
   users.cfg            -> Utilizadores globais (valem para todos os profiles).
   Mgcamd.cfg           -> Utilizadores MGcamd.
   Camd35.cfg           -> Utilizadores Camd35.
-  SKYDE.cfg           -> Perfis/readers extra (incluido pelo master).
-  Softcam.cfg          -> Chaves CONSTCW (BISS/Tandberg) do Emulator.
-  blocked_ips.cfg      -> IPs bloqueados (gerido pela pagina Iptables).
-  CCcam.channelinfo    -> Nomes de canais para a GUI.
+  Softcam.cfg          -> Chaves CONSTCW (BISS/Tandberg) do Softcam (pagina Softcam da GUI).
+  blocked_ips.cfg      -> IPs bloqueados (gerido na pagina Configurations).
+  CCcam.channelinfo    -> Nomes de canais para a GUI (editavel na Configurations).
   CCcam.providers      -> Nomes de providers para a GUI.
   multics.css          -> Tema externo (copiar de ../Configs/).
+  CCcam.lite           -> BUILD LITE: canais activos (gerada pela ferramenta
+                          Update Channel Info; opcional).
 
 Instalacao na VPS (Debian/Ubuntu):
   mkdir -p /var/etc
@@ -37,6 +42,11 @@ Notas:
   - O multics.cfg e o ficheiro MESTRE: todos os ficheiros de config que o
     parse deve ler tem de estar la descritos (FILE ... ou INCLUDE "...").
   - Alteracoes nos cfgs sao detectadas automaticamente (inotify).
-  - A GUI (porto 5500) permite editar configs (Edit Config / Edit Profiles),
-    gerir chaves BISS (pagina Emulator) e IPs bloqueados (pagina Iptables).
+  - A GUI (porto 5500) tem uma pagina unica "Configurations" com:
+      * 1a div: IPs bloqueados (block/unblock)
+      * 2a div: edicao de todos os ficheiros de config (multics.cfg,
+        profiles.cfg, CCcam.channelinfo, ...) com save sem restart
+      * botao Update Channel Info (KingOfSat) + Load Channel Info + Reread
+  - A pagina "Softcam" gere as chaves BISS/Tandberg (upload SoftCam.Key,
+    Update SoftCam.Key remoto, Reload Keys).
   - Mudar sempre HTTP USER/PASS e TELNET USER/PASS antes de expor na net.
