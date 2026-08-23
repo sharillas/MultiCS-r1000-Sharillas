@@ -9402,7 +9402,7 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><div class='cfgbtns'>"
 		"<div><input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\"><span class='cfgbtns-info'>Parse do teu CCcam.channelinfo sem restart</span></div>"
 		"<div><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\"><span class='cfgbtns-info'>Reconstroi o CCcam.channelinfo do KingOfSat e recarrega automaticamente</span></div>"
-		"<div><input type=button class='sbutton' value='Reread Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\"><span class='cfgbtns-info'>Aplica o multics.cfg e includes sem restart</span></div>"
+		"<div><input type=button class='sbutton' value='Reload Main Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\"><span class='cfgbtns-info'>Aplica o multics.cfg e includes sem restart</span></div>"
 		"</div></div>");
 	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 
