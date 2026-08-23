@@ -11,9 +11,9 @@ body.light-mode input[type=file] { background:#fafbfc; color:#1d2023; border-col
 body.light-mode input:hover, body.light-mode select:hover { background:#ffffff; }
 body.light-mode input:focus, body.light-mode select:focus, body.light-mode textarea:focus { border-color:#1a4d80; }
 body.light-mode .menu { background:#e5e7e9; border-bottom-color:#c3c7cb; box-shadow:0 2px 8px rgba(0,0,0,0.10); }
-body.light-mode .mbtn { background:#f2f5f7; color:#9ec3e6; border-color:#9ec3e6; }body.light-mode .menu a.mbtn, body.light-mode .menu a.mbtn:link, body.light-mode .menu a.mbtn:visited, body.light-mode .menu a.mbtn:hover, body.light-mode .menu a.mbtn:active { color:#9ec3e6 !important; text-shadow:none; }
+body.light-mode .mbtn { background:#f2f5f7; color:#1a4d80; border-color:#9ec3e6; font-weight:700; }body.light-mode .menu a.mbtn, body.light-mode .menu a.mbtn:link, body.light-mode .menu a.mbtn:visited, body.light-mode .menu a.mbtn:hover, body.light-mode .menu a.mbtn:active { color:#1a4d80 !important; text-shadow:none; }
 body.light-mode .mbtn:hover { background:#e8eff5; border-color:#7fb1dc; }
-body.light-mode .mbtn.on { background:#dce8f2; color:#9ec3e6; border-color:#7fb1dc; }
+body.light-mode .mbtn.on { background:#dce8f2; color:#1a4d80; border-color:#7fb1dc; }
 body.light-mode .menu .brand { color:#101214; }
 body.light-mode .menu .brand-by { color:#575d62; }
 body.light-mode .maintable th { background:#e0e3e6; color:#232629; border-color:#c3c7cb; }
