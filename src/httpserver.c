@@ -904,19 +904,18 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 #endif
 
 #ifdef CS378X_SRV
-	// cs378x
-	if (cfg.cs378x.server!=NULL) {
-		if (selected==PAGE_CS378X) class = cSelected; else class = cNormal;
-		sprintf( label, "Cs378x [<span class='badge-count'> %d </span>]", total_cs378x_nb());
-		sprintf( buf, class, "/cs378x", label); tcp_writestr(tcpbuf, sock, buf);
-	}
+	// cs378x (incluido na pagina Cs357x/Camd35)
 #endif
 
 #ifdef CAMD35_SRV
-	// camd35
+	// camd35 (UDP) + cs378x (TCP) - mesma familia de protocolo
 	if (cfg.camd35.server!=NULL) {
 		if (selected==PAGE_CAMD35) class = cSelected; else class = cNormal;
+#ifdef CS378X_SRV
+		sprintf( label, "Cs357x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients()+total_cs378x_nb());
+#else
 		sprintf( label, "Cs357x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients());
+#endif
 		sprintf( buf, class, "/camd35", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #endif
@@ -6746,6 +6745,51 @@ void http_send_camd35(int sock, http_request *req)
 		sprintf( http_buf, "</table>");
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
+#ifdef CS378X_SRV
+	// ===== seccao Cs378x (TCP) - mesma familia, so na pagina completa =====
+	if (get_action==ACTION_PAGE) {
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
+		sprintf( http_buf, "<h3 class=stitle>Cs378x Servers (%d, TCP)</h3>", cfg.cs378x.totalservers);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
+		int itotal, iconnected, iactive;
+		total_cs378x_clients( &itotal, &iconnected, &iactive );
+		sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		struct camd35_server_data *box = cfg.cs378x.server;
+		while ( box ) {
+			int btotal, bconnected, bactive;
+			cs378x_clients( box, &btotal, &bconnected, &bactive );
+			if (box->handle>0) sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
+			else sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			box = box->next;
+		}
+		tcp_writestr(&tcpbuf, sock, "</table>");
+
+		tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
+		box = cfg.cs378x.server;
+		int altx = 0;
+		while (box) {
+			struct camd35_client_data *cli = box->client;
+			int ctotal, cconnected, cactive;
+			cs378x_clients( box, &ctotal, &cconnected, &cactive );
+			if (ctotal) {
+				sprintf( http_buf,"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", box->id, ctotal);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				while (cli) {
+					if (altx==1) altx=2; else altx=1;
+					getcs378xcells(cli,cell);
+					sprintf( http_buf,"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,altx,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					cli = cli->next;
+				}
+			}
+			box = box->next;
+		}
+		tcp_writestr(&tcpbuf, sock, "</table></div>");
+	}
+#endif
 	if (get_action==ACTION_PAGE) {
 		tcp_writestr(&tcpbuf, sock, "</div>");
 		tcp_writestr(&tcpbuf, sock, "</body></html>");
