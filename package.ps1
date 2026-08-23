@@ -34,8 +34,29 @@ cp bin/tools_update_*.py $DIR/ 2>/dev/null
 cp configs/* $DIR/configs/
 cp configs/* /var/etc/
 chmod 755 $DIR/multics.x64 $DIR/multics.x32 $DIR/tools_update_*.py
+chmod 666 /var/etc/*.cfg /var/etc/CCcam.* /var/etc/ip2country.csv /var/etc/multics.css 2>/dev/null
+# servico systemd a correr como ROOT (a GUI salva/uploads/restart sem problemas
+# de permissoes mesmo que a comunidade mude os ficheiros para 755)
+cat > /etc/systemd/system/multics.service <<EOF
+[Unit]
+Description=MultiCS r1000 by Sharillas (cardserver proxy)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$DIR
+ExecStart=$DIR/multics.x64 -C /var/etc/multics.cfg
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable multics 2>/dev/null
 echo "Instalado em $DIR (configs em /var/etc, tools junto do binario)"
-echo "Arranque: $DIR/multics.x64 -b -C /var/etc/multics.cfg"
+echo "Arranque: systemctl start multics"
 echo "Web UI:   http://IP:5500  (user/pass definidos em multics.cfg)"
 '@ | Set-Content -Encoding ASCII (Join-Path $Dist "install.sh")
 
