@@ -102,9 +102,10 @@ tools_generate_httpstyle.py   gera src/httpstyle.c (CSS/JS embutidos)
 
 ## Versão
 
-**v1.10.9** — agosto 2026
+**v1.20** — agosto 2026
 
 - v1.0.10: GUI, emulator, SKIPCWC, restart fiável, parsing robusto
 - v1.0.10.2: CWC, NAGRA, Health, Fallback, Timing, DCW MINTIME/CYCLE_CHECK, BUILD LITE, ENABLE EMULATOR BISS, ferramentas GUI, fix REPLY_FAIL (não puxa ecms), filtro embutido fake CW (XOR 0xF0) + CRC nano e0
 - v1.0.10.3 (port r82): SIG_HANDLER com registos (RIP/CR2) no log de crash, CLI_CSCACHE/SRV_CSCACHE ativos (CWs de/para clientes e readers newcamd — negociação CH/OK via keepalive), lite/channelinfo expandidos a todos os satélites (30W/13E/19.2E/23.5E/28.2E/0.8W/4.8E/5W/9E/16E/39E/42E/...), perfis por CAID com filtros por tipo de encryptação (NAGRA 18xx, Viaccess 0500, NDS 09xx, SECA/Conax/CryptoWorks/Irdeto, BISS 2600), página Configs com **Upload Configs** (whitelist de ficheiros de /var/etc, backup automático `.bak-<timestamp>`, reload após upload; ficheiro único com todas as secções carrega-se como multics.cfg)
 - v1.10.9 (final stage): editor com **todos** os ficheiros da whitelist (edição direta de /var/etc), ficheiros de exemplo com documentação completa (novos CCcam.lite e ip2country.csv), Blocked since em **DD:HH:MM:SS**, **validação de upload** (deteta erros de parse por ficheiro/linha, comenta automaticamente as linhas más, aplica defaults, rollback `.bak` em último recurso — nunca crasha), opções legadas aceites como no-op, top menu sticky, botões tipo menu com info por baixo, cores de estado offline/online/busy fixas nas tabelas, **fix pipeline BISS NOK** (não mata o fluxo quando há readers/cache), **DCW TIMEOUT 2500ms nos perfis NAGRA** (NOK mais rápido, cryptoperíodo ~10s)
+- v1.20 (release estável): caminhos resolvidos a partir da config (upload/editor/tools funcionam em qualquer layout — /var/etc, /emu/multics...), **save do editor via AJAX** (sem navegação/redirect, feedback Guardado/ERRO inline), escrita atómica (tmp+rename) sem perder o ficheiro anterior, mensagens de erro claras para permissões, serviço systemd com **User=root** + chmod 666 nas configs (GUI salva/uploads/update/restart mesmo com ficheiros em 755), ferramentas de update junto do binário, cache-busting no CSS/JS, log com 500 entradas + Download Log na página Debug
