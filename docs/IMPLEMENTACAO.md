@@ -1,4 +1,4 @@
-# Implementação — o que foi feito nesta build (v1.0.10)
+# Implementação — o que foi feito nesta build (v1.0.10.2)
 
 Base: fork multi-cs/multics (evileyes). Compilação: Zig 0.15.2 cross-compile (Windows → Linux), binários estáticos musl x64/x32.
 
@@ -19,41 +19,43 @@ Base: fork multi-cs/multics (evileyes). Compilação: Zig 0.15.2 cross-compile (
 - Upload SoftCam.Key (multipart) → parse BISS (`F`/`f`) + Tandberg (`T`) → grava `/var/etc/Softcam.cfg`
 - Página Emulator: chaves, adicionar/apagar, SoftCam.cfg status, Decrypted CW Log
 - `biss_updater.py` (cron) para atualização automática
+- **Update SoftCam.Key** (botão GUI, `/emulator?action=updatekey`): corre `tools_update_softcam.py` (download remoto + parse, chaves manuais preservadas)
+- **Reload Keys** (`/emulator?action=applykeys`): relê o Softcam.cfg do disco
+- **ENABLE EMULATOR BISS** por perfil (default ON): liga/desliga o emulador em cada perfil
 
 ### Proteções DCW / Cache
 - SKIPCWC (default ON por perfil): ignora CW idêntica à anterior do canal
+- **CWC — CW Cycle Check** (estilo OSCam module-cw-cycle-check): aprendizagem do ciclo CW0/CW1 por canal (3 estágios), rejeita bad CW cycle, ECM antigo (replay, DROPOLD) e same CW fora da janela; DROPBAD (drop em bad cw), KEEPCYCLETIME (mantém o cycletime aprendido N minutos)
+- **NAGRA protection** (caid 18xx–1a12): `NAGRA CHK` (checksum das 4 quads), `NAGRA PROV` (provider do perfil), `NAGRA CYCLE` (aprendizagem de 6 amostras → full-cw/half-cycle + similaridade SENSITIVE), rejeita bad checksum (code 2), bad provider (code 3), fake half (code 4), duplicate (code 5) e too similar (code 6); `NAGRA ONBAD` = drop ou só log
+- **DCW MINTIME** (ms): rejeita mudanças de CW demasiado rápidas por canal
+- **DCW CYCLE_CHECK**: a metade que muda tem de alternar (NDS)
+- **DCW SKIPCWC_EXCLUDE SIDS**: sids onde o SKIPCWC não se aplica
 - Checksum DCW, null DCW, bad DCW, nanoE0 (viaccess), filtros cache CAID 0500
 - DCWCHECK2/3, CacheEX (mode 2/3), hitcache, maxhop
 
-### CWC — CW Cycle Check (estilo OSCam, v1.0.10)
-- Máquina de estados 0-4 por canal: aprendizagem do cycletime (±2s, lock 3s),
-  verificação de ciclos (metade âncora), `sensitive` (countCWpart), replay
-  (histórico 15 ECMs), keepcycletime (stage 4)
-- Config por perfil: `ENABLE CWC`, `CWC SENSITIVE`, `CWC DROPOLD`,
-  `CWC DROPBAD`, `CWC KEEPCYCLETIME` (+ `DEFAULT ...`)
-- Validado e2e: bad CW cycle → DROP; old ECM replay → DROP
+### Health scoring (por perfil)
+- `ENABLE HEALTH`: pontua cada server (sucesso, latência, estabilidade, erros) com pesos configuráveis (`HEALTH WEIGHTS`)
+- `HEALTH MINECMS`: amostras mínimas antes de pontuar
+- `HEALTH DROPOFF`: exclui servers abaixo do score (não participam nos pedidos)
 
-### Health scoring (v1.0.10)
-- Score 0-1000 por reader: sucesso (ecmok/ecmnb), latência média,
-  estabilidade (uptime), penalização de erros (timeouts + bad DCWs)
-- Ordenação por score no loadbalance + `HEALTH DROPOFF` exclui os doentes
-- Config por perfil: `ENABLE HEALTH`, `HEALTH WEIGHTS: suc lat sta err`,
-  `HEALTH MINECMS`, `HEALTH DROPOFF` (+ `DEFAULT ...`); score na GUI
+### Fallback cross-protocol (por perfil)
+- `FALLBACK ORDER`: ordem de preferência de protocolos (NEWCAMD/CCCAM/CS378X/CAMD35/RADEGAST)
+- `FALLBACK TIMEOUT`: adia protocolos de fallback enquanto houver servers do preferido
+- Fix crítico: bad DCW em cli-newcamd/radegast/camd35/cs378x agora marca `ECM_SRV_REPLY_FAIL` (antes os ECMs ficavam pendurados com SERVER MAX≥1)
 
-### Fallback cross-protocol (v1.0.10)
-- `FALLBACK ORDER` define a preferência de protocolos por perfil; só os
-  protocolos listados participam; `FALLBACK TIMEOUT` adia os fallbacks
-  enquanto existirem servers do protocolo primário
-- Validado e2e: morte do reader newcamd → failover automático para CCcam
-  (cliente manteve 100% de DCWs)
+### Timing budget (por perfil)
+- `ENABLE TIMING`: estima o cryptoperiod (EWMA por canal) e define o budget de decode
+- `TIMING FRACTION` (% do período) e `TIMING MINPERIOD` (só aplica acima deste)
+- `CACHE ADAPTIVETTL`: entradas da cache expiram ao fim do cryptoperiod estimado
 
-### Timing budget por canal (v1.0.10)
-- Estimador de cryptoperiod (EWMA) alimentado pelas mudanças de CW entregues
-- Timeout de decode adaptativo: min(DCW TIMEOUT, cryptoperiod×fraction) —
-  o cliente recebe o decode failed dentro do ciclo e pede o próximo ECM a tempo
-- `CACHE ADAPTIVETTL`: entradas da cache expiram ao fim do cryptoperiod
-- Config por perfil: `ENABLE TIMING`, `TIMING FRACTION`, `TIMING MINPERIOD`
-- Validado e2e: decode failed 8008ms → 6104ms após aprender o período
+### BUILD LITE
+- `LITE FILE:` (default `/var/etc/CCcam.lite`): lista de canais activos `caid:provid:sid` (wildcards `FFFE`/provid 0)
+- `ENABLE LITE` por perfil: ignora ECMs fora da lista (`Ignored (lite)`) — sem lista carregada o filtro deixa passar tudo (seguro por omissão)
+
+### Ferramentas GUI
+- **Update Channel Info** (`/editor?action=updatechinfo`): corre `tools_update_channelinfo.py --apply` (KingOfSat → CCcam.channelinfo + reload)
+- **Load Channel Info** (`/editor?action=reloadchinfo`): relê o CCcam.channelinfo do disco sem restart
+- Botões com verificação de existência da ferramenta (`Ferramenta nao encontrada`)
 
 ### Robustez
 - **Restart fiável**: exec direto (mesmo PID — compatível com systemd/crontab), caminho via `/proc/self/exe` + fallback, fds fechados antes do exec, delay 2s para a resposta HTTP sair
@@ -78,8 +80,6 @@ Base: fork multi-cs/multics (evileyes). Compilação: Zig 0.15.2 cross-compile (
 13. **Caches de 302** (browser preso no /login) — Cache-Control no-store em tudo
 14. **Badge Newcamd/Cs378x** contava listas erradas — httpserver.c
 15. **i18n/parsing dos configs de exemplo** — ordem de INCLUDEs corrigida, sintaxe de users camd35/cs378x/cacheex corrigida
-16. **Bad DCW de reader newcamd/radegast/camd35/cs378x nunca marcava REPLY_FAIL** — com SERVER MAX ≥ 1 o ECM nunca expirava e o cliente pendurava para sempre (causa provável de vários "não puxa ecms") — cli-*.c
-17. **Peer CSP com RTT sub-milissegundo nunca entrava na peerReq** (ipeer_update antes do ping++) — clustredcache.c
 
 ## Estrutura
 
@@ -102,4 +102,7 @@ tools_generate_httpstyle.py   gera src/httpstyle.c (CSS/JS embutidos)
 
 ## Versão
 
-**v1.0.10** — agosto 2026
+**v1.0.10.2** — agosto 2026
+
+- v1.0.10: GUI, emulator, SKIPCWC, restart fiável, parsing robusto
+- v1.0.10.2: CWC, NAGRA, Health, Fallback, Timing, DCW MINTIME/CYCLE_CHECK, BUILD LITE, ENABLE EMULATOR BISS, ferramentas GUI, fix REPLY_FAIL (não puxa ecms)
