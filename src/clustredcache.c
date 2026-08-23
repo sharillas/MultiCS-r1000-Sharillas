@@ -1458,6 +1458,37 @@ inline struct cache_data *cache_fetch_samechannel( struct cache_data *thereq, ui
 	return result;
 }
 
+// DCWCHECK3: update dcw para cache data do MESMO hash com SID diferente
+// (ex.: 0100:003315:233d e 0100:003315:2351 - mesmo ecm, sids diferentes)
+inline struct cache_data *cache_fetch_goodcw3( struct cache_data *thereq, uint8_t cw[16], int peerid )
+{
+	int index = thereq->sid&MAX_CACHE_INDEX;
+	struct cache_data **cachetab = getcachetabbycaid(thereq->caid);
+	struct cache_data *pcache = cachetab[index];
+	struct cache_data *result = NULL;
+	uint32_t ticks = GetTickCount() - cfg.cache.alivetime;
+	while (pcache) {
+		if ( pcache->recvtime < ticks ) break;
+		if ( pcache->flags&CACHE_FLAG_SENDPIPE )
+		if (pcache->sid!=thereq->sid)
+		if ( (pcache->hash==thereq->hash) )
+		if ( pcache->tag && (pcache->tag==thereq->tag) )
+		if ( pcache->cwcycle!=NO_CYCLE )
+		if ( !isnullDCW(pcache->prevcw) )
+		if ( !iscwincache(pcache,cw) )
+		{
+			if (  ( (pcache->cwcycle==CW1CYCLE) && dcwcmp8(pcache->prevcw,cw) && !similarcw(pcache->prevcw+8,cw+8) ) ||
+				( (pcache->cwcycle==CW0CYCLE) && !similarcw(pcache->prevcw,cw) && dcwcmp8(pcache->prevcw+8,cw+8) )  ) {
+
+				pipe_cache2ecm_find_success(pcache, cw, peerid);
+			}
+		}
+		pcache = pcache->next;
+		if (pcache==cachetab[index]) break;
+	}
+	return result;
+}
+
 #endif
 
 // -1: bad cw
@@ -1572,6 +1603,7 @@ int cache_setdcw( struct cache_data *req, uint8_t cw[16], cwcycle_t cwcycle, int
 
 #ifndef PUBLIC
 		if (cfg.cache.dcwcheck2) cache_fetch_samechannel(pcache, cw, peerid);
+		if (cfg.cache.dcwcheck3) cache_fetch_goodcw3(pcache, cw, peerid);
 #endif
 		if ( !isnullDCW(pcache->prevcw) ) {
 			if (  ( (pcache->cwcycle==CW1CYCLE) && dcwcmp8(pcache->prevcw,cw) && !similarcw(pcache->prevcw+8,cw+8) ) ||
