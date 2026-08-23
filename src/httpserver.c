@@ -3671,11 +3671,11 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][2048])
 
 	strcat( cell[9], "<span style='float:right;'>");
 	if (cs->flags&FLAG_DISABLE) {
-		sprintf( temp," <span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=on',this);setTimeout('updateDiv()',3000)\">ON</span>",cs->id);
+		sprintf( temp," <span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=on',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span>",cs->id);
 		strcat( cell[9], temp );
 	}
 	else {
-		sprintf( temp," <span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000)\">OFF</span>",cs->id);
+		sprintf( temp," <span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">OFF</span>",cs->id);
 		strcat( cell[9], temp );
 	}
 	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/profile?id=%d&action=dbginfo')\">DBG</span>",cs->id,cs->id);
@@ -3935,7 +3935,7 @@ void http_send_profiles(int sock, http_request *req)
 								}
 								else if (commented) {
 									if (alt==1) alt=2; else alt=1;
-									sprintf( http_buf,"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000)\">ON</span></span></td></tr>", alt, secname, secname);
+									sprintf( http_buf,"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span></span></td></tr>", alt, secname, secname);
 									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 								}
 							}
