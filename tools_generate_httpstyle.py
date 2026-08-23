@@ -8,6 +8,17 @@ out_path = os.path.join(BASE, 'src', 'httpstyle.c')
 
 css = open(css_path, encoding='utf-8').read()
 
+# versao da build (do common.h) para o footer
+version = '1.0'
+try:
+    common = open(os.path.join(BASE, 'src', 'common.h'), encoding='utf-8', errors='replace').read()
+    import re
+    m = re.search(r'#define\s+VERSION_STR\s+"([^"]+)"', common)
+    if m:
+        version = m.group(1)
+except Exception:
+    pass
+
 js = r'''function imgrequest( url, el )
 {
 	var httpRequest;
@@ -32,8 +43,8 @@ function setDebugFilter(v){imgrequest('/debug?action=debug&value='+v);setTimeout
 function toggleDbgRow(id,url){var r=document.getElementById('dbgrow_'+id);if(r){r.parentNode.removeChild(r);return;}var tr=document.getElementById('Row'+id);if(!tr)return;var x=new XMLHttpRequest();x.open('GET',url,true);x.onreadystatechange=function(){if(x.readyState==4&&x.status==200){var t=document.createElement('tr');t.id='dbgrow_'+id;t.className='dbgrow';var c=document.createElement('td');c.colSpan=99;c.innerHTML=x.responseText;t.appendChild(c);tr.parentNode.insertBefore(t,tr.nextSibling);}};x.send(null);}
 function applyTheme(t){if(t==='light'){document.body.classList.add('light-mode');document.documentElement.classList.add('light-mode');}else{document.body.classList.remove('light-mode');document.documentElement.classList.remove('light-mode');}var btn=document.getElementById('themeToggle');if(btn){btn.textContent=(t==='light')?'Dark':'Light';}}
 function toggleTheme(){var cur=(document.body.classList.contains('light-mode'))?'light':'dark';var t=(cur==='light')?'dark':'light';applyTheme(t);try{localStorage.setItem('theme',t);}catch(e){}}
-document.addEventListener('DOMContentLoaded',function(){var t='light';try{t=localStorage.getItem('theme')||'light';}catch(e){}applyTheme(t);bindSortable();if(document.getElementById('dbglog'))setInterval(fetchDebugLog,2000);var d=document.getElementById('mainDiv');if(d){var f=document.createElement('div');f.className='home-footer';f.innerHTML="<span class='hf-ver'>MultiCS r1000 v1.0 @ All Rights Reserved @ by Sharillas@2026</span>";if(d.parentNode){d.parentNode.insertBefore(f,d.nextSibling);}}});
-'''
+document.addEventListener('DOMContentLoaded',function(){var t='light';try{t=localStorage.getItem('theme')||'light';}catch(e){}applyTheme(t);bindSortable();if(document.getElementById('dbglog'))setInterval(fetchDebugLog,2000);var d=document.getElementById('mainDiv');if(d){var f=document.createElement('div');f.className='home-footer';f.innerHTML="<span class='hf-ver'>MultiCS r1000 v%s - All Rights Reserved - Sharillas@2026</span>";if(d.parentNode){d.parentNode.insertBefore(f,d.nextSibling);}}});
+''' % version
 
 def c_string(s):
     s = s.replace('\\', '\\\\').replace('"', '\\"')
