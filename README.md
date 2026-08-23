@@ -1,8 +1,8 @@
-# MultiCS r1000 v1.0.10.2 - by Sharillas
+# MultiCS r1000 v1.10.9 - by Sharillas
 
 Cardserver proxy com GUI web moderna, Softcam BISS/CW, proteção SKIPCWC contra CWs falsas, CWC (CW Cycle Check), NAGRA protection, Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, login com sessões, temas Dark/Light e dezenas de fixes.
 
-> **Versão:** v1.0.10.2 | **Licença:** Sharillas@2026
+> **Versão:** v1.10.9 | **Licença:** Sharillas@2026
 
 ---
 
@@ -143,4 +143,4 @@ Build flags (equivalentes ao Makefile original):
 
 ## Créditos
 
-Base: (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.0.10.2
+Base: (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.10.9
