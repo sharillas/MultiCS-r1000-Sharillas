@@ -80,6 +80,7 @@ struct ecm_request {
 	unsigned char cacheexstatus;// 0:nothing sent;; 1:request sent;; 2:reply sent
 
 	char *statusmsg; // DCW status message
+	uint8_t nokbiss; // BISS NOK (sem chave/emulador desligado) -> NOK amarelo na GUI
 
 #ifdef CHECK_NEXTDCW
 	// Last Successive ECM/DCW
