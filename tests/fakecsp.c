@@ -78,6 +78,15 @@ static unsigned char ndsscript[][16] = {
 };
 #define NNDS (sizeof(ndsscript)/16)
 
+// modo xorf0: cws validos + 1 fake (ultimo byte XOR 0xF0)
+static unsigned char xorf0script[][16] = {
+	{0x01,0x02,0x03,0x06, 0x10,0x11,0x12,0x33, 0x20,0x21,0x22,0x63, 0x30,0x31,0x32,0x93}, // valido
+	{0x01,0x02,0x03,0x06, 0x10,0x11,0x12,0x33, 0x20,0x21,0x22,0x63, 0x30,0x31,0x32,0x63}, // FAKE (93^F0=63)
+	{0x04,0x05,0x06,0x0F, 0x13,0x14,0x15,0x3C, 0x23,0x24,0x25,0x6C, 0x33,0x34,0x35,0x9C}, // valido
+	{0x07,0x08,0x09,0x18, 0x16,0x17,0x18,0x45, 0x26,0x27,0x28,0x75, 0x36,0x37,0x38,0xA5}, // valido
+};
+#define NXORF0 (sizeof(xorf0script)/16)
+
 static long long now_ms(void)
 {
 	struct timespec ts;
@@ -88,13 +97,14 @@ static long long now_ms(void)
 int main(int argc, char **argv)
 {
 	int port = atoi(argv[1]);
-	int mode = 0; // 0=normal, 1=replay, 2=timing, 3=nagra, 4=nds
+	int mode = 0; // 0=normal, 1=replay, 2=timing, 3=nagra, 4=nds, 5=xorf0
 	int mycaid = 0x2600;
 	if (argc>3) mycaid = (int)strtol(argv[3], NULL, 16);
 	if (argc>2 && !strcmp(argv[2],"replay")) mode = 1;
 	else if (argc>2 && !strcmp(argv[2],"timing")) mode = 2;
 	else if (argc>2 && !strcmp(argv[2],"nagra")) mode = 3;
 	else if (argc>2 && !strcmp(argv[2],"nds")) mode = 4;
+	else if (argc>2 && !strcmp(argv[2],"xorf0")) mode = 5;
 	int idx = 0;
 	int reqcount = 0;
 	long long lastchange = 0;
@@ -136,6 +146,7 @@ int main(int argc, char **argv)
 			if (t - lastchange >= adv) {
 				if (mode==3) idx = (idx + 1) % NNAGRA;
 				else if (mode==4) idx = (idx + 1) % NNDS;
+				else if (mode==5) idx = (idx + 1) % NXORF0;
 				else idx = (idx + 1) % NCW;
 				lastchange = t;
 			}
@@ -145,6 +156,7 @@ int main(int argc, char **argv)
 			unsigned char *cw;
 			if (mode==3) cw = nagrascript[idx];
 			else if (mode==4) cw = ndsscript[idx];
+			else if (mode==5) cw = xorf0script[idx];
 			else if (mode && idx >= 8) cw = replaybad[(idx-8) % NREPLAYBAD];
 			else cw = cwscript[idx];
 			rep[0] = 2; // TYPE_REPLY
