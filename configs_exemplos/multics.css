@@ -116,3 +116,7 @@ body.light-mode .dbgrow td b { color:#1a4d80; }
 body.light-mode .brand-line { border-top-color:#c3c7cb; }
 body.light-mode .brand-line .brand { color:#575d62; }
 body.light-mode .brand-line .brand-by { color:#8c9196; }
+
+/* ---------- bandeiras de pais (redondas, tipo avatar) ---------- */
+img[src*='flag_'] { width:20px; height:20px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-right:4px; border:1px solid #3c4043; }
+body.light-mode img[src*='flag_'] { border-color:#c3c7cb; }
