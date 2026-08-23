@@ -128,6 +128,19 @@ int emu_delkey(uint16_t caid, uint32_t provid, uint16_t sid)
 	return r;
 }
 
+// caminho efetivo do Softcam.cfg: o CONSTCW FILE da config, ou na falta
+// desse, <pasta do multics.cfg>/Softcam.cfg (funciona em qualquer layout)
+void emu_path(char *out, int outsz)
+{
+	if (cfg.constcw_file[0]) {
+		snprintf(out, outsz, "%s", cfg.constcw_file);
+		return;
+	}
+	const char *sl = strrchr(config_file, '/');
+	if (sl) snprintf(out, outsz, "%.*s/Softcam.cfg", (int)(sl-config_file), config_file);
+	else snprintf(out, outsz, "Softcam.cfg");
+}
+
 void emu_init()
 {
 	emu_keys = NULL;
@@ -135,7 +148,9 @@ void emu_init()
 	emu_logcount = 0;
 	emu_logidx = 0;
 	emu_lastmatch = 0;
-	if (cfg.constcw_file[0]) emu_enabled = 1;
+	char p[512];
+	emu_path(p, sizeof(p));
+	if (cfg.constcw_file[0] || !access(p, F_OK)) emu_enabled = 1;
 	else emu_enabled = 0;
 }
 
@@ -145,9 +160,11 @@ void emu_load()
 {
 	emu_init();
 	if (!emu_enabled) return;
-	FILE *fp = fopen(cfg.constcw_file, "r");
+	char p[512];
+	emu_path(p, sizeof(p));
+	FILE *fp = fopen(p, "r");
 	if (!fp) {
-		mlogf(LOGINFO,DBG_CONFIG," emu: CONSTCW file %s not found\n", cfg.constcw_file);
+		mlogf(LOGINFO,DBG_CONFIG," emu: CONSTCW file %s not found\n", p);
 		return;
 	}
 	char line[512];
@@ -201,15 +218,17 @@ void emu_load()
 		pending_name[0] = 0;
 	}
 	fclose(fp);
-	mlogf(LOGINFO,DBG_CONFIG," emu: loaded %d constant CW keys from %s\n", emu_keycount, cfg.constcw_file);
+	mlogf(LOGINFO,DBG_CONFIG," emu: loaded %d constant CW keys from %s\n", emu_keycount, p);
 }
 
 void emu_save()
 {
-	if (!emu_enabled || !cfg.constcw_file[0]) return;
+	char p[512];
+	emu_path(p, sizeof(p));
+	if (!cfg.constcw_file[0] && emu_keycount==0) return;
 	pthread_mutex_lock(&emu_mutex);
 	char tmp[512];
-	snprintf(tmp, sizeof(tmp), "%s.tmp", cfg.constcw_file);
+	snprintf(tmp, sizeof(tmp), "%s.tmp", p);
 	FILE *fp = fopen(tmp, "w");
 	if (fp) {
 		fprintf(fp, "# MultiCS r1000 Emulator - Constant CW keys\n");
@@ -246,7 +265,7 @@ void emu_save()
 			k = k->next;
 		}
 		fclose(fp);
-		rename(tmp, cfg.constcw_file);
+		rename(tmp, p);
 	}
 	pthread_mutex_unlock(&emu_mutex);
 }

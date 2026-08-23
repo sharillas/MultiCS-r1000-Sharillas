@@ -1944,6 +1944,9 @@ static void emu_readmeta(char *out, int outlen)
 	else snprintf(out, outlen, "No updater data yet");
 }
 
+static int find_tool(const char *name, char *out, int outsz);
+static void resolve_cfg_path(const char *name, char *out, int outsz);
+
 void http_send_emulator(int sock, http_request *req)
 {
 	char http_buf[2048];
@@ -1989,11 +1992,14 @@ void http_send_emulator(int sock, http_request *req)
 			return;
 		}
 		lastupdatekey = now;
-		if (!access("/opt/multics/tools_update_softcam.py", F_OK)) {
-			system("python3 /opt/multics/tools_update_softcam.py >/var/tmp/softcam_update.log 2>&1 &");
+		char tool[512];
+		if (find_tool("tools_update_softcam.py", tool, sizeof(tool))) {
+			sprintf( http_buf, "python3 %s --port %d >/var/tmp/softcam_update.log 2>&1 &", tool, cfg.http.port);
+			system(http_buf);
+			mlogf(LOGINFO, DBG_HTTP, " http: softcam update iniciado (porta %d)\n", cfg.http.port);
 			http_send_text(sock, "<span class='success'>Update SoftCam.Key iniciado. Resultado no Debug Log.</span>");
 		}
-		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (/opt/multics/tools_update_softcam.py)</span>");
+		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (tools_update_softcam.py)</span>");
 		return;
 	}
 	if (str_action && !strcmp(str_action,"applykeys")) {
@@ -2071,11 +2077,12 @@ void http_send_emulator(int sock, http_request *req)
 	// Emulator Settings
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
 	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Softcam Settings</h3><div class=stat-value>");
-	if (cfg.constcw_file[0]) {
-		sprintf( http_buf, "Softcam.cfg: <b>%s</b><br>", cfg.constcw_file);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	} else {
-		tcp_writestr(&tcpbuf, sock, "Softcam.cfg: <b>not configured</b> (adicione CONSTCW FILE ao multics.cfg)<br>");
+	char emup[512];
+	emu_path(emup, sizeof(emup));
+	sprintf( http_buf, "Softcam.cfg: <b>%s</b><br>", emup);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	if (!cfg.constcw_file[0]) {
+		tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;color:#f0ad4e'>CONSTCW FILE nao definido no multics.cfg - a usar o caminho acima (junto do multics.cfg). Adiciona CONSTCW FILE para um caminho proprio.</span><br>");
 	}
 	sprintf( http_buf, "Keys loaded: <b>%d</b><br>", emu_keycount);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -9192,6 +9199,9 @@ void http_send_threads(int sock, http_request *req)
 
 #include "bmsearch.c"
 
+static int find_tool(const char *name, char *out, int outsz);
+static void resolve_cfg_path(const char *name, char *out, int outsz);
+
 void http_send_editor(int sock, http_request *req, int index)
 {
 	char http_buf[2048];
@@ -9229,12 +9239,16 @@ void http_send_editor(int sock, http_request *req, int index)
 			return;
 		}
 		lastupdatechinfo = now;
-		if (!access("/opt/multics/tools_update_channelinfo.py", F_OK)) {
-			system("python3 /opt/multics/tools_update_channelinfo.py --apply >/var/tmp/chinfo_update.log 2>&1 &");
-			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat)\n");
+		char tool[512];
+		char chinfo[512];
+		if (find_tool("tools_update_channelinfo.py", tool, sizeof(tool))) {
+			resolve_cfg_path("CCcam.channelinfo", chinfo, sizeof(chinfo));
+			sprintf( http_buf, "python3 %s --apply --out \"%s\" >/var/tmp/chinfo_update.log 2>&1 &", tool, chinfo);
+			system(http_buf);
+			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat) -> %s\n", chinfo);
 			http_send_text(sock, "<span class='success'>OK</span>");
 		}
-		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (/opt/multics/tools_update_channelinfo.py)</span>");
+		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (tools_update_channelinfo.py)</span>");
 		return;
 	}
 
@@ -9427,6 +9441,26 @@ static int editor_in_cfgfiles(const char *name)
 		if (!strcmp(base, name)) return 1;
 		fs = fs->next;
 	}
+	return 0;
+}
+
+// procura uma ferramenta python: pasta do binario -> /opt/multics -> /var/etc
+static int find_tool(const char *name, char *out, int outsz)
+{
+	char exe[512];
+	int n = readlink("/proc/self/exe", exe, sizeof(exe)-1);
+	if (n>0) {
+		exe[n]=0;
+		char *sl = strrchr(exe,'/');
+		if (sl) {
+			snprintf(out, outsz, "%.*s/%s", (int)(sl-exe), exe, name);
+			if (!access(out, F_OK)) return 1;
+		}
+	}
+	snprintf(out, outsz, "/opt/multics/%s", name);
+	if (!access(out, F_OK)) return 1;
+	snprintf(out, outsz, "/var/etc/%s", name);
+	if (!access(out, F_OK)) return 1;
 	return 0;
 }
 
@@ -9644,12 +9678,16 @@ void http_send_configurations(int sock, http_request *req)
 			return;
 		}
 		lastupdatechinfo = now;
-		if (!access("/opt/multics/tools_update_channelinfo.py", F_OK)) {
-			system("python3 /opt/multics/tools_update_channelinfo.py --apply >/var/tmp/chinfo_update.log 2>&1 &");
-			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat)\n");
+		char tool[512];
+		char chinfo[512];
+		if (find_tool("tools_update_channelinfo.py", tool, sizeof(tool))) {
+			resolve_cfg_path("CCcam.channelinfo", chinfo, sizeof(chinfo));
+			sprintf( http_buf, "python3 %s --apply --out \"%s\" >/var/tmp/chinfo_update.log 2>&1 &", tool, chinfo);
+			system(http_buf);
+			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat) -> %s\n", chinfo);
 			http_send_text(sock, "<span class='success'>OK</span>");
 		}
-		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (/opt/multics/tools_update_channelinfo.py)</span>");
+		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (tools_update_channelinfo.py)</span>");
 		return;
 	}
 	if (str_action && !strcmp(str_action,"editdiv")) {
