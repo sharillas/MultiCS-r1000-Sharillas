@@ -17,7 +17,12 @@ void ipblock_load()
 	FILE *fp = fopen(cfg.blockedip_file, "r");
 	if (!fp) return;
 	char line[256];
+	int nbline = 0;
 	while (fgets(line, sizeof(line), fp) && ipblock_count<IPBLOCK_MAX) {
+		nbline++;
+		strncpy( g_parse_filename, cfg.blockedip_file, sizeof(g_parse_filename)-1 );
+		g_parse_filename[sizeof(g_parse_filename)-1] = 0;
+		g_parse_nbline = nbline;
 		char *p = line;
 		while (*p==' '||*p=='\t') p++;
 		if (!p[0] || p[0]=='#' || p[0]==';' || p[0]=='\n' || p[0]=='\r') continue;
@@ -31,7 +36,10 @@ void ipblock_load()
 		nl = strchr(p, '\n');
 		if (nl) *nl = 0;
 		uint32_t ip = inet_addr(p);
-		if (ip==INADDR_NONE || ip==0) continue;
+		if (ip==INADDR_NONE || ip==0) {
+			mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): invalid IP '%s'\n", nbline, 0, p);
+			continue;
+		}
 		int dup = 0;
 		int i;
 		for (i=0; i<ipblock_count; i++) {

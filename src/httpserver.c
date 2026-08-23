@@ -2193,9 +2193,10 @@ void http_send_iptables(int sock, http_request *req)
 			char *n = getcountryname(p);
 			snprintf(country, sizeof(country), "<img src='/flag_%s.gif' title='%s'> %s", p, n?n:p, p);
 		}
-		sprintf( http_buf, "<tr><td>%s</td><td>%s</td><td>%us ago</td><td><a href='/iptables?action=unblock&ip=%s' class='btn-del'>Unblock</a></td></tr>",
+		uint32_t blk = (GetTickCount()-ipblock_list[i].time)/1000;
+		sprintf( http_buf, "<tr><td>%s</td><td>%s</td><td>%02ud %02d:%02d:%02d</td><td><a href='/iptables?action=unblock&ip=%s' class='btn-del'>Unblock</a></td></tr>",
 			(char*)ip2string(ipblock_list[i].ip), country,
-			(GetTickCount()-ipblock_list[i].time)/1000,
+			blk/(3600*24), (blk/3600)%24, (blk/60)%60, blk%60,
 			(char*)ip2string(ipblock_list[i].ip));
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
@@ -9384,20 +9385,95 @@ void http_send_editor(int sock, http_request *req, int index)
 // CONFIGURATIONS: pagina unica com Iptables (1a div) + Edit Config (2a div)
 // ============================================================
 
+// ficheiros extra editaveis (whitelist do upload) mesmo que nao estejam
+// registados no parse (FILE directives) - sao lidos/gravados de /var/etc/
+static const char *editor_extra_files[] = {
+	"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.lite",
+	"Nlines.cfg","users.cfg","Mgcamd.cfg","Camd35.cfg","Cache.cfg",
+	"CacheEX.cfg","1-Clients.cfg","Softcam.cfg","blocked_ips.cfg",
+	"ip2country.csv","multics.css", NULL };
+
+// o nome (basename) ja esta registado na lista do parse?
+static int editor_in_cfgfiles(const char *name)
+{
+	struct filename_data *fs = cfg.files;
+	while (fs) {
+		const char *b = strrchr(fs->name, '/');
+		const char *base = b ? b+1 : fs->name;
+		if (!strcmp(base, name)) return 1;
+		fs = fs->next;
+	}
+	return 0;
+}
+
+// resolve o ficheiro do editor pelo index:
+//   devolve 1 = ficheiro da lista do parse (index < n)
+//   devolve 2 = ficheiro extra em /var/etc/ (index >= n)
+//   devolve 0 = invalido
+static int editor_get_filename(int index, char *fname, int fname_sz, int *noeditor)
+{
+	struct filename_data *fs = cfg.files;
+	int n = 0;
+	while (fs) { n++; fs = fs->next; }
+	if (index < n) {
+		fs = cfg.files;
+		int k = 0;
+		while (fs && k<index) { fs = fs->next; k++; }
+		if (!fs) return 0;
+		snprintf(fname, fname_sz, "%s", fs->name);
+		if (noeditor) *noeditor = fs->noeditor;
+		return 1;
+	}
+	int e = index - n;
+	if (e>=0 && editor_extra_files[e]) {
+		snprintf(fname, fname_sz, "/var/etc/%s", editor_extra_files[e]);
+		if (noeditor) *noeditor = 0;
+		return 2;
+	}
+	return 0;
+}
+
+// comenta as linhas indicadas (1-based) de um ficheiro, prefixando "# "
+// linhas ja comentadas ficam como estao
+static int config_comment_lines(const char *fname, const int *lines, int nlines)
+{
+	char tmpf[600];
+	snprintf(tmpf, sizeof(tmpf), "%s.tmpfix", fname);
+	FILE *in = fopen(fname, "r");
+	if (!in) return -1;
+	FILE *out = fopen(tmpf, "w");
+	if (!out) { fclose(in); return -1; }
+	char line[10240];
+	int nb = 0;
+	int k;
+	while (fgets(line, sizeof(line), in)) {
+		nb++;
+		int bad = 0;
+		for (k=0;k<nlines;k++) if (lines[k]==nb) { bad = 1; break; }
+		if (bad) {
+			char *p = line;
+			while (*p==' '||*p=='\t') p++;
+			if (*p && (*p!='#') && (*p!='\n') && (*p!='\r')) fputs("# ", out);
+		}
+		fputs(line, out);
+	}
+	fclose(in);
+	fclose(out);
+	rename(tmpf, fname);
+	return 0;
+}
+
 // fragmento da div de edicao (select + save + textarea) - escreve num dyn_buffer
 void http_send_editdiv(struct dyn_buffer *db, int index)
 {
 	char http_buf[2048];
-	struct filename_data *fs = cfg.files;
+	struct filename_data *fs;
 	int i;
-	for (i=0; i<index; i++) {
-		if (!fs) break;
-		fs = fs->next;
-	}
-	if ((i!=index)||(!fs)) { fs = cfg.files; index = 0; }
+	int noeditor_ed = 0;
 	char fname[512];
-	strcpy( fname, fs->name );
-	int noeditor = fs->noeditor;
+	int ftype = editor_get_filename(index, fname, sizeof(fname), &noeditor_ed);
+	if (!ftype) { index = 0; ftype = editor_get_filename(0, fname, sizeof(fname), &noeditor_ed); }
+	int noeditor = noeditor_ed;
 
 	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><div class='cfgbtns'>"
 		"<div><input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\"><span class='cfgbtns-info'>Parse do teu CCcam.channelinfo sem restart</span></div>"
@@ -9420,6 +9496,16 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 		}
 		i++;
 		fs = fs->next;
+	}
+	int e = 0;
+	while (editor_extra_files[e]) {
+		if (!editor_in_cfgfiles(editor_extra_files[e])) {
+			int x = i + e;
+			if (x==index) sprintf( http_buf, "<option value=\"/configurations?file=%d\" selected>%s (/var/etc)</option>",x, editor_extra_files[e]);
+			else sprintf( http_buf, "<option value=\"/configurations?file=%d\">%s (/var/etc)</option>",x, editor_extra_files[e]);
+			dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
+		}
+		e++;
 	}
 	dynbuf_write( db, (unsigned char*)"</select></span>", strlen("</select></span>") );
 
@@ -9449,6 +9535,7 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 void http_send_configurations(int sock, http_request *req)
 {
 	char http_buf[2048];
+	int i;
 	struct tcp_buffer_data tcpbuf;
 	tcp_init(&tcpbuf);
 	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
@@ -9581,6 +9668,9 @@ void http_send_configurations(int sock, http_request *req)
 											fwrite( pdata, 1, end-pdata, fd );
 											fclose(fd);
 											mlogf(LOGINFO, DBG_HTTP, " http: upload '%s' (%d bytes, backup %s)\n", fname, (int)(end-pdata), backup);
+											// reler e apanhar erros de parse deste ficheiro
+											int err0 = g_config_errors;
+											g_cfg_err_nb = 0; // reset do historico (so interessa este reload)
 											free_filenames( &cfg );
 											reread_config( &cfg );
 											check_config( &cfg );
@@ -9588,6 +9678,62 @@ void http_send_configurations(int sock, http_request *req)
 											emu_load();
 											lite_load();
 											ipblock_load();
+											int badlines[MAX_CFG_ERRS];
+											int nbad = 0;
+											int e;
+											for (e=0; e<g_cfg_err_nb; e++) {
+												if (!strcmp(g_cfg_errs[e].file, fname) && (g_cfg_errs[e].line>0)) {
+													int dup = 0;
+													int b;
+													for (b=0;b<nbad;b++) if (badlines[b]==g_cfg_errs[e].line) dup=1;
+													if (!dup && (nbad<MAX_CFG_ERRS)) badlines[nbad++] = g_cfg_errs[e].line;
+												}
+											}
+											int errs = g_config_errors - err0;
+											int rollback = 0;
+											if (nbad>0) {
+												// comentar as linhas com erro e reler (opcoes default ficam ativas)
+												if (!config_comment_lines(fname, badlines, nbad)) {
+													mlogf(LOGWARNING, DBG_HTTP, " http: upload '%s': %d linha(s) com erro comentadas\n", fname, nbad);
+													g_cfg_err_nb = 0;
+													free_filenames( &cfg );
+													reread_config( &cfg );
+													check_config( &cfg );
+													cfg_set_id_counters( &cfg );
+													emu_load();
+													lite_load();
+													ipblock_load();
+													// ainda ha erros neste ficheiro?
+													for (e=0; e<g_cfg_err_nb; e++) {
+														if (!strcmp(g_cfg_errs[e].file, fname)) { rollback = 1; break; }
+													}
+												}
+											}
+											else if (errs>0) {
+												// erros noutros ficheiros (includes) - o parse ignora as linhas e usa defaults
+												mlogf(LOGWARNING, DBG_HTTP, " http: upload '%s': %d erro(s) de config noutros ficheiros (linhas ignoradas, defaults ativos)\n", fname, errs);
+											}
+											if (rollback) {
+												char invalid[600];
+												sprintf( invalid, "%s.invalid-%ld", fname, (long)time(NULL) );
+												rename( fname, invalid );
+												rename( backup, fname );
+												mlogf(LOGERROR, DBG_HTTP, " http: upload '%s' REJEITADO (erros de parse) - restaurado '%s', enviado para '%s'\n", fname, backup, invalid);
+												free_filenames( &cfg );
+												reread_config( &cfg );
+												check_config( &cfg );
+												cfg_set_id_counters( &cfg );
+												emu_load();
+												lite_load();
+												ipblock_load();
+											}
+											// resposta
+											if (rollback) sprintf( http_buf, "<center><h3>Upload REJEITADO</h3><p>O ficheiro tem erros de config que nao foi possivel corrigir.<br>O anterior foi reposto e a build continua a correr.<br>O ficheiro enviado ficou guardado em '%s.invalid-*' para corrigires.</p><p><a href='/configurations'>Voltar a Configs</a></p></center>", fname);
+											else if (nbad>0) sprintf( http_buf, "<center><h3>Upload aceite</h3><p>%d linha(s) com erro foram comentadas automaticamente.<br>As opcoes default ficam ativas para essas linhas.</p><p><a href='/configurations'>Voltar a Configs</a></p></center>", nbad);
+											else if (errs>0) sprintf( http_buf, "<center><h3>Upload aceite (com avisos)</h3><p>%d erro(s) de config noutros ficheiros - as linhas foram ignoradas<br>e as opcoes default ficam ativas (sem crash).</p><p><a href='/configurations'>Voltar a Configs</a></p></center>", errs);
+											else sprintf( http_buf, "<center><h3>Upload aceite</h3><p>Config recarregada sem erros.</p><p><a href='/configurations'>Voltar a Configs</a></p></center>");
+											http_send_text(sock, http_buf);
+											return;
 										}
 									}
 								}
@@ -9605,22 +9751,11 @@ void http_send_configurations(int sock, http_request *req)
 	int index = 0;
 	char *str_file = isset_get( req, "file");
 	if (str_file) index = atoi(str_file);
-	struct filename_data *fs = cfg.files;
-	int i;
-	for (i=0; i<index; i++) {
-		if (!fs) break;
-		fs = fs->next;
-	}
-	if ((i!=index)||(!fs)) index = 0;
-	fs = cfg.files;
-	for (i=0; i<index; i++) {
-		if (!fs) break;
-		fs = fs->next;
-	}
-	if ((i!=index)||(!fs)) fs = cfg.files; // fallback primeiro ficheiro
+	int noeditor_ed2 = 0;
 	char fname[512];
-	strcpy( fname, fs->name );
-	int noeditor = fs->noeditor;
+	int ftype = editor_get_filename(index, fname, sizeof(fname), &noeditor_ed2);
+	if (!ftype) { index = 0; ftype = editor_get_filename(0, fname, sizeof(fname), &noeditor_ed2); }
+	int noeditor = noeditor_ed2;
 
 	// ===== POST multipart (save) =====
 	if ( (req->type==HTTP_POST) && !noeditor ) {
@@ -9741,9 +9876,10 @@ void http_send_configurations(int sock, http_request *req)
 			char *n = getcountryname(pc);
 			snprintf(country, sizeof(country), "<img src='/flag_%s.gif' title='%s'> %s", pc, n?n:pc, pc);
 		}
-		sprintf( http_buf, "<tr><td>%s</td><td>%s</td><td>%us ago</td><td><a href='/configurations?action=unblock&ip=%s' class='btn-del'>Unblock</a></td></tr>",
+		uint32_t blk = (GetTickCount()-ipblock_list[i].time)/1000;
+		sprintf( http_buf, "<tr><td>%s</td><td>%s</td><td>%02ud %02d:%02d:%02d</td><td><a href='/configurations?action=unblock&ip=%s' class='btn-del'>Unblock</a></td></tr>",
 			(char*)ip2string(ipblock_list[i].ip), country,
-			(GetTickCount()-ipblock_list[i].time)/1000,
+			blk/(3600*24), (blk/3600)%24, (blk/60)%60, blk%60,
 			(char*)ip2string(ipblock_list[i].ip));
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}

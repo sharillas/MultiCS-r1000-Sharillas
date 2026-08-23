@@ -41,6 +41,16 @@ char dbgline[MAX_DBGLINES][MAX_DBGLINE_LEN];
 uint32_t dbgflag[MAX_DBGLINES];
 int idbgline = 0;
 
+// ficheiro/linha a ser parseado (read_config em config.c) - para associar
+// os erros "config(...)" ao ficheiro de onde vieram
+char g_parse_filename[512] = "";
+int  g_parse_nbline = 0;
+
+// erros de parse: contador global + ultimos erros (ficheiro + linha)
+int g_config_errors = 0;
+struct cfg_error_data g_cfg_errs[MAX_CFG_ERRS];
+int g_cfg_err_nb = 0;
+
 void add_dbgline(char *line)
 {
 	strncpy( dbgline[idbgline], line, MAX_DBGLINE_LEN );
@@ -160,16 +170,26 @@ int chkdbgflag( uint32_t f )
 
 void mlogf(int lineloglevel, uint32_t flag, char *format, ...)
 {
+	char fstr[MAX_DBGLINE_LEN];
+	if (format[0]==0) { // DECRYPT
+		decryptstr(format, fstr);
+	} else strcpy(fstr, format);
+
+	if (strstr(fstr, "config(")) {
+		g_config_errors++;
+		if (g_cfg_err_nb < MAX_CFG_ERRS) {
+			strncpy( g_cfg_errs[g_cfg_err_nb].file, g_parse_filename, sizeof(g_cfg_errs[0].file)-1 );
+			g_cfg_errs[g_cfg_err_nb].file[sizeof(g_cfg_errs[0].file)-1] = 0;
+			g_cfg_errs[g_cfg_err_nb].line = g_parse_nbline;
+			g_cfg_err_nb++;
+		}
+	}
+
 	if (lineloglevel<=loglevel)
 	{
 		if (!chkdbgflag(flag)) return;
 		int index;
 		char debugline[MAX_DBGLINE_LEN];
-		char fstr[MAX_DBGLINE_LEN];
-		if (format[0]==0) { // DECRYPT
-			decryptstr(format, fstr);
-		} else strcpy(fstr, format);
-
 		if (fstr[0]==' ') { // ADD TIME
 			struct timeval tv;
 			struct timezone tz;

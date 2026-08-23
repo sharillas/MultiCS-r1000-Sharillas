@@ -1,7 +1,19 @@
 # ============================================================
 # CCcam.channelinfo - NOMES DE CANAIS (mostrados na GUI)
-# Formato: CAID:PROVID:SID:NOME DO CANAL
 # ============================================================
+#
+# FORMATO: CAID:PROVID:SID:NOME DO CANAL
+#   CAID/PROVID/SID em hex; o NOME e mostrado nas tabelas da GUI
+#   (pedidos de ECM, ultimo canal, etc.).
+#
+# O nome pode conter espacos - nao precisa de aspas.
+#
+# A ferramenta "Update Channel Info" (pagina Configs) regenera
+# este ficheiro automaticamente a partir do KingOfSat (so feeds
+# activos) com cabecalhos por CAID e posicao de satelite.
+# "Load Channel Info" recarrega o ficheiro sem restart.
+# ============================================================
+
 098D:000000:EF10:Sky Sport DE
 098D:000000:EF74:Sky Cinema DE
 0500:030B00:2E9B:TF1

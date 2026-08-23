@@ -772,6 +772,11 @@ int read_config(struct config_data *cfg)
 			else break;
 		} else file->nbline++;
 
+		// registar ficheiro/linha atuais para associar erros de parse
+		strncpy( g_parse_filename, file->name, sizeof(g_parse_filename)-1 );
+		g_parse_filename[sizeof(g_parse_filename)-1] = 0;
+		g_parse_nbline = file->nbline;
+
 		while (1) {
 			char *pos;
 			// Remove Comments
@@ -4808,6 +4813,19 @@ link_mgcamd_user:
 			}
 
 		}
+		else {
+			// opcoes legadas de builds anteriores - aceites mas sem efeito
+			static const char *legacy_opts[] = { "RECONNECT_GRACE","ECM_MAXALIVE","NEWCAMD_KEEPALIVE","GENERAL_POLL_TIMEOUT","GENERAL_SEND_TIMEOUT","GENERAL_ERROR_DELAY","DELAY_CACHE_STARTUP","DELAY_MAIN_SLEEP", NULL };
+			int known = 0;
+			int li;
+			for (li=0; legacy_opts[li]; li++) {
+				if (!strcmp(str, legacy_opts[li])) { known = 1; break; }
+			}
+			if (!known) {
+				// opcao desconhecida - registar para o upload poder comenta-la
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): unknown option '%s'\n",file->nbline,iparser-currentline,str);
+			}
+		}
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -5081,6 +5099,9 @@ int read_chinfo( struct config_data *cfg )
 		if ( !fgets(currentline, 10239, fhandle) ) break;
 		iparser = &currentline[0];
 		nbline++;
+		strncpy( g_parse_filename, cfg->channelinfo_file, sizeof(g_parse_filename)-1 );
+		g_parse_filename[sizeof(g_parse_filename)-1] = 0;
+		g_parse_nbline = nbline;
 		parse_spaces();
 
 		if ( ((*iparser>='0')&&(*iparser<='9')) || ((*iparser>='a')&&(*iparser<='f')) || ((*iparser>='A')&&(*iparser<='F')) ) {

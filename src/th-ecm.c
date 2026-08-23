@@ -82,22 +82,41 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				ecm_setdcw( ecm, ecm->cw, DCW_SOURCE_EMU, 0 );
 				return;
 			}
-			// BISS (2600) sem chave -> NOK imediato (amarelo na GUI)
+			// BISS (2600) sem chave -> NOK imediato (amarelo na GUI) SO SE
+			// nao houver mais fontes a tentar (readers/cache)
 			if (ecm->caid==0x2600) {
-				ecm->statusmsg = "NOK (BISS EMU): no key";
+				int hastry = 0;
+				struct server_data *srv = cfg.server;
+				while (srv) {
+					if (!(srv->flags&FLAG_DELETE)) { hastry = 1; break; }
+					srv = srv->next;
+				}
+				if (!hastry && ecm->cs && ecm->cs->option.fallowcache) hastry = 1;
+				if (!hastry) {
+					ecm->statusmsg = "NOK (BISS EMU): no key";
+					ecm->nokbiss = 1;
+					mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ecm: BISS EMU NOK ch %04x:%06x:%04x (%s)\n", ecm->caid, ecm->provid, ecm->sid, ecm->statusmsg);
+					ecm_faileddcw( ecm );
+					return;
+				}
+			}
+		}
+		else if (ecm->caid==0x2600) {
+			// emulador desligado neste perfil -> NOK imediato so sem outras fontes
+			int hastry = 0;
+			struct server_data *srv = cfg.server;
+			while (srv) {
+				if (!(srv->flags&FLAG_DELETE)) { hastry = 1; break; }
+				srv = srv->next;
+			}
+			if (!hastry && ecm->cs && ecm->cs->option.fallowcache) hastry = 1;
+			if (!hastry) {
+				ecm->statusmsg = "NOK (BISS EMU): emulator disabled";
 				ecm->nokbiss = 1;
 				mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ecm: BISS EMU NOK ch %04x:%06x:%04x (%s)\n", ecm->caid, ecm->provid, ecm->sid, ecm->statusmsg);
 				ecm_faileddcw( ecm );
 				return;
 			}
-		}
-		else if (ecm->caid==0x2600) {
-			// emulador desligado neste perfil -> NOK imediato
-			ecm->statusmsg = "NOK (BISS EMU): emulator disabled";
-			ecm->nokbiss = 1;
-			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ecm: BISS EMU NOK ch %04x:%06x:%04x (%s)\n", ecm->caid, ecm->provid, ecm->sid, ecm->statusmsg);
-			ecm_faileddcw( ecm );
-			return;
 		}
 	}
 
