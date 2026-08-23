@@ -912,9 +912,9 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	if (cfg.camd35.server!=NULL) {
 		if (selected==PAGE_CAMD35) class = cSelected; else class = cNormal;
 #ifdef CS378X_SRV
-		sprintf( label, "Cs357x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients()+total_cs378x_nb());
+		sprintf( label, "Cs358x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients()+total_cs378x_nb());
 #else
-		sprintf( label, "Cs357x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients());
+		sprintf( label, "Cs358x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients());
 #endif
 		sprintf( buf, class, "/camd35", label); tcp_writestr(tcpbuf, sock, buf);
 	}
@@ -6578,7 +6578,7 @@ void http_send_camd35(int sock, http_request *req)
 		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-		sprintf( http_buf, html_title, cfg.http.title, "Cs357x/Camd35"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, html_title, cfg.http.title, "Cs358x/Camd35"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
 		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
 		// JS
@@ -6888,7 +6888,7 @@ void http_send_camd35_client(int sock, http_request *req)
 		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-		sprintf( http_buf, html_title, cfg.http.title, "Cs357x/Camd35 Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, html_title, cfg.http.title, "Cs358x/Camd35 Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
 		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
 		// JS

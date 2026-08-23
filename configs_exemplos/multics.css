@@ -127,3 +127,6 @@ body.light-mode img[src*='flag_'] { border-color:#c3c7cb; }
 .cfgbtns input.sbutton { width:100%; padding:13px 18px; font-weight:600; }
 .cfgbtns .cfgbtns-info { display:block; font-size:11px; color:#9aa0a6; margin-top:6px; line-height:1.4; }
 body.light-mode .cfgbtns .cfgbtns-info { color:#575d62; }
+
+/* ---------- top menu sempre visivel (sticky no topo) ---------- */
+.menu { position:sticky; top:0; z-index:1000; }
