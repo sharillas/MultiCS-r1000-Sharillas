@@ -2122,7 +2122,7 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.nagra.enable = parse_boolean();
 				}
-				else if (!strcmp(str,"CHK") || !strcmp(str,"CHECK")) {
+				else if (!strcmp(str,"CHK") || !strcmp(str,"CHECK") || !strcmp(str,"CHECKSUM")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
 						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
@@ -4047,7 +4047,7 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.nagra.enable = parse_boolean();
 			}
-			else if (!strcmp(str,"CHK") || !strcmp(str,"CHECK")) {
+			else if (!strcmp(str,"CHK") || !strcmp(str,"CHECK") || !strcmp(str,"CHECKSUM")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
