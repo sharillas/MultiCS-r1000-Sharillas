@@ -3753,6 +3753,15 @@ int profile_config_toggle(char *name, int on)
 }
 
 
+// ja renderizado na tabela de profiles?
+static int profile_is_rendered(int *rendered, int nrendered, int id)
+{
+	int k;
+	for (k=0; k<nrendered; k++) if (rendered[k]==id) return 1;
+	return 0;
+}
+
+
 void http_send_profiles(int sock, http_request *req)
 {
 	char http_buf[2048];
@@ -3872,13 +3881,82 @@ void http_send_profiles(int sock, http_request *req)
 	sprintf( http_buf, "Total Profiles: %d", total_profiles() ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "<br>\n<table class=maintable width=100%%><tr><th width=150px>Profile name</th><th width=50px>Port</th><th width=60px>EcmTime</th><th width=60px>TotalECM</th><th width=90px>AcceptedECM</th><th width=80px>Ecm OK</th><th width=85px>Cache/Ex Hits</th><th width=80px>Instant Hits</th><th width=80px>Clients</th><th>Caid:Providers</th></tr>");
 
-	struct cardserver_data *cs = cfg.cardserver;
 	int alt=0;
+	int rendered[128];
+	int nrendered = 0;
+
+	// 1) perfis por ordem do profiles.cfg (ativos normais + comentados com ON)
+	{
+		char *fname = NULL;
+		struct filename_data *fsx = cfg.files;
+		while (fsx) {
+			if (strstr(fsx->name,"profiles.cfg")) { fname = fsx->name; break; }
+			fsx = fsx->next;
+		}
+		if (fname) {
+			pthread_mutex_lock(&pfile_mutex);
+			FILE *fp = fopen(fname, "r");
+			if (fp) {
+				int sz = (int)fread(pfilebuf, 1, PFILE_MAX, fp);
+				fclose(fp);
+				if ((sz>0)&&(sz<PFILE_MAX)) {
+					pfilebuf[sz] = 0;
+					char *p = pfilebuf;
+					while (*p) {
+						char *start = p;
+						while (*p && *p!='\n') p++;
+						int hasnl = (*p=='\n');
+						char *eol = p;
+						if (*p) p++;
+						*eol = 0;
+						char *q = start;
+						while (*q==' '||*q=='\t') q++;
+						int commented = 0;
+						if (*q=='#') { commented = 1; q++; while (*q==' '||*q=='\t') q++; }
+						if (*q=='[') {
+							char secname[128] = "";
+							char *a = q+1;
+							int n = 0;
+							while (*a && *a!=']' && n<120) secname[n++] = *a++;
+							secname[n] = 0;
+							if (secname[0]) {
+								struct cardserver_data *fcs = NULL;
+								struct cardserver_data *walk = cfg.cardserver;
+								while (walk) {
+									if (!profile_is_rendered(rendered, nrendered, walk->id) && !strcmp(walk->name, secname)) { fcs = walk; break; }
+									walk = walk->next;
+								}
+								if (fcs) {
+									if (alt==1) alt=2; else alt=1;
+									getprofilecells( fcs, cell );
+									sprintf( http_buf,"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td class=%s>%s</td><td align=center>%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",fcs->id,alt,fcs->id,cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9]);
+									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+									if (nrendered<128) rendered[nrendered++] = fcs->id;
+								}
+								else if (commented) {
+									if (alt==1) alt=2; else alt=1;
+									sprintf( http_buf,"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000)\">ON</span></span></td></tr>", alt, secname, secname);
+									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+								}
+							}
+						}
+						if (hasnl) *eol = '\n';
+					}
+				}
+			}
+			pthread_mutex_unlock(&pfile_mutex);
+		}
+	}
+
+	// 2) perfis ativos que nao estao no profiles.cfg
+	struct cardserver_data *cs = cfg.cardserver;
 	while(cs) {
-		if (alt==1) alt=2; else alt=1;
-		getprofilecells( cs, cell );
-		sprintf( http_buf,"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td class=%s>%s</td><td align=center>%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",cs->id,alt,cs->id,cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9]);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		if (!profile_is_rendered(rendered, nrendered, cs->id)) {
+			if (alt==1) alt=2; else alt=1;
+			getprofilecells( cs, cell );
+			sprintf( http_buf,"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td class=%s>%s</td><td align=center>%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",cs->id,alt,cs->id,cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9]);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
 		cs = cs->next;
 	}
 	// Total
@@ -3919,61 +3997,6 @@ void http_send_profiles(int sock, http_request *req)
 	sprintf( http_buf,"<td>%d</td>", totcachehits*60/ticks); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<td>%d</td>", totcacheihits*60/ticks); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf, "<td colspan=2> </td></tr>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-	// Perfis comentados (#[seccao] no profiles.cfg) -> linhas na tabela com botao ON
-	{
-		char *fname = NULL;
-		struct filename_data *fsx = cfg.files;
-		while (fsx) {
-			if (strstr(fsx->name,"profiles.cfg")) { fname = fsx->name; break; }
-			fsx = fsx->next;
-		}
-		if (fname) {
-			pthread_mutex_lock(&pfile_mutex);
-			FILE *fp = fopen(fname, "r");
-			if (fp) {
-				int sz = (int)fread(pfilebuf, 1, PFILE_MAX, fp);
-				fclose(fp);
-				if ((sz>0)&&(sz<PFILE_MAX)) {
-					pfilebuf[sz] = 0;
-					char *p = pfilebuf;
-					int any = 0;
-					while (*p) {
-						char *start = p;
-						while (*p && *p!='\n') p++;
-						int hasnl = (*p=='\n');
-						char *eol = p;
-						if (*p) p++;
-						*eol = 0;
-						char *q = start;
-						while (*q==' '||*q=='\t') q++;
-						if (*q=='#') {
-							q++;
-							while (*q==' '||*q=='\t') q++;
-							if (*q=='[') {
-								char secname[128] = "";
-								char *a = q+1;
-								int n = 0;
-								while (*a && *a!=']' && n<120) secname[n++] = *a++;
-								secname[n] = 0;
-								if (secname[0]) {
-									if (!any) {
-										any = 1;
-										sprintf( http_buf,"\n<tr class=alt3><td colspan=10 align=left>Commented Profiles</td></tr>");
-										tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-									}
-									sprintf( http_buf,"\n<tr class=alt2><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o #)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000)\">ON</span></span></td></tr>", secname, secname);
-									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-								}
-							}
-						}
-						if (hasnl) *eol = '\n';
-					}
-				}
-			}
-			pthread_mutex_unlock(&pfile_mutex);
-		}
-	}
 
 	sprintf( http_buf, "\n</table>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
