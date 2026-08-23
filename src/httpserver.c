@@ -838,14 +838,14 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		sprintf( label, "Cache [<span class='badge-count'> %d </span>]", cfg.cache.totalservers);
 		sprintf( buf, class, "/cache", label); tcp_writestr(tcpbuf, sock, buf);
 	}
-	// Profiles
-	if (!cfg.http.show.noprofiles) {
-		if (cfg.cardserver!=NULL) {
-			if (selected==PAGE_PROFILES) class = cSelected; else class = cNormal;
-		} else class = cDisabled;
-		sprintf( label, "Profiles [<span class='badge-count'> %d </span>]", cfg.totalprofiles);
-		sprintf( buf, class, "/profiles", label); tcp_writestr(tcpbuf, sock, buf);
+#ifdef CACHEEX
+	// CacheEX
+	if ( !cfg.http.show.nocacheex ) {
+		if (selected==PAGE_CACHEEX) class = cSelected; else class = cNormal;
+		sprintf( label, "CacheEX [<span class='badge-count'> %d </span>]", total_cacheex_servers());
+		sprintf( buf, class, "/cacheex", label); tcp_writestr(tcpbuf, sock, buf);
 	}
+#endif
 	// Newcamd
 	if ( !cfg.http.show.nonewcamd ) {
 		if (cfg.cardserver!=NULL) {
@@ -889,14 +889,14 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	}
 #endif
 
-#ifdef CACHEEX
-	// CacheEX
-	if ( !cfg.http.show.nocacheex ) {
-		if (selected==PAGE_CACHEEX) class = cSelected; else class = cNormal;
-		sprintf( label, "CacheEX [<span class='badge-count'> %d </span>]", total_cacheex_servers());
-		sprintf( buf, class, "/cacheex", label); tcp_writestr(tcpbuf, sock, buf);
+	// Profiles
+	if (!cfg.http.show.noprofiles) {
+		if (cfg.cardserver!=NULL) {
+			if (selected==PAGE_PROFILES) class = cSelected; else class = cNormal;
+		} else class = cDisabled;
+		sprintf( label, "Profiles [<span class='badge-count'> %d </span>]", cfg.totalprofiles);
+		sprintf( buf, class, "/profiles", label); tcp_writestr(tcpbuf, sock, buf);
 	}
-#endif
 	// Emulator
 	{
 		if (selected==PAGE_EMULATOR) class = cSelected; else class = cNormal;
@@ -918,8 +918,8 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		sprintf( buf, class, "/restart", "Restart"); tcp_writestr(tcpbuf, sock, buf);
 	}
 
-	tcp_writestr(tcpbuf, sock, "<li><a class='logout-btn' href='/login?action=logout'>Logout</a></li>");
 	tcp_writestr(tcpbuf, sock, "<li><button id='themeToggle' class='theme-toggle' onclick='toggleTheme()'>Dark</button></li>");
+	tcp_writestr(tcpbuf, sock, "<li><a class='logout-btn' href='/login?action=logout'>Logout</a></li>");
 	tcp_writestr(tcpbuf, sock, "</ul>");
 	tcp_writestr(tcpbuf, sock, "<div class='brand-line'><span class='brand'>MultiCS r"REVISION_STR"</span> <span class='brand-by'>by Sharillas</span></div></div>\n");
 
