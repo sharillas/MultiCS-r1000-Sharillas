@@ -130,3 +130,11 @@ body.light-mode .cfgbtns .cfgbtns-info { color:#575d62; }
 
 /* ---------- top menu sempre visivel (sticky no topo) ---------- */
 .menu { position:sticky; top:0; z-index:1000; }
+
+/* ---------- cores de estado nas tabelas (ganham ao td generico) ---------- */
+.maintable td.offline { color:#f28b82 !important; }
+.maintable td.online { color:#81c995 !important; }
+.maintable td.busy { color:#fdd663 !important; }
+body.light-mode .maintable td.offline { color:#a02020 !important; }
+body.light-mode .maintable td.online { color:#2e6b3d !important; }
+body.light-mode .maintable td.busy { color:#9a7b00 !important; }
