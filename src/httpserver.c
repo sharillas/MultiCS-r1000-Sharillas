@@ -9754,13 +9754,16 @@ void http_send_configurations(int sock, http_request *req)
 									if (end && end>pdata) {
 										char fname[512];
 										resolve_cfg_path( fnameparam, fname, sizeof(fname) );
-										char backup[600];
-										sprintf( backup, "%s.bak-%ld", fname, (long)time(NULL) );
-										rename( fname, backup );
-										FILE *fd = fopen( fname, "wb");
+										char tmpsave[600];
+										sprintf( tmpsave, "%s.tmp", fname );
+										FILE *fd = fopen( tmpsave, "wb");
 										if (fd) {
 											fwrite( pdata, 1, end-pdata, fd );
 											fclose(fd);
+											char backup[600];
+											sprintf( backup, "%s.bak-%ld", fname, (long)time(NULL) );
+											if (rename( fname, backup )) { unlink(tmpsave); sprintf( http_buf, "<center><h3><span class='failed'>ERRO: sem permissoes em '%s'</span></h3><p>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</p></center>", fname, fname); http_send_text(sock, http_buf); return; }
+											if (rename( tmpsave, fname )) { rename( backup, fname ); sprintf( http_buf, "<center><h3><span class='failed'>ERRO: nao consegui gravar '%s'</span></h3><p>O ficheiro anterior foi reposto.</p></center>", fname); http_send_text(sock, http_buf); return; }
 											mlogf(LOGINFO, DBG_HTTP, " http: upload '%s' (%d bytes, backup %s)\n", fname, (int)(end-pdata), backup);
 											// reler e apanhar erros de parse deste ficheiro
 											int err0 = g_config_errors;
@@ -9829,6 +9832,11 @@ void http_send_configurations(int sock, http_request *req)
 											http_send_text(sock, http_buf);
 											return;
 										}
+										else {
+											sprintf( http_buf, "<center><h3><span class='failed'>ERRO: sem permissoes de escrita para '%s'</span></h3><p>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</p><p><a href='/configurations'>Voltar a Configs</a></p></center>", fname, fname);
+											http_send_text(sock, http_buf);
+											return;
+										}
 									}
 								}
 							}
@@ -9882,7 +9890,9 @@ void http_send_configurations(int sock, http_request *req)
 								char *pdata = h+4;
 								char *end = (char*) boyermoore_horspool_memmem( (uint8_t*)pdata, req->dbf.datasize-(pdata-(char*)req->dbf.data), (uint8_t*)endboundary, strlen(endboundary) );
 								if (end && end>pdata) {
-									FILE *cfgfd = fopen( fname, "w");
+									char tmpsave[600];
+									sprintf( tmpsave, "%s.tmp", fname );
+									FILE *cfgfd = fopen( tmpsave, "w");
 									if (cfgfd) {
 										int k;
 										for (k=0;k<end-pdata;k++) {
@@ -9892,7 +9902,18 @@ void http_send_configurations(int sock, http_request *req)
 											fwrite( pdata+k,1,1,cfgfd);
 										}
 										fclose(cfgfd);
-										sprintf( http_buf, "<script type=\"text/JavaScript\"><!--\nsetTimeout(\"location.href = '/configurations?file=%d';\",3000);\n--></script>\n<h3><center>file '%s' is Successfully Saved</center></h3>", index, fname);
+										if (!rename( tmpsave, fname )) {
+											sprintf( http_buf, "<script type=\"text/JavaScript\"><!--\nsetTimeout(\"location.href = '/configurations?file=%d';\",3000);\n--></script>\n<h3><center>file '%s' is Successfully Saved</center></h3>", index, fname);
+											tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+										}
+										else {
+											unlink(tmpsave);
+											sprintf( http_buf, "<h3><center><span class='failed'>ERRO: nao consegui gravar '%s' (rename falhou - permissoes?)</span><br><br>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</center></h3>", fname, fname);
+											tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+										}
+									}
+									else {
+										sprintf( http_buf, "<h3><center><span class='failed'>ERRO: sem permissoes de escrita para '%s'</span><br><br>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</center></h3>", fname, fname);
 										tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 									}
 								}
