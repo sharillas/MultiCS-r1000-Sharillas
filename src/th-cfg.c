@@ -54,6 +54,7 @@ void *reread_config_thread(void *param)
 	cfg_set_id_counters(&cfg);
 	emu_load();
 	ipblock_load();
+	lite_load();
 
 	int fd = inotify_init(); //1(IN_NONBLOCK);
 	while (1) {
@@ -105,6 +106,7 @@ void *reread_config_thread(void *param)
 			cfg_set_id_counters(&cfg);
 			emu_load();
 			ipblock_load();
+			lite_load();
 		}
 	}
 	return NULL;

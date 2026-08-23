@@ -115,12 +115,19 @@ int main(int argc, char **argv)
 
 	int seqmode = (argc>3 && !strcmp(argv[3], "seq"));
 	int seqreplay = (argc>3 && !strcmp(argv[3], "seqreplay"));
-	int nreq = seqmode ? 14 : (seqreplay ? 12 : 1);
+	int fastmode = (argc>3 && !strcmp(argv[3], "fast"));
+	int ecmidoff = 0;
+	if (argc>6) ecmidoff = (int)strtol(argv[6], NULL, 10);
+	int nreq = seqmode ? 14 : (seqreplay ? 12 : (fastmode ? 10 : 1));
+	unsigned short mycaid = 0x2600;
+	if (argc>4) mycaid = (unsigned short)strtol(argv[4], NULL, 16);
+	unsigned short mysid = 0x1FFF;
+	if (argc>5) mysid = (unsigned short)strtol(argv[5], NULL, 16);
 	int r;
 	for (r = 0; r < nreq; r++) {
 		unsigned char ecm_payload[28];
 		int k;
-		int ecmid = r;
+		int ecmid = r + ecmidoff;
 		if (seqmode && r == 11) ecmid = 7; // replay do ECM #7
 		if (seqreplay && r == 9) ecmid = 2; // replay do ECM #2 (hash antigo)
 		for (k = 0; k < 28; k++) ecm_payload[k] = 0xAA;
@@ -133,7 +140,7 @@ int main(int argc, char **argv)
 		ecm_payload[6] = (unsigned char)ecmid; /* hash varia por pedido */
 		p = 0;
 		memcpy(buf, ecm_payload, 28); p = 28;
-		if (m_send(sock, buf, p, sessionkey, 1, 0x1FFF, 0x2600, 0) < 0) { printf("SEND ECM FAIL\n"); return 1; }
+		if (m_send(sock, buf, p, sessionkey, 1, mysid, mycaid, 0) < 0) { printf("SEND ECM FAIL\n"); return 1; }
 		n = m_recv(sock, buf, sessionkey, 8000);
 		printf("req[%d] ecmid=%d resp: n=%d buf=%02x %02x %02x\n", r, ecmid, n, buf[0], buf[1], buf[2]);
 		if (n >= 19 && buf[2] == 0x10) {
@@ -146,6 +153,7 @@ int main(int argc, char **argv)
 		}
 		fflush(stdout);
 		if ((seqmode||seqreplay) && r < nreq-1) sleep(4);
+		else if (fastmode && r < nreq-1) sleep(2);
 	}
 	return 0;
 }

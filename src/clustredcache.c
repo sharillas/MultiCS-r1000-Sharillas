@@ -1513,6 +1513,13 @@ int cache_setdcw( struct cache_data *req, uint8_t cw[16], cwcycle_t cwcycle, int
 		struct cardserver_data *cs = cfg.cardserver;
 		while (cs) {
 			if ( cs->option.fallowskipcwc && (cs->card.caid==pcache->caid) ) {
+				// SKIPCWC EXCLUDE SIDS: sids onde o skipcwc nao se aplica
+				if (cs->option.skipcwc_exclude.active) {
+					int xi, found = 0;
+					for (xi=0; xi<cs->option.skipcwc_exclude.nsids; xi++)
+						if (cs->option.skipcwc_exclude.sids[xi]==pcache->sid) { found = 1; break; }
+					if (found) { cs = cs->next; continue; }
+				}
 				if ( !isnullDCW(pcache->prevcw) && dcwcmp16(pcache->prevcw, cw) ) {
 					mlogf(LOGTRACE,getdbgflag(DBG_CACHE,0,0)," cache: skipcwc (same cw) ch %04x:%06x:%04x profile '%s'\n", pcache->caid, pcache->provid, pcache->sid, cs->name);
 					return DCW_ERROR | DCW_SKIP;

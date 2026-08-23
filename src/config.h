@@ -659,6 +659,8 @@ struct cardserver_data
 #ifdef CHECK_NEXTDCW
 			uint8_t check;
 			uint8_t halfnulled;
+			uint8_t cyclecheck;   // DCW CYCLE_CHECK: validar alternancia CW0/CW1
+			uint32_t mintime;     // DCW MINTIME: tempo minimo entre CWs (ms, 0=off)
 #ifdef DCWSWAP
 			uint8_t swap;
 #endif
@@ -697,6 +699,25 @@ struct cardserver_data
 			int dropbad;       // CWC DROPBAD (drop bad CW cycle)
 			int keepcycletime; // CWC KEEPCYCLETIME (minutos, 0=off)
 		} cwc;
+		// NAGRA protection (caid 18xx/19xx): checksum, provider, ciclo de
+		// CW por canal (aprendizagem 6 amostras), similaridade (sensitive),
+		// dcw duplicado/conflicting/fake half
+		struct {
+			int enable;     // ENABLE NAGRA
+			int chk;        // NAGRA CHK (checksum das 4 quads)
+			int prov;       // NAGRA PROV (provider na lista do perfil)
+			int cycle;      // NAGRA CYCLE (ciclo + similaridade por canal)
+			int onbad;      // NAGRA ONBAD (1=drop, 0=so log)
+			int sensitive;  // NAGRA SENSITIVE (bytes iguais a anterior, 0=off)
+		} nagra;
+		// SKIPCWC exclusions por SID (por perfil)
+		struct {
+			int active;             // DCW SKIPCWC_EXCLUDE_SIDS_ACTIVE
+			uint16_t sids[64];      // DCW SKIPCWC_EXCLUDE_SIDLIST
+			int nsids;
+		} skipcwc_exclude;
+		int fenableemu;    // ENABLE EMULATOR BISS (default ON)
+		int fenablelite;   // ENABLE LITE (filtro de canais CCcam.lite, default OFF)
 		// Health scoring (ordena/elimina servers por saude: sucesso, latencia,
 		// estabilidade, erros) - pesos configuraveis por perfil
 		struct {
@@ -1356,6 +1377,7 @@ struct config_data
 	char providers_file[256];
 	char ip2country_file[256];
 	char constcw_file[256];
+	char lite_file[256];
 	char blockedip_file[256];
 	struct ip2country_data *ip2country;
 	struct chninfo_data *chninfo;

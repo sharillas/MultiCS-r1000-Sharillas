@@ -1660,7 +1660,7 @@ void http_send_debug(int sock, http_request *req)
 			pfi++;
 			pfs = pfs->next;
 		}
-		sprintf( http_buf, "CONSTCW: %s\nSTYLESHEET: %s\nBLOCKEDIP: %s\n", cfg.constcw_file[0]?cfg.constcw_file:"(none)", cfg.stylesheet_file[0]?cfg.stylesheet_file:"(none)", cfg.blockedip_file[0]?cfg.blockedip_file:"(none)");
+		sprintf( http_buf, "CONSTCW: %s\nSTYLESHEET: %s\nBLOCKEDIP: %s\nLITE FILE: %s\n", cfg.constcw_file[0]?cfg.constcw_file:"(none)", cfg.stylesheet_file[0]?cfg.stylesheet_file:"(none)", cfg.blockedip_file[0]?cfg.blockedip_file:"(none)", cfg.lite_file[0]?cfg.lite_file:"(none)");
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "</pre></fieldset>");
 	}
@@ -1935,6 +1935,19 @@ void http_send_emulator(int sock, http_request *req)
 		http_send_redirect(sock, "/emulator");
 		return;
 	}
+	if (str_action && !strcmp(str_action,"updatekey")) {
+		if (!access("/opt/multics/tools_update_softcam.py", F_OK)) {
+			system("python3 /opt/multics/tools_update_softcam.py >/var/tmp/softcam_update.log 2>&1 &");
+			http_send_text(sock, "<span class='success'>Update SoftCam.Key iniciado. Resultado no Debug Log.</span>");
+		}
+		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (/opt/multics/tools_update_softcam.py)</span>");
+		return;
+	}
+	if (str_action && !strcmp(str_action,"applykeys")) {
+		emu_load();
+		http_send_text(sock, "<span class='success'>OK keys</span>");
+		return;
+	}
 
 	// ===== POST multipart (SoftCam.Key upload) =====
 	if (req->type==HTTP_POST) {
@@ -2034,7 +2047,7 @@ void http_send_emulator(int sock, http_request *req)
 
 	// Upload + add forms
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >SoftCam.Key Upload</h3><div class=stat-value><form method='POST' enctype='multipart/form-data' action='/emulator'><input type='file' name='softcamkey' accept='.key'>&nbsp;<input type='submit' value='Convert &amp; Load'></form></div>");
+	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >SoftCam.Key Upload</h3><div class=stat-value><form method='POST' enctype='multipart/form-data' action='/emulator'><input type='file' name='softcamkey' accept='.key'>&nbsp;<input type='submit' value='Convert &amp; Load'></form><br><input type='button' class='sbutton' value='Update SoftCam.Key' title='Descarrega o SoftCam.Key mais recente e aplica; chaves manuais sao preservadas' onclick=\"imgrequest('/emulator?action=updatekey',this)\">&nbsp;<span style='font-size:11px;'>download + parse automatico do SoftCam.Key remoto</span><br><input type='button' class='sbutton' value='Reload Keys' title='Rele o Softcam.cfg do disco' onclick=\"imgrequest('/emulator?action=applykeys',this)\"></div>");
 	tcp_writestr(&tcpbuf, sock, "</div>");
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
 	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Add BISS Key (CAID 2600)</h3><div class=stat-value><form method='GET' action='/emulator'><input type='hidden' name='action' value='add'><input type='hidden' name='addkey_type' value='biss'>SID: <input type='text' name='sid' placeholder='17ED' style='width:60px;margin-right:8px'>CW (16 or 32 hex): <input type='text' name='cw' placeholder='1A2B3C81...' style='width:280px;margin-right:8px'><input type='submit' value='Add BISS Key'></form></div>");
@@ -4680,6 +4693,13 @@ void http_send_profile(int sock, http_request *req)
 	sprintf( http_buf,"<tr><td>ENABLE CAMD35</td><td>%s</td></tr>", yesno(cs->option.fallowcamd35) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE CS378X</td><td>%s</td></tr>", yesno(cs->option.fallowcs378x) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE SKIPCWC</td><td>%s</td></tr>", yesno(cs->option.fallowskipcwc) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ENABLE CWC</td><td>%s (sens:%d dropold:%s keep:%dm onbad:%s)</td></tr>", yesno(cs->option.cwc.enable), cs->option.cwc.sensitive, yesno(cs->option.cwc.dropold), cs->option.cwc.keepcycletime, yesno(cs->option.cwc.dropbad) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ENABLE NAGRA</td><td>%s (chk:%s prov:%s cycle:%s onbad:%s sens:%d)</td></tr>", yesno(cs->option.nagra.enable), yesno(cs->option.nagra.chk), yesno(cs->option.nagra.prov), yesno(cs->option.nagra.cycle), yesno(cs->option.nagra.onbad), cs->option.nagra.sensitive ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ENABLE HEALTH</td><td>%s</td></tr>", yesno(cs->option.health.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ENABLE FALLBACK</td><td>%s</td></tr>", yesno(cs->option.fallback.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ENABLE TIMING</td><td>%s</td></tr>", yesno(cs->option.timing.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ENABLE EMULATOR BISS</td><td>%s</td></tr>", yesno(cs->option.fenableemu) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ENABLE LITE</td><td>%s (channels:%d)</td></tr>", yesno(cs->option.fenablelite), lite_count() ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE CACHE</td><td>%s</td></tr>", yesno(cs->option.fallowcache) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #ifdef CACHEEX
 	sprintf( http_buf,"<tr><td>ENABLE CACHEEX</td><td>%s</td></tr>", yesno(cs->option.fallowcacheex) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -8725,6 +8745,25 @@ void http_send_editor(int sock, http_request *req, int index)
 	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+
+	// ===== ACTIONS (ajax) =====
+	char *str_action = isset_get( req, "action");
+	if (str_action && !strcmp(str_action,"reloadchinfo")) {
+		read_chinfo( &cfg );
+		mlogf(LOGINFO, DBG_HTTP, " http: channelinfo reloaded from disk\n");
+		http_send_text(sock, "<span class='success'>OK</span>");
+		return;
+	}
+	if (str_action && !strcmp(str_action,"updatechinfo")) {
+		if (!access("/opt/multics/tools_update_channelinfo.py", F_OK)) {
+			system("python3 /opt/multics/tools_update_channelinfo.py --apply >/var/tmp/chinfo_update.log 2>&1 &");
+			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat)\n");
+			http_send_text(sock, "<span class='success'>OK</span>");
+		}
+		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (/opt/multics/tools_update_channelinfo.py)</span>");
+		return;
+	}
+
 	sprintf( http_buf, html_title, cfg.http.title, "Editor"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
 	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
@@ -8840,9 +8879,12 @@ void http_send_editor(int sock, http_request *req, int index)
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
 		emu_load();
+		lite_load();
 		ipblock_load();
 	}
 	else {
+
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'> <input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/editor?action=reloadchinfo',this)\">&nbsp;<span style='font-size:11px;'>parse do teu CCcam.channelinfo sem restart</span><br><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/editor?action=updatechinfo',this)\">&nbsp;<span style='font-size:11px;'>reconstroi CCcam.channelinfo do KingOfSat + reload automatico</span></div>");
 
 		tcp_writestr(&tcpbuf, sock, "<form enctype=\"multipart/form-data\" method=\"post\">");
 
