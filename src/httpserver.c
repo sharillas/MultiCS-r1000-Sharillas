@@ -1057,7 +1057,7 @@ void http_send_answer(int sock, http_request *req, char *type, char *buf, int si
 	char http_buf[2048];
 	struct tcp_buffer_data tcpbuf;
 	tcp_init(&tcpbuf);
-	sprintf( http_buf, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", type, size);
+	sprintf( http_buf, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\n\r\n", type, size);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_write(&tcpbuf, sock, (char*)buf, size );
 	tcp_flush(&tcpbuf, sock);
@@ -9922,7 +9922,7 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
 	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
 	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 document.getElementById('submitbutton').disabled=false;\n}");
-	tcp_writestr(&tcpbuf, sock, "\nfunction loadEditor(url)\n{\n	var f = url.split('file=')[1];\n	var x = new XMLHttpRequest();\n	x.open('GET','/configurations?action=editdiv&file='+f,true);\n	x.onreadystatechange=function()\n	{\n		if (x.readyState==4 && x.status==200) {\n			var d=document.getElementById('editsection');\n			if (d) d.innerHTML = x.responseText;\n			var b=document.getElementById('submitbutton');\n			if (b) b.disabled = false;\n		}\n	};\n	x.send(null);\n}");
+	tcp_writestr(&tcpbuf, sock, "\nfunction loadEditor(url)\n{\n	var f = url.split('file=')[1];\n	var x = new XMLHttpRequest();\n	x.open('GET','/configurations?action=editdiv&file='+f+'&t='+new Date().getTime(),true);\n	x.onreadystatechange=function()\n	{\n		if (x.readyState==4 && x.status==200) {\n			var d=document.getElementById('editsection');\n			if (d) d.innerHTML = x.responseText;\n			var b=document.getElementById('submitbutton');\n			if (b) b.disabled = false;\n		}\n	};\n	x.send(null);\n}");
 	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
 	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
 	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
