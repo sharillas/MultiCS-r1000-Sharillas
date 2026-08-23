@@ -41,7 +41,7 @@ extern struct trace_data trace;
 
 extern uint32_t flagdebug;
 
-#define MAX_DBGLINES 70
+#define MAX_DBGLINES 500
 #define MAX_DBGLINE_LEN 4000
 extern char dbgline[MAX_DBGLINES][MAX_DBGLINE_LEN];
 extern uint32_t dbgflag[MAX_DBGLINES];
