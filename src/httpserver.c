@@ -1099,7 +1099,8 @@ void http_send_ecmstatus(struct tcp_buffer_data *tcpbuf, int sock, ECM_DATA *ecm
 	tcp_write(tcpbuf, sock, http_buf, strlen(http_buf) );
 	// Status Msg
 	if (ecm->statusmsg) {
-		sprintf( http_buf,"<tr><td>%s</td></tr>", ecm->statusmsg);
+		if (ecm->nokbiss) sprintf( http_buf,"<tr><td class=nok-yellow>%s</td></tr>", ecm->statusmsg);
+		else sprintf( http_buf,"<tr><td>%s</td></tr>", ecm->statusmsg);
 		tcp_write(tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 	// Channel name
@@ -3913,7 +3914,7 @@ char *programid(unsigned int id)
 	return unknown;
 }
 
-char* str_laststatus[] = { "NOK", "OK" };
+char* str_laststatus[] = { "NOK", "OK", "BISS EMU" };
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -4324,7 +4325,7 @@ void http_send_newcamd_client(int sock, http_request *req)
 	//
 	if (get_action==8) {
 		char dbg[1536];
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s | Logins: %d (err %d, dif IP %d)<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago<br>Last channel: %04x:%06x:%04x (%dms) | Type: %d | Flags: 0x%08x | Profile: %s</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s | Logins: %d (err %d, dif IP %d)<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago<br>Last channel: %04x:%06x:%04x (%dms)%s | Type: %d | Flags: 0x%08x | Profile: %s</div>",
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->nblogin, cli->nbloginerror, cli->nbdiffip,
@@ -4332,6 +4333,7 @@ void http_send_newcamd_client(int sock, http_request *req)
 			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
 			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0,
 			cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, cli->lastecm.decodetime,
+			(cli->lastecm.status==2)?" <span class=nok-yellow>NOK (BISS EMU)</span>":"",
 			cli->type, cli->flags, cli->cs?cli->cs->name:"-");
 		http_send_text(sock, dbg);
 		return;
@@ -4519,6 +4521,14 @@ void http_send_newcamd_client(int sock, http_request *req)
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 #endif
+			// Last used share (status do ultimo decode)
+			if (cli->lastecm.status==1) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
+			}
+			else if (cli->lastecm.status==2) {
+				sprintf( http_buf,"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
 			//
 			if (ecm->server[0].srvid) {
 				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");
@@ -6062,6 +6072,14 @@ void http_send_cs378x_client(int sock, http_request *req)
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 #endif
+			// Last used share (status do ultimo decode)
+			if (cli->lastecm.status==1) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
+			}
+			else if (cli->lastecm.status==2) {
+				sprintf( http_buf,"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
 			//
 			if (ecm->server[0].srvid) {
 				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");
@@ -6712,6 +6730,14 @@ void http_send_camd35_client(int sock, http_request *req)
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 #endif
+			// Last used share (status do ultimo decode)
+			if (cli->lastecm.status==1) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
+			}
+			else if (cli->lastecm.status==2) {
+				sprintf( http_buf,"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
 			//
 			if (ecm->server[0].srvid) {
 				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");
@@ -7670,6 +7696,14 @@ void http_send_cccam_client(int sock, http_request *req)
 			}
 #endif
 
+			// Last used share (status do ultimo decode)
+			if (cli->lastecm.status==1) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
+			}
+			else if (cli->lastecm.status==2) {
+				sprintf( http_buf,"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
 			//
 			if (ecm->server[0].srvid) {
 				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");
@@ -8522,6 +8556,14 @@ void http_send_mgcamd_client(int sock, http_request *req)
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 #endif
+			// Last used share (status do ultimo decode)
+			if (cli->lastecm.status==1) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
+			}
+			else if (cli->lastecm.status==2) {
+				sprintf( http_buf,"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
 			//
 			if (ecm->server[0].srvid) {
 				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");

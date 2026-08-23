@@ -351,7 +351,7 @@ void cs_senddcw_cli(struct cs_client_data *cli)
 	}
 	else { //if (ecm->data->dcwstatus==STAT_DCW_FAILED)
 		if (enablefreeze) cli->freeze++;
-		cli->lastecm.status=0;
+		cli->lastecm.status = ecm->nokbiss ? 2 : 0;
 		cli->lastecm.dcwsrctype = DCW_SOURCE_NONE;
 		cli->lastecm.dcwsrcid = 0;
 		buf[0] = ecm->ecm[0];
