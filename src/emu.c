@@ -154,6 +154,8 @@ void emu_init()
 	else emu_enabled = 0;
 }
 
+static void emu_clean_name(char *s);
+
 // formato Softcam.cfg: caid:provid:sid:CW32hex  (comentarios # ou ;)
 // canal name: comentario "# nome" ou "; nome" na mesma linha
 void emu_load()
@@ -183,6 +185,7 @@ void emu_load()
 				pending_name[sizeof(pending_name)-1]=0;
 				char *nl = strchr(pending_name,'\n'); if (nl) *nl=0;
 				char *cr = strchr(pending_name,'\r'); if (cr) *cr=0;
+				emu_clean_name(pending_name);
 			}
 			continue;
 		}
@@ -199,6 +202,7 @@ void emu_load()
 			comment[sizeof(comment)-1]=0;
 			char *nl = strchr(comment,'\n'); if (nl) *nl=0;
 			char *cr = strchr(comment,'\r'); if (cr) *cr=0;
+			emu_clean_name(comment);
 		}
 		unsigned int caid=0, provid=0, sid=0;
 		char cwhex[64];
@@ -230,6 +234,11 @@ void emu_save()
 	char tmp[512];
 	snprintf(tmp, sizeof(tmp), "%s.tmp", p);
 	FILE *fp = fopen(tmp, "w");
+	if (!fp) {
+		pthread_mutex_unlock(&emu_mutex);
+		mlogf(LOGERROR,DBG_CONFIG," emu: SEM PERMISSOES para gravar %s (executa como root ou chmod 666)\n", p);
+		return;
+	}
 	if (fp) {
 		fprintf(fp, "# MultiCS r1000 Emulator - Constant CW keys\n");
 		fprintf(fp, "# Auto-updated by MultiCS Emulator\n");
@@ -265,7 +274,10 @@ void emu_save()
 			k = k->next;
 		}
 		fclose(fp);
-		rename(tmp, p);
+		if (rename(tmp, p)) {
+			unlink(tmp);
+			mlogf(LOGERROR,DBG_CONFIG," emu: nao consegui gravar %s (rename falhou - permissoes?)\n", p);
+		}
 	}
 	pthread_mutex_unlock(&emu_mutex);
 }
@@ -276,6 +288,17 @@ int emu_log_get(int i, struct emu_log_data *out)
 	int idx = (emu_logidx-1-i+EMU_MAX_LOG*2) % EMU_MAX_LOG;
 	memcpy(out, &emu_log[idx], sizeof(struct emu_log_data));
 	return 1;
+}
+
+// limpa o nome do canal: remove ';' e espacos no inicio e no fim
+// (no SoftCam.Key o ';' fica colado ao nome e aparecia na GUI)
+static void emu_clean_name(char *s)
+{
+	char *q = s;
+	while (*q==' '||*q=='\t'||*q==';') q++;
+	if (q!=s) memmove(s, q, strlen(q)+1);
+	int l = (int)strlen(s);
+	while (l>0 && (s[l-1]==' '||s[l-1]=='\t'||s[l-1]==';')) s[--l]=0;
 }
 
 // parse SoftCam.Key (formato CCcam "F xxxx TYPE KEY")
@@ -331,6 +354,7 @@ int emu_parse_softcam(const char *data, int len)
 				if (nbytes==8) memcpy(cw+8, cw, 8);
 				else if (nbytes!=16) nbytes = 0;
 				if (sid && nbytes) {
+					if (rest[0]) emu_clean_name(rest);
 					emu_addkey(0x2600, 0, (uint16_t)sid, cw, rest[0]?rest:"", 0);
 					added++;
 				}
@@ -352,6 +376,7 @@ int emu_parse_softcam(const char *data, int len)
 				if (nbytes==8) memcpy(cw+8, cw, 8);
 				else if (nbytes!=16) nbytes = 0;
 				if (sid && nbytes) {
+					if (rest[0]) emu_clean_name(rest);
 					emu_addkey(0x1010, 0, (uint16_t)sid, cw, rest[0]?rest:"", 0);
 					added++;
 				}

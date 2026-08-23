@@ -2043,7 +2043,13 @@ void http_send_emulator(int sock, http_request *req)
 								if (end && end>pdata) {
 									int added = emu_parse_softcam( pdata, end-pdata );
 									mlogf(LOGINFO,DBG_HTTP," emu: SoftCam.Key upload: %d keys added\n", added);
+									if (added>0) sprintf( http_buf, "<span class='success'>Guardado com sucesso: %d chaves novas</span>", added);
+									else sprintf( http_buf, "<span class='miss'>Nao encontrei chaves novas nesse ficheiro (ja existiam ou formato errado)</span>");
+									http_send_text(sock, http_buf);
+									return;
 								}
+								http_send_text(sock, "<span class='failed'>Nao consegui processar o upload</span>");
+								return;
 							}
 						}
 					}
@@ -2065,6 +2071,7 @@ void http_send_emulator(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
 	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
 	tcp_writestr(&tcpbuf, sock, "\nfunction filterKeys(){var q=document.getElementById('keysearch').value.toLowerCase();var t=document.getElementById('keystable');var r=t.querySelectorAll('tbody tr');for(var i=0;i<r.length;i++){r[i].style.display=r[i].textContent.toLowerCase().indexOf(q)>-1?'':'none';}}");
+	tcp_writestr(&tcpbuf, sock, "\nfunction uploadSoftcam(e)\n{\n	if(e&&e.preventDefault)e.preventDefault();\n	var f=document.getElementById('softcamform');\n	if(!f)return true;\n	var s=document.getElementById('softcamstatus');\n	if(s)s.innerHTML='<span class=busy>A processar...</span>';\n	var x=new XMLHttpRequest();\n	x.open('POST','/emulator',true);\n	x.onreadystatechange=function()\n	{\n		if(x.readyState==4){\n			if(x.status==200&&s)s.innerHTML=x.responseText;\n			else if(s)s.innerHTML='<span class=failed>Erro HTTP '+x.status+'</span>';\n		}\n	};\n	x.send(new FormData(f));\n	return false;\n}");
 	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 setautorefresh(autorefresh);\n}");
 	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
 	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
@@ -2107,7 +2114,7 @@ void http_send_emulator(int sock, http_request *req)
 
 	// Upload + add forms
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >SoftCam.Key Upload</h3><div class=stat-value><form method='POST' enctype='multipart/form-data' action='/emulator'><input type='file' name='softcamkey' accept='.key'>&nbsp;<input type='submit' value='Convert &amp; Load'></form><br><input type='button' class='sbutton' value='Update SoftCam.Key' title='Descarrega o SoftCam.Key mais recente e aplica; chaves manuais sao preservadas' onclick=\"imgrequest('/emulator?action=updatekey',this)\">&nbsp;<span style='font-size:11px;'>download + parse automatico do SoftCam.Key remoto</span><br><input type='button' class='sbutton' value='Reload Keys' title='Rele o Softcam.cfg do disco' onclick=\"imgrequest('/emulator?action=applykeys',this)\"></div>");
+	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >SoftCam.Key Upload</h3><div class=stat-value><form id='softcamform' method='POST' enctype='multipart/form-data' action='/emulator' onsubmit='return uploadSoftcam(event)'><input type='file' name='softcamkey' accept='.key'>&nbsp;<input type='submit' value='Convert &amp; Load'>&nbsp;<span id='softcamstatus'></span></form><br><input type='button' class='sbutton' value='Update SoftCam.Key' title='Descarrega o SoftCam.Key mais recente e aplica; chaves manuais sao preservadas' onclick=\"imgrequest('/emulator?action=updatekey',this)\">&nbsp;<span style='font-size:11px;'>download + parse automatico do SoftCam.Key remoto</span><br><input type='button' class='sbutton' value='Reload Keys' title='Rele o Softcam.cfg do disco' onclick=\"imgrequest('/emulator?action=applykeys',this)\"></div>");
 	tcp_writestr(&tcpbuf, sock, "</div>");
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
 	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Add BISS Key (CAID 2600)</h3><div class=stat-value><form method='GET' action='/emulator'><input type='hidden' name='action' value='add'><input type='hidden' name='addkey_type' value='biss'>SID: <input type='text' name='sid' placeholder='17ED' style='width:60px;margin-right:8px'>CW (16 or 32 hex): <input type='text' name='cw' placeholder='1A2B3C81...' style='width:280px;margin-right:8px'><input type='submit' value='Add BISS Key'></form></div>");
