@@ -283,7 +283,7 @@ void decryptcache(uint8_t *buf, int len)
 #define CACHE_SENT_REPLY    2
 
 #define BIT_CACHE_NEWPROTO  0x01
-#define BIT_CACHE_HACK      0x10
+#define BIT_CACHE_HANDSHAKE      0x10
 #define BIT_CACHE_REQPING   0x80
 
 //	uint8_t status; // 0:Wait; 1: dcw received
@@ -1103,7 +1103,7 @@ void cache_send_ping(struct cacheserver_data *cache, struct cachepeer_data *peer
 	buf[1] = 'M';
 	buf[2] = 'C';
 #ifndef PUBLIC
-	buf[3] = 1 | BIT_CACHE_HACK;
+	buf[3] = 1 | BIT_CACHE_HANDSHAKE;
 #else
 	buf[3] = 1;
 #endif
@@ -1766,7 +1766,7 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 				else {
 					if (!pcache->tag) pcache->tag = req.tag; // set tag if not set (coming from cahceex)
 					if (!pcache->provid && req.provid) pcache->provid = req.provid; // set provid if not set (coming from csp)
-					if ( cfg.cache.forward || ((peer->ismultics)&&(peer->protocol&BIT_CACHE_HACK)) )
+					if ( cfg.cache.forward || ((peer->ismultics)&&(peer->protocol&BIT_CACHE_HANDSHAKE)) )
 					if ( pcache->cwdata && !(pcache->flags&CACHE_FLAG_SENDPIPE) ) {
 						struct cw_cache_data *cwdata = pcache->cwdata;
 						while (cwdata) {
