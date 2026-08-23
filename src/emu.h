@@ -40,6 +40,7 @@ extern uint32_t emu_lastmatch;
 void emu_init();
 void emu_load();
 void emu_save();
+void emu_path(char *out, int outsz);
 void emu_addkey(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw[16], const char *name, int manual);
 int emu_delkey(uint16_t caid, uint32_t provid, uint16_t sid);
 int emu_has_constcw(uint16_t caid, uint32_t provid, uint16_t sid);
