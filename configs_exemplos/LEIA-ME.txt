@@ -1,5 +1,5 @@
-# ============================================================
-# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.10.9)
+﻿# ============================================================
+# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.20)
 # ============================================================
 
 Ficheiros e funcao de cada um (todos com explicacoes detalhadas

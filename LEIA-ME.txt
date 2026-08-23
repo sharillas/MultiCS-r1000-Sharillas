@@ -1,4 +1,4 @@
-MultiCS r1000 v1.10.9 - by Sharillas@2026
+﻿MultiCS r1000 v1.20 - by Sharillas@2026
 ==========================================
 
 Pacote de release (ultima build, bugs corrigidos)
@@ -11,7 +11,7 @@ CONTEM:
   install.sh             instalador (configs para /var/etc, binarios para /opt/multics)
 
 INSTALACAO NA VPS (Debian/Ubuntu, como root):
-  cd /tmp && tar xzf multics-r1000-v1.10.9.tar.gz && cd multics-r1000
+  cd /tmp && tar xzf multics-r1000-v1.20.tar.gz && cd multics-r1000
   bash install.sh /opt/multics
   /opt/multics/multics.x64 -b -C /var/etc/multics.cfg
 
@@ -21,7 +21,7 @@ WEB UI:  http://IP:5500   (user: admin / pass: admin - mudar no multics.cfg)
 Portas: HTTP 5500, Telnet 5600, CCcam 16000, MGcamd 21000,
         camd35 7502, cs378x 8600, cache 5599
 
-NOVO/FIXES desta build (v1.10.9):
+NOVO/FIXES desta build (v1.20):
   - Upload Configs na pagina Configs com validacao: linhas com erro sao
     comentadas automaticamente, opcoes default ativas, e em ultimo recurso
     faz rollback do backup (.bak) - nunca crasha nem fica sem arrancar
