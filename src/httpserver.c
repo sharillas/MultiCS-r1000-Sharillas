@@ -3189,7 +3189,7 @@ void http_send_cache(int sock, http_request *req)
 	if (str_id)	get_id = atoi(str_id);
 	// Param List
 	char *str_list = isset_get( req, "list");
-	int get_list = LIST_CONNECTED;
+	int get_list = LIST_ALL; // default: mostrar todos os peers
 	if (str_list) {
 		if (!strcmp(str_list,"active")) get_list = LIST_CONNECTED;
 		else if (!strcmp(str_list,"inactive")) get_list = LIST_DISCONNECTED;
