@@ -918,7 +918,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		sprintf( buf, class, "/restart", "Restart"); tcp_writestr(tcpbuf, sock, buf);
 	}
 
-	tcp_writestr(tcpbuf, sock, "<li><button id='themeToggle' class='theme-toggle' onclick='toggleTheme()'>Dark</button></li>");
+	tcp_writestr(tcpbuf, sock, "<li><button id='themeToggle' class='mbtn' onclick='toggleTheme()'>Dark</button></li>");
 	tcp_writestr(tcpbuf, sock, "<li><a class='logout-btn' href='/login?action=logout'>Logout</a></li>");
 	tcp_writestr(tcpbuf, sock, "</ul>");
 	tcp_writestr(tcpbuf, sock, "<div class='brand-line'><span class='brand'>MultiCS r"REVISION_STR"</span> <span class='brand-by'>by Sharillas</span></div></div>\n");
