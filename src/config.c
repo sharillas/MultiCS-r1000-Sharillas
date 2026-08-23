@@ -1688,6 +1688,7 @@ sid accept:
 				parse_spaces();
 				if ( parse_path(str) ) {
 					strcpy( cfg->channelinfo_file, str );
+					add_filename( cfg, str );
 					read_chinfo( cfg );
 				}
 			}

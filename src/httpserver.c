@@ -3086,7 +3086,8 @@ void getcachecells(struct cachepeer_data *peer, char cell[12][2048] )
 			strcat( cell[11], temp );
 		}
 	}
-	//sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"imgrequest('/cachepeer?id=%d&action=debug',this)\">DBG</span>",peer->id); strcat( cell[9], temp );
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cachepeer?id=%d&action=dbginfo')\">DBG</span>",peer->id,peer->id);
+	strcat( cell[11], temp );
 	strcat( cell[11], "</span>");
 
 }
@@ -3414,11 +3415,23 @@ void http_send_cache_peer(int sock, http_request *req)
 		else if (!strcmp(str_action,"disable")) get_action = 3;
 		else if (!strcmp(str_action,"enable")) get_action = 4;
 		else if (!strcmp(str_action,"status")) get_action = 5;
+		else if (!strcmp(str_action,"dbginfo")) get_action = 8;
 		else if (!strcmp(str_action,"sms")) get_action = 10;
 		else str_action = NULL;
 	}
 	if (!str_action) str_action = "page";
 	//
+	if (get_action==8) {
+		char dbg[1024];
+		sprintf( dbg, "<div class='dbginfo'><b>%s:%d</b> (id %d) | Ping: %dms | Status: %s | Replies: %d | Hits: %d (%d instant)<br>Flags: 0x%08x | Last ch: %04x:%06x:%04x (%dms) | Program: %s %s</div>",
+			peer->host->name, peer->port, peer->id, peer->ping,
+			IS_DISABLED(peer->flags)?"DISABLED":"ENABLED",
+			peer->repok, peer->hitnb, peer->ihitnb,
+			peer->flags, peer->lastcaid, peer->lastprov, peer->lastsid, peer->lastdecodetime,
+			peer->program, peer->version);
+		http_send_text(sock, dbg);
+		return;
+	}
 	if (get_action==3) {
 		peer->flags |= FLAG_DISABLE;
 		peer->ping = 0;
@@ -3630,9 +3643,86 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][2048])
 	}
 
 	strcat( cell[9], "<span style='float:right;'>");
+	if (cs->flags&FLAG_DISABLE) {
+		sprintf( temp," <span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=on',this);setTimeout('updateDiv()',3000)\">ON</span>",cs->id);
+		strcat( cell[9], temp );
+	}
+	else {
+		sprintf( temp," <span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000)\">OFF</span>",cs->id);
+		strcat( cell[9], temp );
+	}
 	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/profile?id=%d&action=dbginfo')\">DBG</span>",cs->id,cs->id);
 	strcat( cell[9], temp );
 	strcat( cell[9], "</span>");
+}
+
+
+#define PFILE_MAX (1024*1024)
+static char pfilebuf[PFILE_MAX+1];
+static pthread_mutex_t pfile_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// comenta (on=0) ou descomenta (on=1) a seccao [name] no profiles.cfg.
+// Escreve em-place: o reload e feito pela thread de config (inotify).
+int profile_config_toggle(char *name, int on)
+{
+	char *fname = NULL;
+	struct filename_data *fs = cfg.files;
+	while (fs) {
+		if (strstr(fs->name,"profiles.cfg")) { fname = fs->name; break; }
+		fs = fs->next;
+	}
+	if (!fname) return -1;
+	pthread_mutex_lock(&pfile_mutex);
+	FILE *fp = fopen(fname, "r");
+	if (!fp) { pthread_mutex_unlock(&pfile_mutex); return -1; }
+	int size = (int)fread(pfilebuf, 1, PFILE_MAX, fp);
+	fclose(fp);
+	if ((size<=0)||(size>=PFILE_MAX)) { pthread_mutex_unlock(&pfile_mutex); return -1; }
+	pfilebuf[size] = 0;
+
+	FILE *fo = fopen(fname, "w");
+	if (!fo) { pthread_mutex_unlock(&pfile_mutex); return -1; }
+
+	char *p = pfilebuf;
+	int intarget = 0;
+	while (*p) {
+		char *start = p;
+		while (*p && *p!='\n') p++;
+		int hasnl = (*p=='\n');
+		char *eol = p;
+		if (*p) p++;
+		*eol = 0;
+		char *q = start;
+		while (*q==' '||*q=='\t') q++;
+		char *after = q;
+		while (*after=='#') after++;
+		while (*after==' '||*after=='\t') after++;
+		if (*after=='[') {
+			char secname[128] = "";
+			char *a = after+1;
+			int n = 0;
+			while (*a && *a!=']' && n<120) secname[n++] = *a++;
+			secname[n] = 0;
+			if (!strcmp(secname, name)) intarget = on ? 2 : 1;
+			else intarget = 0;
+		}
+		if (intarget==1) {
+			if (*start!='#') fwrite("#",1,1,fo);
+			fwrite(start,1,strlen(start),fo);
+		}
+		else if (intarget==2) {
+			char *w = start;
+			if (*w=='#') w++;
+			while (*w==' '||*w=='\t') w++;
+			fwrite(w,1,strlen(w),fo);
+		}
+		else fwrite(start,1,strlen(start),fo);
+		if (hasnl) fwrite("\n",1,1,fo);
+	}
+	fclose(fo);
+	pthread_mutex_unlock(&pfile_mutex);
+	mlogf(LOGINFO, DBG_HTTP, " http: profile '%s' %s no %s (reload automatico)\n", name, on?"ativado":"desativado", fname);
+	return 0;
 }
 
 
@@ -3649,10 +3739,17 @@ void http_send_profiles(int sock, http_request *req)
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
+		else if (!strcmp(str_action,"onprof")) get_action = ACTION_ENABLE; // descomentar perfil por nome
 #ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
 #endif
 		else str_action = NULL;
+	}
+	if (get_action==ACTION_ENABLE) {
+		char *pname = isset_get( req, "name");
+		if (pname && pname[0]) profile_config_toggle(pname, 1);
+		http_send_ok(sock);
+		return;
 	}
 	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
 	//
@@ -3797,6 +3894,65 @@ void http_send_profiles(int sock, http_request *req)
 	sprintf( http_buf, "<td colspan=2> </td></tr>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
 	sprintf( http_buf, "\n</table>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+	// Perfis comentados (#[seccao] no profiles.cfg) -> botao ON para reativar
+	{
+		char *fname = NULL;
+		struct filename_data *fsx = cfg.files;
+		while (fsx) {
+			if (strstr(fsx->name,"profiles.cfg")) { fname = fsx->name; break; }
+			fsx = fsx->next;
+		}
+		if (fname) {
+			pthread_mutex_lock(&pfile_mutex);
+			FILE *fp = fopen(fname, "r");
+			if (fp) {
+				int sz = (int)fread(pfilebuf, 1, PFILE_MAX, fp);
+				fclose(fp);
+				if ((sz>0)&&(sz<PFILE_MAX)) {
+					pfilebuf[sz] = 0;
+					char *p = pfilebuf;
+					int any = 0;
+					char listbuf[8192];
+					int lb = 0;
+					listbuf[0] = 0;
+					while (*p) {
+						char *start = p;
+						while (*p && *p!='\n') p++;
+						int hasnl = (*p=='\n');
+						char *eol = p;
+						if (*p) p++;
+						*eol = 0;
+						char *q = start;
+						while (*q==' '||*q=='\t') q++;
+						if (*q=='#') {
+							q++;
+							while (*q==' '||*q=='\t') q++;
+							if (*q=='[') {
+								char secname[128] = "";
+								char *a = q+1;
+								int n = 0;
+								while (*a && *a!=']' && n<120) secname[n++] = *a++;
+								secname[n] = 0;
+								if (secname[0]) {
+									if (!any) any = 1;
+									if (lb < (int)sizeof(listbuf)-256)
+										lb += sprintf( listbuf+lb, "<tr><td>%s</td><td><span class='icobtn on' title='Ativar (remove o #)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000)\">ON</span></td></tr>", secname, secname);
+								}
+							}
+						}
+						if (hasnl) *eol = '\n';
+					}
+					if (any) {
+						tcp_writestr(&tcpbuf, sock, "<br><table class=maintable width=100%%><tr><th>Commented Profiles</th><th></th></tr>");
+						tcp_write(&tcpbuf, sock, listbuf, lb);
+						tcp_writestr(&tcpbuf, sock, "</table>");
+					}
+				}
+			}
+			pthread_mutex_unlock(&pfile_mutex);
+		}
+	}
 
 	if (get_action==ACTION_PAGE) {
 		tcp_writestr(&tcpbuf, sock, "\n</div></body></html>");
@@ -4602,10 +4758,22 @@ void http_send_profile(int sock, http_request *req)
 #endif
 		else if (!strcmp(str_action,"debug")) get_action = 7;
 		else if (!strcmp(str_action,"dbginfo")) get_action = 8;
+		else if (!strcmp(str_action,"off")) get_action = 9;  // comentar perfil no profiles.cfg
+		else if (!strcmp(str_action,"on")) get_action = 10;  // descomentar perfil no profiles.cfg
 		else str_action = NULL;
 	}
 	if (!str_action) str_action = "page";
 	//
+	if (get_action==9) {
+		profile_config_toggle(cs->name, 0);
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==10) {
+		profile_config_toggle(cs->name, 1);
+		http_send_ok(sock);
+		return;
+	}
 	if (get_action==8) {
 		char dbg[1024];
 		int btotal, bconnected, bactive;
@@ -8986,6 +9154,9 @@ void http_send_editor(int sock, http_request *req, int index)
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 		}
+		// footer (igual as outras pages)
+		tcp_writestr(&tcpbuf, sock, "<div class='home-footer'><span class='hf-ver'>MultiCS r1000 v1.0 @ All Rights Reserved @ by Sharillas@2026</span></div>");
+		tcp_writestr(&tcpbuf, sock, "</body></html>");
 		tcp_flush(&tcpbuf, sock);
 	}
 }
