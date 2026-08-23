@@ -1679,7 +1679,18 @@ sid accept:
 		else if (!strcmp(str,"FILE")) {
 			parse_name(str);
 			uppercase(str);
-			if (!strcmp(str,"CHANNELINFO")) {
+			if (!strcmp(str,"LITE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_spaces();
+				if ( parse_path(str) ) {
+					strcpy( cfg->lite_file, str );
+				}
+			}
+			else if (!strcmp(str,"CHANNELINFO")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
