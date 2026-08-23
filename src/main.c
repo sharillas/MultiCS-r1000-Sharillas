@@ -53,7 +53,9 @@
 #include "emu.h"
 #include "cwc.h"
 #include "chnbudget.h"
+#include "nagra.h"
 #include "ipblock.h"
+#include "lite.h"
 
 #include "dcw.h"
 
@@ -427,6 +429,8 @@ char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, 
 	if ( !accept_prov(cs,provid) ) return("Wrong provider");
 	// Check for sid
 	if ( !accept_sid(cs, provid, sid, chid, ecmlen, cw1cycle) ) return("Channel denied");
+	// BUILD LITE: ignorar canais fora da lista
+	if ( cs->option.fenablelite && !lite_check(caid, provid, sid) ) return("Ignored (lite)");
 	// check for length
 	if ( !cs_check_ecmlen(cs, ecmlen) ) return("Wrong ecm length");
 	// check for viaccess
@@ -519,6 +523,8 @@ void forward_cs378x(ECM_DATA *ecm);
 #include "emu.c"   // Emulator (constcw / BISS)
 #include "cwc.c"   // CW Cycle Check (estilo OSCam)
 #include "chnbudget.c" // Timing budget por canal (cryptoperiod adaptativo)
+#include "nagra.c" // NAGRA protection (18xx/19xx)
+#include "lite.c"  // BUILD LITE: filtro de canais CCcam.lite
 #include "ipblock.c" // Lista de IPs bloqueados (Iptables)
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -269,6 +269,13 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.server.validecmtime = 0; // cardserver max ecm reply time
 	//cs->option.retry.cccam = 0; // Max number of retries for CCcam servers
 
+	// NAGRA protection defaults (ativada por perfil com ENABLE NAGRA: 1)
+	cs->option.nagra.chk = 1;        // checksum das 4 quads
+	cs->option.nagra.prov = 0;       // provider na lista do perfil
+	cs->option.nagra.cycle = 1;      // ciclo + similaridade por canal
+	cs->option.nagra.onbad = 1;      // drop em bad dcw
+	cs->option.nagra.sensitive = 4;  // bytes iguais a CW anterior
+
 	// Flags
 	cs->option.faccept0caid = 1;
 	cs->option.faccept0provider = 1;
@@ -279,6 +286,8 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.fallowcamd35 = 1;
 	cs->option.fallowcs378x = 1;
 	cs->option.fallowskipcwc = 1; // default ON: ignorar cws repetidas
+	cs->option.fenableemu = 1;    // default ON: emulador BISS por perfil
+	cs->option.fenablelite = 0;   // default OFF: filtro de canais CCcam.lite
 
 	cs->option.fallowcache = 1;
 #ifdef CACHEEX
@@ -1773,6 +1782,24 @@ sid accept:
 			}
 		}
 
+		// top-level: LITE FILE: ... (lista de canais activos para ENABLE LITE)
+		else if (!strcmp(str,"LITE")) {
+			parse_spaces();
+			if (!strncmp(iparser,"FILE",4)) {
+				iparser += 4;
+				parse_spaces();
+			}
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			parse_spaces();
+			if ( parse_path(str) ) {
+				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: read LITE file %s\n",str);
+				strcpy( cfg->lite_file, str );
+			}
+		}
+
 		// top-level: BLOCKEDIP FILE: ...  (sinonimo de FILE BLOCKEDIP: ...)
 		else if (!strcmp(str,"BLOCKEDIP")) {
 			parse_spaces();
@@ -1888,6 +1915,51 @@ sid accept:
 					defaultcs.option.dcw.retry = atoi(str);
 					if (defaultcs.option.dcw.retry<0) defaultcs.option.dcw.retry=0;
 					else if (defaultcs.option.dcw.retry>5) defaultcs.option.dcw.retry=5;
+				}
+				else if (!strcmp(str,"CYCLE_CHECK")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.dcw.cyclecheck = parse_boolean();
+				}
+				else if (!strcmp(str,"MINTIME")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.dcw.mintime = atoi(str);
+					if (defaultcs.option.dcw.mintime<0) defaultcs.option.dcw.mintime=0;
+					else if (defaultcs.option.dcw.mintime>60000) defaultcs.option.dcw.mintime=60000;
+				}
+				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.skipcwc_exclude.active = parse_boolean();
+				}
+				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDLIST")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					int x = 0;
+					while (x<64) {
+						parse_spaces();
+						if ( parse_hex(str)>0 ) {
+							defaultcs.option.skipcwc_exclude.sids[x] = hex2int(str);
+							x++;
+						}
+						else break;
+						if (*iparser==',') iparser++;
+					}
+					defaultcs.option.skipcwc_exclude.nsids = x;
 				}
 #ifdef CHECK_NEXTDCW
 				else if (!strcmp(str,"CHECK")) {
@@ -2037,6 +2109,61 @@ sid accept:
 					defaultcs.option.timing.minperiod = atoi(str);
 					if (defaultcs.option.timing.minperiod<1000) defaultcs.option.timing.minperiod=1000;
 					else if (defaultcs.option.timing.minperiod>60000) defaultcs.option.timing.minperiod=60000;
+				}
+			}
+			else if (!strcmp(str,"NAGRA")) {
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"ENABLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.nagra.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"CHK") || !strcmp(str,"CHECK")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.nagra.chk = parse_boolean();
+				}
+				else if (!strcmp(str,"PROV") || !strcmp(str,"PROVIDER")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.nagra.prov = parse_boolean();
+				}
+				else if (!strcmp(str,"CYCLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.nagra.cycle = parse_boolean();
+				}
+				else if (!strcmp(str,"ONBAD")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.nagra.onbad = parse_boolean();
+				}
+				else if (!strcmp(str,"SENSITIVE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.nagra.sensitive = atoi(str);
+					if (defaultcs.option.nagra.sensitive<0) defaultcs.option.nagra.sensitive=0;
+					else if (defaultcs.option.nagra.sensitive>8) defaultcs.option.nagra.sensitive=8;
 				}
 			}
 			else if ( !strcmp(str,"SERVER") ) {
@@ -2504,6 +2631,32 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.timing.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"NAGRA")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.nagra.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"EMULATOR")) {
+					parse_name(str); // BISS
+					uppercase(str);
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fenableemu = parse_boolean();
+				}
+				else if (!strcmp(str,"LITE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fenablelite = parse_boolean();
 				}
 #ifdef CACHEEX
 				else if (!strcmp(str,"CACHEEX")) {
@@ -3648,6 +3801,51 @@ link_mgcamd_user:
 				if (cardserver->option.dcw.retry<0) cardserver->option.dcw.retry=0;
 				else if (cardserver->option.dcw.retry>5) cardserver->option.dcw.retry=5;
 			}
+			else if (!strcmp(str,"CYCLE_CHECK")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.dcw.cyclecheck = parse_boolean();
+			}
+			else if (!strcmp(str,"MINTIME")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.dcw.mintime = atoi(str);
+				if (cardserver->option.dcw.mintime<0) cardserver->option.dcw.mintime=0;
+				else if (cardserver->option.dcw.mintime>60000) cardserver->option.dcw.mintime=60000;
+			}
+			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.skipcwc_exclude.active = parse_boolean();
+			}
+			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDLIST")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				int x = 0;
+				while (x<64) {
+					parse_spaces();
+					if ( parse_hex(str)>0 ) {
+						cardserver->option.skipcwc_exclude.sids[x] = hex2int(str);
+						x++;
+					}
+					else break;
+					if (*iparser==',') iparser++;
+				}
+				cardserver->option.skipcwc_exclude.nsids = x;
+			}
 
 #ifdef CHECK_NEXTDCW
 			else if (!strcmp(str,"CHECK")) {
@@ -3831,6 +4029,66 @@ link_mgcamd_user:
 				cardserver->option.timing.minperiod = atoi(str);
 				if (cardserver->option.timing.minperiod<1000) cardserver->option.timing.minperiod=1000;
 				else if (cardserver->option.timing.minperiod>60000) cardserver->option.timing.minperiod=60000;
+			}
+		}
+
+		else if (!strcmp(str,"NAGRA")) {
+			if (!cardserver) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip NAGRA, undefined profile\n",file->nbline,iparser-currentline);
+				continue;
+			}
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"ENABLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.nagra.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"CHK") || !strcmp(str,"CHECK")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.nagra.chk = parse_boolean();
+			}
+			else if (!strcmp(str,"PROV") || !strcmp(str,"PROVIDER")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.nagra.prov = parse_boolean();
+			}
+			else if (!strcmp(str,"CYCLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.nagra.cycle = parse_boolean();
+			}
+			else if (!strcmp(str,"ONBAD")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.nagra.onbad = parse_boolean();
+			}
+			else if (!strcmp(str,"SENSITIVE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.nagra.sensitive = atoi(str);
+				if (cardserver->option.nagra.sensitive<0) cardserver->option.nagra.sensitive=0;
+				else if (cardserver->option.nagra.sensitive>8) cardserver->option.nagra.sensitive=8;
 			}
 		}
 
@@ -4204,6 +4462,32 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cardserver->option.timing.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"NAGRA")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.nagra.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"EMULATOR")) {
+				parse_name(str); // BISS
+				uppercase(str);
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.fenableemu = parse_boolean();
+			}
+			else if (!strcmp(str,"LITE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.fenablelite = parse_boolean();
 			}
 #ifdef CACHEEX
 			else if (!strcmp(str,"CACHEEX")) {

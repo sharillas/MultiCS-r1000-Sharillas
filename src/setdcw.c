@@ -134,6 +134,101 @@ inline int dcwcheck_nds( ECM_DATA *ecm, uint8_t dcw[16], int swap )
 
 
 
+// Per-channel DCW state: DCW MINTIME + DCW CYCLE_CHECK (por perfil)
+struct dcwchan_data {
+	struct dcwchan_data *next;
+	uint16_t caid;
+	uint32_t provid;
+	uint16_t sid;
+	uint8_t cw[16];
+	uint32_t lasttime;
+	uint8_t lasthalf; // 0 = metade0 mudou por ultimo, 1 = metade1, 2 = ambas/desconhecido
+};
+
+static struct dcwchan_data *dcwchan_list = NULL;
+static pthread_mutex_t dcwchan_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// 0 = ok, 1 = rejeitar
+int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
+{
+	char nullcw[8] = "\0\0\0\0\0\0\0\0";
+	uint32_t now = GetTickCount();
+	int reject = 0;
+
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==ecm->caid && e->provid==ecm->provid && e->sid==ecm->sid) break;
+		e = e->next;
+	}
+	if (!e) {
+		e = malloc(sizeof(struct dcwchan_data));
+		memset(e, 0, sizeof(struct dcwchan_data));
+		e->caid = ecm->caid;
+		e->provid = ecm->provid;
+		e->sid = ecm->sid;
+		memcpy(e->cw, dcw, 16);
+		e->lasttime = now;
+		e->lasthalf = 2;
+		e->next = dcwchan_list;
+		dcwchan_list = e;
+		pthread_mutex_unlock(&dcwchan_mutex);
+		return 0;
+	}
+
+	if (memcmp(e->cw, dcw, 16)) {
+		// DCW MINTIME: mudanca demasiado rapida
+		if (cs->option.dcw.mintime && ((uint32_t)(now - e->lasttime) < (uint32_t)cs->option.dcw.mintime)) {
+			mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: mintime reject ch %04x:%06x:%04x (%ums < %ums)\n",
+				ecm->caid, ecm->provid, ecm->sid, now - e->lasttime, cs->option.dcw.mintime);
+			reject = 1;
+		}
+		else if (cs->option.dcw.cyclecheck) {
+			// DCW CYCLE_CHECK: a metade que muda tem de alternar
+			if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) {
+				// half-null (NDS): metade preenchida tem de alternar
+				int half = dcwcmp8(dcw,nullcw) ? 0 : 1;
+				if (e->lasthalf==half) {
+					mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half %d repetida)\n",
+						ecm->caid, ecm->provid, ecm->sid, half);
+					reject = 1;
+				}
+				else e->lasthalf = half;
+			}
+			else {
+				int r0 = memcmp(e->cw, dcw, 8)!=0;
+				int r1 = memcmp(e->cw+8, dcw+8, 8)!=0;
+				if (r0 && !r1) {
+					if (e->lasthalf==0) {
+						mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half 0 repetida)\n",
+							ecm->caid, ecm->provid, ecm->sid);
+						reject = 1;
+					}
+					else e->lasthalf = 0;
+				}
+				else if (!r0 && r1) {
+					if (e->lasthalf==1) {
+						mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half 1 repetida)\n",
+							ecm->caid, ecm->provid, ecm->sid);
+						reject = 1;
+					}
+					else e->lasthalf = 1;
+				}
+				else e->lasthalf = 2;
+			}
+		}
+	}
+
+	if (!reject) {
+		memcpy(e->cw, dcw, 16);
+		e->lasttime = now;
+	}
+
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return reject;
+}
+
+
 #ifndef THREAD_DCW
 
 void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
@@ -470,6 +565,28 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		}
 	}
 #endif
+
+	// NAGRA PROTECTION (18xx/19xx): checksum, provider, ciclo e similaridade
+	{
+		int ncode = nagra_check( ecm, dcw );
+		if (ncode) {
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," nagra: dcw rejected (code %d) ch %04x:%06x:%04x profile '%s'%s\n",
+				ncode, ecm->caid, ecm->provid, ecm->sid, cs->name,
+				cs->option.nagra.onbad ? " (drop)" : " (log only)");
+			if (cs->option.nagra.onbad) {
+				pthread_mutex_unlock(&prg.lockecm);
+				return;
+			}
+		}
+	}
+
+	// DCW MINTIME + DCW CYCLE_CHECK (por canal)
+	if (cs->option.dcw.mintime || cs->option.dcw.cyclecheck) {
+		if (dcwchan_check( ecm, dcw, cs )) {
+			pthread_mutex_unlock(&prg.lockecm);
+			return;
+		}
+	}
 
 	// filter non-nds halfnulled cw
 	if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) {

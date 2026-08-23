@@ -180,7 +180,65 @@ O cache troca CWs entre servers; o `CACHE AUTOADD` aceita peers dinâmicos.
 
 ---
 
-## 8. Verificação rápida
+## 8. Proteções por perfil (CWC, NAGRA, Health, Fallback, Timing, DCW, LITE)
+
+Tudo desligado por omissão (exceto SKIPCWC e ENABLE EMULATOR BISS, ON). Ativa-se por perfil ou com `DEFAULT ...` no topo do profiles.cfg.
+
+```cfg
+## CW Cycle Check (estilo OSCam) — protege contra cws fakes/replay
+ENABLE CWC: 1              # no perfil afetado
+CWC SENSITIVE: 3           # bytes iguais na metade que NAO devia mudar (0=off)
+CWC DROPOLD: 1             # drop ECM antigo (replay) e same CW fora da janela
+CWC DROPBAD: 1             # drop bad CW cycle (ou ONBAD: alias)
+CWC KEEPCYCLETIME: 5       # minutos que mantem o cycletime sem re-aprender
+
+## NAGRA protection (caid 18xx/19xx/1a0x) — checksum, ciclo e similaridade
+ENABLE NAGRA: 1
+NAGRA CHK: 1               # checksum das 4 quads
+NAGRA PROV: 0              # validar provider contra o perfil
+NAGRA CYCLE: 1             # ciclo + similaridade (aprendizagem de 6 amostras)
+NAGRA ONBAD: 1             # 1=drop em bad dcw, 0=so log
+NAGRA SENSITIVE: 4         # bytes iguais a CW anterior (0=off, 1-8)
+
+## Health scoring — ordena/exclui servers por saude
+ENABLE HEALTH: 1
+HEALTH WEIGHTS: 40 30 10 20   # sucesso latencia estabilidade erros (%)
+HEALTH MINECMS: 20            # amostras minimas antes de pontuar
+HEALTH DROPOFF: 200           # score minimo (0=off)
+
+## Fallback cross-protocol
+ENABLE FALLBACK: 1
+FALLBACK ORDER: NEWCAMD CCCAM CS378X CAMD35 RADEGAST
+FALLBACK TIMEOUT: 800       # ms antes de permitir protocolos fallback
+
+## Timing budget (cryptoperiod adaptativo)
+ENABLE TIMING: 1
+TIMING FRACTION: 60         # % do cryptoperiod como budget
+TIMING MINPERIOD: 3000      # so aplica acima deste periodo (ms)
+#CACHE ADAPTIVETTL: 1       # TTL da cache = cryptoperiod
+
+## DCW proteccoes por canal
+DCW MINTIME: 3000           # tempo minimo entre CWs (ms, 0=off)
+DCW CYCLE_CHECK: 1          # a metade que muda tem de alternar (NDS)
+DCW SKIPCWC_EXCLUDE_SIDS_ACTIVE: 1
+DCW SKIPCWC_EXCLUDE_SIDLIST: 14B7,14B4   # sids onde o skipcwc nao se aplica
+
+## Emulador por perfil
+ENABLE EMULATOR BISS: 1     # default ON; 0 desliga o constcw/BISS no perfil
+
+## BUILD LITE — filtro de canais activos
+#LITE FILE: /var/etc/CCcam.lite   # top-level no multics.cfg (caid:provid:sid)
+ENABLE LITE: 1              # no perfil: ignora ECMs fora da lista
+```
+
+Notas:
+- `NAGRA` aplica só a caids 18xx–1a12 (MEO/NOS/...); caids fora do range passam sem checks.
+- `LITE` sem lista carregada (ficheiro em falta/vazio) deixa passar tudo — seguro.
+- O `CCcam.lite` é gerado/atualizado pela ferramenta (GUI → Update Channel Info) ou manualmente.
+
+---
+
+## 9. Verificação rápida
 
 ```bash
 systemctl restart multics && sleep 3
@@ -189,71 +247,3 @@ ss -tlnp | grep multics              # portas a escutar
 ```
 
 Na GUI: Dashboard (estado geral) → Servers (readers) → Newcamd/CCcam (clientes) → Debug (paths e log).
-
----
-
-## 9. Opcoes v1.0.10 (CWC / HEALTH / FALLBACK / TIMING)
-
-Todas sao por perfil (ou DEFAULT) e vao OFF por default.
-
-### CWC — CW Cycle Check (estilo OSCam)
-
-Protege contra CWs fakes/replay aprendendo o cycletime do canal.
-
-``cfg
-DEFAULT ENABLE CWC: 0          # default = disabled
-DEFAULT CWC SENSITIVE: 3       # bytes iguais na metade que NAO devia mudar (0=off, 1-8)
-DEFAULT CWC DROPOLD: 1         # drop ECM antigo (replay) e same CW fora da janela
-DEFAULT CWC DROPBAD: 1         # drop bad CW cycle (1=drop, 0=so log)
-DEFAULT CWC KEEPCYCLETIME: 5   # minutos que mantem o cycletime aprendido (0=off)
-
-[Meu Perfil]
-ENABLE CWC: 1                  # activa neste perfil
-``
-
-### HEALTH — health scoring dos readers
-
-Ordena os readers por saude e exclui os doentes (dropoff).
-
-``cfg
-DEFAULT ENABLE HEALTH: 0
-DEFAULT HEALTH WEIGHTS: 40 30 10 20   # sucesso latencia estabilidade erros (%)
-DEFAULT HEALTH MINECMS: 20            # amostras minimas antes de pontuar
-DEFAULT HEALTH DROPOFF: 0             # score minimo para participar (0=off)
-
-[Meu Perfil]
-ENABLE HEALTH: 1
-HEALTH DROPOFF: 200
-``
-
-### FALLBACK — cross-protocol
-
-Preferencia de protocolos por perfil; os fallbacks entram apos
-FALLBACK TIMEOUT (ou de imediato se nao houver primario disponivel).
-
-``cfg
-DEFAULT ENABLE FALLBACK: 0
-DEFAULT FALLBACK ORDER: NEWCAMD CCCAM CS378X CAMD35 RADEGAST
-DEFAULT FALLBACK TIMEOUT: 800
-
-[Meu Perfil]
-ENABLE FALLBACK: 1
-FALLBACK ORDER: NEWCAMD CCCAM
-``
-
-### TIMING — timing budget por canal
-
-Estima o cryptoperiod e falha dentro do ciclo (decode failed cedo),
-para o cliente pedir o proximo ECM a tempo.
-
-``cfg
-DEFAULT ENABLE TIMING: 0
-DEFAULT TIMING FRACTION: 60    # % do cryptoperiod como budget de decode
-DEFAULT TIMING MINPERIOD: 3000 # aplica so quando o periodo estimado >= este (ms)
-
-[Meu Perfil]
-ENABLE TIMING: 1
-
-# na seccao CACHE:
-CACHE ADAPTIVETTL: 1           # entradas da cache expiram ao fim do cryptoperiod
-``

@@ -77,9 +77,11 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 
 	// EMULATOR (constcw / BISS)
 	if ( (ecm->dcwstatus==STAT_DCW_WAIT)||(ecm->dcwstatus==STAT_DCW_WAITCACHE) ) {
-		if ( emu_get_constcw(ecm) ) {
-			ecm_setdcw( ecm, ecm->cw, DCW_SOURCE_EMU, 0 );
-			return;
+		if ( (ecm->cs==NULL) || ecm->cs->option.fenableemu ) {
+			if ( emu_get_constcw(ecm) ) {
+				ecm_setdcw( ecm, ecm->cw, DCW_SOURCE_EMU, 0 );
+				return;
+			}
 		}
 	}
 

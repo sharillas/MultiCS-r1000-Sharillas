@@ -1,8 +1,8 @@
-# MultiCS r1000 v1.0.10 - by Sharillas
+# MultiCS r1000 v1.0.10.2 - by Sharillas
 
-Cardserver proxy (fork do multi-cs/multics de evileyes) com GUI web moderna, Emulator BISS/Tandberg, proteção SKIPCWC contra CWs falsas, login com sessões, temas Dark/Light e dezenas de fixes.
+Cardserver proxy (fork do multi-cs/multics de evileyes) com GUI web moderna, Emulator BISS/Tandberg, proteção SKIPCWC contra CWs falsas, CWC (CW Cycle Check), NAGRA protection, Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, login com sessões, temas Dark/Light e dezenas de fixes.
 
-> **Versão:** v1.0.10 | **Licença:** a do fork original (multi-cs/multics)
+> **Versão:** v1.0.10.2 | **Licença:** a do fork original (multi-cs/multics)
 
 ---
 
@@ -91,12 +91,17 @@ Fluxo mínimo para funcionar:
 ## Features desta build
 
 - **GUI moderna**: Dashboard com estatísticas, tabelas sortáveis, temas Dark/Light, login com sessões, logout
-- **Emulator**: upload SoftCam.Key (Convert & Load), chaves BISS/Tandberg, página própria
+- **Emulator**: upload SoftCam.Key (Convert & Load), chaves BISS/Tandberg, página própria, botões **Update SoftCam.Key** (download remoto) e **Reload Keys**
 - **SKIPCWC** (default ON): ignora CWs idênticas repetidas (fakes) — configurável por perfil
-- **CWC — CW Cycle Check** (estilo OSCam): aprende o cycletime por canal e rejeita CWs fora do ciclo / replays (por perfil: `ENABLE CWC`, `CWC SENSITIVE/DROPOLD/DROPBAD/KEEPCYCLETIME`)
-- **Health scoring**: pontua os readers por sucesso/latência/estabilidade/erros e ordena ou exclui os doentes (`ENABLE HEALTH`, `HEALTH WEIGHTS/MINECMS/DROPOFF`)
-- **Fallback cross-protocol**: preferência de protocolos por perfil com timeout (`ENABLE FALLBACK`, `FALLBACK ORDER`, `FALLBACK TIMEOUT`) — ex. newcamd → CCcam automático
-- **Timing budget por canal**: estima o cryptoperiod e falha dentro do ciclo para o cliente pedir o próximo ECM a tempo (`ENABLE TIMING`, `TIMING FRACTION/MINPERIOD` + `CACHE ADAPTIVETTL`)
+- **CWC — CW Cycle Check** (estilo OSCam): aprende o ciclo CW0/CW1 de cada canal e descarta CWs fora do ciclo, ECMs antigos (replay) e bad CW cycles — por perfil
+- **NAGRA protection** (18xx/19xx/1a0x): checksum das 4 quads, provider, aprendizagem do ciclo (6 amostras), similaridade, duplicate/conflicting/fake half — por perfil
+- **Health scoring**: ordena os servers por saúde (sucesso, latência, estabilidade, erros) e exclui os doentes (DROPOFF) — por perfil
+- **Fallback cross-protocol**: ordem de preferência de protocolos por perfil (NEWCAMD/CCCAM/CAMD35/CS378X/RADEGAST) com timeout
+- **Timing budget**: usa o cryptoperiod estimado para falhar cedo e dar tempo ao cliente de pedir o próximo ECM (ADAPTIVETTL) — por perfil
+- **DCW MINTIME / DCW CYCLE_CHECK**: tempo mínimo entre CWs e alternância obrigatória da metade que muda (NDS) — por perfil
+- **BUILD LITE**: filtro de canais activos (CCcam.lite) — o perfil ignora ECMs fora da lista (`Ignored (lite)`)
+- **ENABLE EMULATOR BISS** por perfil (liga/desliga o emulador em cada perfil)
+- **Ferramentas GUI**: Update/Load Channel Info (KingOfSat → CCcam.channelinfo) e Update SoftCam.Key na web UI
 - **Edit Config / Edit Profiles** com aplicação imediata (sem restart)
 - **Restart fiável** em qualquer setup (systemd, crontab, paths diferentes)
 - **Linhas de debug por cliente** (botão DBG em todas as tabelas)
@@ -138,4 +143,4 @@ Build flags (equivalentes ao Makefile original):
 
 ## Créditos
 
-Base: [multi-cs/multics](https://github.com/multi-cs/multics) (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.0.10
+Base: [multi-cs/multics](https://github.com/multi-cs/multics) (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.0.10.2
