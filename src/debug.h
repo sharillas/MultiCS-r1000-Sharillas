@@ -47,6 +47,18 @@ extern char dbgline[MAX_DBGLINES][MAX_DBGLINE_LEN];
 extern uint32_t dbgflag[MAX_DBGLINES];
 extern int idbgline;
 
+// erros de parse "config(...)": ficheiro/linha atuais + historico
+#define MAX_CFG_ERRS 128
+struct cfg_error_data {
+	char file[256];
+	int line;
+};
+extern char g_parse_filename[512];
+extern int  g_parse_nbline;
+extern int  g_config_errors;
+extern struct cfg_error_data g_cfg_errs[MAX_CFG_ERRS];
+extern int  g_cfg_err_nb;
+
 uint32_t getdbgflag( int i, int j, int k);
 uint32_t getdbgflagpro( int i, int j, int k, int csid );
 
