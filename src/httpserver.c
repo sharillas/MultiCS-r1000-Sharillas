@@ -912,11 +912,6 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	if (!cfg.http.show.noeditor) {
 		if (selected==PAGE_EDITOR) class = cSelected; else class = cNormal;
 		sprintf( buf, class, "/editor", "Edit Config"); tcp_writestr(tcpbuf, sock, buf);
-		int pidx = get_editor_file_index("profiles.cfg");
-		if (pidx>=0) {
-			sprintf( label, "/editor%d", pidx);
-			sprintf( buf, cNormal, label, "Edit Profiles"); tcp_writestr(tcpbuf, sock, buf);
-		}
 	}
 	if (!cfg.http.show.norestart) {
 		if (selected==PAGE_RESTART) class = cSelected; else class = cNormal;
@@ -1463,7 +1458,13 @@ void http_send_index(int sock, http_request *req)
 	}
 	tcp_writestr(&tcpbuf, sock, "</div>");
 
-	// Debug Log
+	// Cache Stats
+	int cache_total=0, cache_active=0;
+	cache_peers( cfg.cache.server, &cache_total, &cache_active );
+	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Cache Stats</h3><table class=maintable><tr><th>Metric</th><th>Value</th></tr><tr><td>Cache Servers</td><td>%d</td></tr><tr><td>Active Peers</td><td>%d</td></tr><tr><td>Unread SMS</td><td>%d</td></tr></table></div>", cfg.cache.totalservers, cache_active, unreadsms());
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+	// Debug Log (no fim, antes do footer)
 	char dbgbuf[MAX_DBGLINE_LEN];
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Debug Log</h3><select id='dbgfilter' onchange=\"setDebugFilter(this.value);\" style='width:250px;'>");
 	int sel;
@@ -1499,12 +1500,6 @@ void http_send_index(int sock, http_request *req)
 		if (i>=MAX_DBGLINES) i=0;
 	} while (i!=current);
 	tcp_writestr(&tcpbuf, sock, "</pre></div></div>");
-
-	// Cache Stats
-	int cache_total=0, cache_active=0;
-	cache_peers( cfg.cache.server, &cache_total, &cache_active );
-	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Cache Stats</h3><table class=maintable><tr><th>Metric</th><th>Value</th></tr><tr><td>Cache Servers</td><td>%d</td></tr><tr><td>Active Peers</td><td>%d</td></tr><tr><td>Unread SMS</td><td>%d</td></tr></table></div>", cfg.cache.totalservers, cache_active, unreadsms());
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
 	if (get_action==0) tcp_writestr(&tcpbuf, sock, "</body></html>");
 	tcp_flush(&tcpbuf, sock);
@@ -8959,15 +8954,11 @@ void http_send_editor(int sock, http_request *req, int index)
 		tcp_writestr(&tcpbuf, sock, "<span style='float:right'><select onchange=\"window.location=this.value\" style='width:250px;'>");
 		struct filename_data *fs = cfg.files;
 		int i =0;
-		int onlyprof = (strstr(fname,"profiles.cfg")!=NULL);
 		while (fs) {
 			if (!fs->noeditor) {
-				int show = onlyprof ? (strstr(fs->name,"profiles.cfg")!=NULL) : (strstr(fs->name,"profiles.cfg")==NULL);
-				if (show) {
-					if (i==index) sprintf( http_buf, "<option value=\"/editor%d\" selected>%s</option>",i, fs->name);
-					else sprintf( http_buf, "<option value=\"/editor%d\">%s</option>",i, fs->name);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
+				if (i==index) sprintf( http_buf, "<option value=\"/editor%d\" selected>%s</option>",i, fs->name);
+				else sprintf( http_buf, "<option value=\"/editor%d\">%s</option>",i, fs->name);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 			i++;
 			fs = fs->next;
