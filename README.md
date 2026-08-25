@@ -41,6 +41,7 @@ Depois abre `http://SEU_IP:5500` → login (default `admin`/`admin`) → **Dashb
 | Web UI (HTTP) | 5500 |
 | Telnet (gestão) | 5600 |
 | CCcam (F-lines) | 16000 |
+| **CCcam3 (boxes CCcam 3.0.1)** | 16001 |
 | MGcamd | 21000 |
 | Newcamd (por perfil) | 15000–15025 (definido no `PORT` de cada perfil) |
 | camd35 (UDP) | 7502 |
@@ -98,6 +99,10 @@ Fluxo mínimo para funcionar:
 - **NAGRA protection** (18xx/19xx/1a0x): checksum das 4 quads, provider, ciclo com aprendizagem (6 amostras), similaridade, duplicate/conflicting/fake half — por perfil
 - **Anti-fake embutido (não configurável)**: CWs com assinatura XOR 0xF0 no último byte e CRC nano e0 (viaccess 0500) são descartadas
 - **DCW MINTIME / CYCLE_CHECK**: tempo mínimo entre CWs e alternância obrigatória da metade que muda (NDS)
+- **CCcam 3.0.1** (projeto `CCcam-3.0.1-by-Sharillas`): suporte completo nos dois sentidos —
+  - **Server**: `CCCAM3 PORT: 16001` — boxes CCcam3 ligam-se com as mesmas F-lines; handshake encriptado **RSA+AES-GCM** (PBKDF2-SHA256, 10000 iterações)
+  - **Reader**: linha `C3: host porta user pass` — o MultiCS lê cards de um server CCcam3
+  - Crypto implementada em **C puro** (sem OpenSSL): SHA1/SHA256, HMAC, PBKDF2, RC4, AES-256 (ECB+GCM) — binário continua estático musl sem dependências
 - **DEDUP de ECMs**: 1 pedido único ao reader por ECM em voo (clientes com o mesmo ECM ficam à espera do mesmo CW) — resolve o flood em canais críticos (ex: TVCine) e protege o card de throttling
 - **Fallback mais rápido**: intervalo adaptativo — se o reader atual está lento, o próximo é tentado mais cedo
 - **Health scoring / Fallback cross-protocol / Timing budget**: ordenação por saúde, ordem de protocolos, budget de cryptoperíodo
