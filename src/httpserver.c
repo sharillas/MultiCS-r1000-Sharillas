@@ -2452,7 +2452,7 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 			if (srv->version) sprintf( cell[2],"%s %s", srv->progname, srv->version);
 			else strcpy( cell[2], srv->progname);
 		}
-		else sprintf( cell[2],"Newcamd");
+		else sprintf( cell[2],"Newcamd v6.06");
 	}
 #ifdef CCCAM_CLI
 	else if (srv->type==TYPE_CCCAM) {
@@ -2466,13 +2466,13 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 	}
 #endif
 #ifdef RADEGAST_CLI
-	else if (srv->type==TYPE_RADEGAST) sprintf( cell[2],"Radegast");
+	else if (srv->type==TYPE_RADEGAST) sprintf( cell[2],"Cs357x UDP v0.3.x");
 #endif
 #ifdef CAMD35_CLI
-	else if (srv->type==TYPE_CAMD35) sprintf( cell[2],"Camd35");
+	else if (srv->type==TYPE_CAMD35) sprintf( cell[2],"Camd35 v0.3.x");
 #endif
 #ifdef CS378X_CLI
-	else if (srv->type==TYPE_CS378X) sprintf( cell[2],"cs378x");
+	else if (srv->type==TYPE_CS378X) sprintf( cell[2],"Cs738x TCP v0.3.x");
 #endif
 	else sprintf( cell[2],"Unknown");
 
@@ -2826,6 +2826,35 @@ void http_send_servers(int sock, http_request *req)
 	}
 	tcp_writestr(&tcpbuf, sock, "</table>");
 
+	// ===== ECM DEDUP (1 pedido unico por ECM em voo) =====
+	if (get_action==0) {
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >ECM Dedup</h3><div class=stat-value>");
+		if ((g_ecm_unique+g_ecm_dedup)>0) {
+			sprintf( http_buf, "Pedidos unicos ao reader: <b>%d</b> | Repetidos evitados (dedup): <b>%d</b> (%d%%%%)<br>", g_ecm_unique, g_ecm_dedup, (g_ecm_dedup*100)/(g_ecm_unique+g_ecm_dedup));
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		else tcp_writestr(&tcpbuf, sock, "Sem atividade de ECM ainda.<br>");
+		// top de canais com mais dedup
+		uint16_t dcaid[8]; uint16_t dsid[8]; uint32_t duni[8]; uint32_t dded[8];
+		int dn = dedup_ch_top(8, dcaid, dsid, duni, dded);
+		if (dn>0) {
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable style='margin-top:6px'><tr><th>Canal</th><th>CAID</th><th>SID</th><th>Unicos</th><th>Evitados</th></tr>");
+			int di;
+			for (di=0; di<dn; di++) {
+				char *chname = NULL;
+				struct chninfo_data *chn = cfg.chninfo;
+				while (chn) {
+					if ( (chn->caid==dcaid[di]) && (chn->sid==dsid[di]) ) { chname = chn->name; break; }
+					chn = chn->next;
+				}
+				sprintf( http_buf, "<tr><td>%s</td><td>%04X</td><td>%04X</td><td>%u</td><td><b>%u</b></td></tr>", chname?chname:"-", dcaid[di], dsid[di], duni[di], dded[di]);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+			tcp_writestr(&tcpbuf, sock, "</table>");
+		}
+		tcp_writestr(&tcpbuf, sock, "</div></div>");
+	}
+
 	if (get_action==0) {
 		tcp_writestr(&tcpbuf, sock, "</div></body></html>");
 	}
@@ -3151,8 +3180,8 @@ void getcachecells(struct cachepeer_data *peer, char cell[12][2048] )
 	// CELL1#IP
 	char *p = getcountrycodebyip(peer->host->ip);
 	if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(peer->host->ip) ); else sprintf( cell[1],"%s",(char*)ip2string(peer->host->ip) );
-	// CELL2#Program
-	sprintf( cell[2],"%s %s", peer->program, peer->version);
+	// CELL2#Program (assinatura)
+	sprintf( cell[2],"Csp-Cache | Mcs1000");
 	// CELL3 # Ping
 	if (IS_DISABLED(peer->flags)) {
 		sprintf( cell[3],"offline");
@@ -7227,16 +7256,16 @@ void cacheex_server_cells(struct server_data *srv, char cell[10][2048], int off 
 		else sprintf( temp,"%s",(char*)ip2string(srv->host->ip) );
 	}
 	strcat( cell[1], temp );
-	// CELL2
+	// CELL2 (assinatura)
 	if (srv->connection.status>0) {
-		if (srv->type==TYPE_CCCAM) sprintf( cell[2],"mode%d (CCcam)", srv->cacheex_mode);
+		if (srv->type==TYPE_CCCAM) sprintf( cell[2],"Cache EX | Mcs1000 (mode%d CCcam)", srv->cacheex_mode);
 #ifdef CAMD35_CLI
-		else if (srv->type==TYPE_CAMD35) sprintf( cell[2],"mode%d (camd35)", srv->cacheex_mode);
+		else if (srv->type==TYPE_CAMD35) sprintf( cell[2],"Cache EX | Mcs1000 (mode%d camd35)", srv->cacheex_mode);
 #endif
 #ifdef CS378X_CLI
-		else if (srv->type==TYPE_CS378X) sprintf( cell[2],"mode%d (cs378x)", srv->cacheex_mode);
+		else if (srv->type==TYPE_CS378X) sprintf( cell[2],"Cache EX | Mcs1000 (mode%d cs378x)", srv->cacheex_mode);
 #endif
-		else sprintf( cell[2],"Unknown"); 
+		else sprintf( cell[2],"Cache EX | Mcs1000");
 	}
 	else sprintf( cell[2]," ");
 	// CELL3
@@ -7344,8 +7373,8 @@ void cacheex_cccamclient_cells(struct cc_client_data *cli, char cell[10][2048], 
 	else
 		if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(cli->ip) ); else sprintf( cell[1],"%s",(char*)ip2string(cli->ip) );
 
-	// CELL2 # VERSION
-	sprintf( cell[2],"mode%d", cli->cacheex_mode);
+	// CELL2 # VERSION (assinatura)
+	sprintf( cell[2],"Cache EX | Mcs1000 (mode%d)", cli->cacheex_mode);
 	// CELL3 # nodeid
 	if (strlen(cli->version)) sprintf( cell[3],"%02x%02x%02x%02x%02x%02x%02x%02x", cli->nodeid[0],cli->nodeid[1],cli->nodeid[2],cli->nodeid[3],cli->nodeid[4],cli->nodeid[5],cli->nodeid[6],cli->nodeid[7]);
 	// CELL4 # Connection Time
@@ -7448,8 +7477,8 @@ void cacheex_camd35client_cells(struct camd35_client_data *cli, char cell[10][20
 	if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(cli->ip) );
 	else sprintf( cell[1],"%s",(char*)ip2string(cli->ip) );
 
-	// CELL2 # VERSION
-	sprintf( cell[2],"mode%d", cli->cacheex_mode);
+	// CELL2 # VERSION (assinatura)
+	sprintf( cell[2],"Cache EX | Mcs1000 (mode%d)", cli->cacheex_mode);
 	// CELL3 # nodeid
 	sprintf( cell[3],"%02x%02x%02x%02x%02x%02x%02x%02x", cli->nodeid[0],cli->nodeid[1],cli->nodeid[2],cli->nodeid[3],cli->nodeid[4],cli->nodeid[5],cli->nodeid[6],cli->nodeid[7]);
 	// CELL4 # Connection Time
