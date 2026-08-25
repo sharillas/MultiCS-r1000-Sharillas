@@ -1,8 +1,10 @@
-# Configuração do Cardserver — guia exato
+# Configuração do Cardserver — guia exato (v1.20)
 
-Os ficheiros ficam em `/var/etc/` (depois do `install.sh`). Qualquer alteração pode ser feita pela **GUI (Edit Config / Edit Profiles)** — aplica na hora — ou editando os ficheiros e reiniciando.
+Os ficheiros ficam em `/var/etc/` (depois do `install.sh`). Qualquer alteração pode ser feita pela **GUI (Configs → Edit ou Upload)** — aplica na hora, sem restart — ou editando os ficheiros.
 
 > Ordem de parsing: os perfis têm de vir **antes** dos utilizadores/clientes. O `users.cfg` é incluído antes dos profiles (users globais); F-lines depois do `CCCAM PORT`.
+>
+> A GUI resolve os caminhos a partir da config em execução — funciona em qualquer layout de pastas (não é obrigatório `/var/etc`).
 
 ---
 
@@ -148,9 +150,9 @@ CS378X USER: usercsx passcsx
 
 ```cfg
 [Profile_BISS]
-PORT: 15038
+PORT: 15025
 CAID: 2600
-ENABLE SOFTCAM: YES
+ENABLE EMULATOR BISS: YES
 ```
 
 4. Atualização automática (opcional, crontab a cada 6h):
@@ -238,7 +240,26 @@ Notas:
 
 ---
 
-## 9. Verificação rápida
+## 9. DEDUP de ECMs (automático, sem config)
+
+Um pedido **único** ao reader por ECM em voo: o 1º cliente com um ECM gera o pedido; os seguintes com o mesmo hash ficam à espera e recebem o mesmo CW. Reduz o tráfego no card em ~90% em canais com muitos clientes (ex: TVCine) e evita o throttling do card.
+
+- Ver na GUI: página **Servers → seccção "ECM Dedup"** (únicos vs repetidos evitados + top de canais)
+- Log: `ecm: DEDUP join ch …`
+
+---
+
+## 10. Upload e edição de configs (GUI → Configs)
+
+- **Upload Configs**: envia qualquer um dos 15 ficheiros para o caminho real da config (multics.cfg, profiles.cfg, CCcam.channelinfo, CCcam.lite, Nlines.cfg, users.cfg, Mgcamd.cfg, Camd35.cfg, Cache.cfg, CacheEX.cfg, 1-Clients.cfg, Softcam.cfg, blocked_ips.cfg, ip2country.csv, multics.css)
+- Faz **backup automático** (`.bak-<timestamp>`) e recarrega a config
+- **Validação**: linhas com erro de parse são **comentadas automaticamente** e as opções default ficam activas; se não der para corrigir, faz **rollback** do backup (o ficheiro enviado fica em `.invalid-*`) — nunca crasha
+- **Edit**: todos os ficheiros editáveis na GUI, save por AJAX com feedback "Guardado com sucesso!"
+- Um ficheiro único com todas as secções (servers, perfis, clientes) carrega-se como `multics.cfg`
+
+---
+
+## 11. Verificação rápida
 
 ```bash
 systemctl restart multics && sleep 3
@@ -246,4 +267,4 @@ journalctl -u multics -n 30          # sem "config(...) error" = parsing limpo
 ss -tlnp | grep multics              # portas a escutar
 ```
 
-Na GUI: Dashboard (estado geral) → Servers (readers) → Newcamd/CCcam (clientes) → Debug (paths e log).
+Na GUI: Dashboard (estado geral) → Servers (readers + dedup) → Newcamd/CCcam (clientes) → Debug (paths e log, Download Log).

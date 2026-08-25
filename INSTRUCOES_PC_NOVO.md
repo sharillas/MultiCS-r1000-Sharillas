@@ -1,27 +1,27 @@
-﻿# MultiCS r1000 v1.20 by Sharillas â€” usar noutro PC (opencode)
+﻿# MultiCS r1000 v1.20 by Sharillas — usar noutro PC (opencode)
 
-## O que estÃ¡ neste ZIP
+## O que está neste ZIP
 
-- **src/** â€” cÃ³digo C completo (Ãºltima versÃ£o, todos os fixes)
-- **build/** â€” binÃ¡rios compilados (x64/x32 estÃ¡ticos musl)
-- **tests/** â€” suite de testes end-to-end (e2e_*.sh + fakeclient/fakecsp)
-- **configs_exemplos/** â€” configs prontas (sem erros de parsing)
-- **github_repo/** â€” repositÃ³rio enviado para https://github.com/sharillas/MultiCS-r1000-Sharillas
+- **src/** — código C completo (última versão, todos os fixes)
+- **build/** — binários compilados (x64/x32 estáticos musl)
+- **tests/** — suite de testes end-to-end (e2e_*.sh + fakeclient/fakecsp)
+- **configs_exemplos/** — configs prontas (sem erros de parsing)
+- **github_repo/** — repositório enviado para https://github.com/sharillas/MultiCS-r1000-Sharillas
   (README, docs/CONFIGS.md, docs/IMPLEMENTACAO.md, install.sh, screenshots)
-- **ANALISE_OSCAM_CWC.md** â€” anÃ¡lise do CW Cycle Check do OSCam
-- **build.ps1 / package.ps1 / deploy.ps1 / test.sh** â€” toolchain de desenvolvimento
-- **dist/** â€” pacotes de release (zip/tar.gz)
-- **VPS.txt** â€” credenciais da VPS de testes
+- **ANALISE_OSCAM_CWC.md** — análise do CW Cycle Check do OSCam
+- **build.ps1 / package.ps1 / deploy.ps1 / test.sh** — toolchain de desenvolvimento
+- **dist/** — pacotes de release (zip/tar.gz)
+- **VPS.txt** — credenciais da VPS de testes
 
-## PrÃ©-requisitos no PC novo
+## Pré-requisitos no PC novo
 
 1. **Zig 0.15.2** (para compilar): descarregar em https://ziglang.org/download/0.15.2/
    e extrair para **C:\TMP\opencode\zig-x86_64-windows-0.15.2\**
-   (caminho estÃ¡ no topo do build.ps1 â€” se mudares, ajusta lÃ¡)
-2. **Python 3** (para tools_generate_httpstyle.py â€” regenerar o CSS/JS embutido)
+   (caminho está no topo do build.ps1 — se mudares, ajusta lá)
+2. **Python 3** (para tools_generate_httpstyle.py — regenerar o CSS/JS embutido)
 3. **git** (para o repo)
 
-## Comandos Ãºteis
+## Comandos úteis
 
 ```powershell
 # compilar (x64 + x32)
@@ -46,23 +46,27 @@ powershell -ExecutionPolicy Bypass -File deploy.ps1 -Host "IP_VPS"
   DCW MINTIME / DCW CYCLE_CHECK, DCW SKIPCWC_EXCLUDE SIDS,
   BUILD LITE (CCcam.lite), ENABLE EMULATOR BISS por perfil,
   ferramentas GUI (Update/Load Channel Info, Update SoftCam.Key),
-  restart fiÃ¡vel, debug rows, editor com save imediato, 0 erros de parsing
-- Fix crÃ­tico v1.0.10.3: bad DCW de readers marca ECM_SRV_REPLY_FAIL
-  (corrige o "nÃ£o puxa ecms" da build antiga)
-- v1.20: editor com todos os ficheiros (whitelist), validaÃ§Ã£o de upload
-  (comenta linhas mÃ¡s, defaults, rollback .bak â€” sem crash), Blocked since
+  restart fiável, debug rows, editor com save imediato, 0 erros de parsing
+- Fix crítico v1.0.10.3: bad DCW de readers marca ECM_SRV_REPLY_FAIL
+  (corrige o "não puxa ecms" da build antiga)
+- v1.20: editor AJAX com todos os ficheiros (whitelist), validação de upload
+  (comenta linhas más, defaults, rollback .bak — sem crash), Blocked since
   DD:HH:MM:SS, top menu sticky, fix pipeline BISS NOK (tenta readers/cache),
-  DCW TIMEOUT 2500ms nos perfis NAGRA, exemplos comentados completos
-- Testes e2e validados na VPS: base, cwc, health, fallback, timing, nagra, lite, dcw
+  DCW TIMEOUT 2500ms nos perfis NAGRA, DEDUP de ECMs (1 pedido único por
+  ECM em voo), nomes de pacote por CAID na coluna Cards, assinaturas de
+  protocolo na info server, caminhos resolvidos da config (qualquer layout),
+  serviço systemd User=root, exemplos comentados completos
+- Testes e2e validados na VPS: base, dcw, biss, xorf0, nagra, cwc, lite,
+  health, fallback, timing + dedup
 
 ## Contexto importante (build antiga do PC antigo)
 
-- A build antiga (v15-v18b/v20, binÃ¡rio b3bc2878) foi feita NOUTRO PC e tinha
-  NAGRA/LITE/EMULATOR BISS/tools implementados lÃ¡; essas implementaÃ§Ãµes foram
-  re-escritas/portadas para esta build (v1.20) â€” ver Prompt_old_Build.md
+- A build antiga (v15-v18b/v20, binário b3bc2878) foi feita NOUTRO PC e tinha
+  NAGRA/LITE/EMULATOR BISS/tools implementados lá; essas implementações foram
+  re-escritas/portadas para esta build (v1.20) — ver Prompt_old_Build.md
   e a engenharia reversa em C:\TMP\opencode\old_multics.x64
-- Os ficheiros de produÃ§Ã£o da VPS (/var/etc) sÃ£o a fonte de verdade das configs:
+- Os ficheiros de produção da VPS (/var/etc) são a fonte de verdade das configs:
   multics.cfg, profiles.cfg (DEFAULT ENABLE CWC/HEALTH/TIMING/FALLBACK/NAGRA),
   CCcam.providers, CCcam.channelinfo, Softcam.cfg, CCcam.lite
 - Ferramentas na VPS: /opt/multics/tools_update_channelinfo.py e
-  tools_update_softcam.py (invocadas pelos botÃµes da GUI)
+  tools_update_softcam.py (invocadas pelos botões da GUI)
