@@ -37,10 +37,22 @@ powershell -ExecutionPolicy Bypass -File package.ps1
 powershell -ExecutionPolicy Bypass -File deploy.ps1 -Host "IP_VPS"
 ```
 
+## Protocolo de releases (sempre que houver novas implementações)
+
+1. Bump da versão: `VERSION_STR` no `src/common.h` (ex: v1.20 -> v1.21),
+   regenerar httpstyle.c (footer), atualizar HTTP TITLE (produção + exemplo) e docs
+2. Build + deploy na VPS + package atualizado
+3. Commit no main com mensagem descritiva
+4. Criar **nova release no GitHub** com o prefixo da nova build (ex: tag v1.21,
+   nome "MultiCS r1000 v1.21 by Sharillas") com release notes em PT a descrever o que mudou
+5. Assets da release: multics.x64, multics.x32, MultiCS-r1000-vX.XX-src.zip
+   (git archive), multics-r1000-vX.XX.tar.gz (package)
+6. Release script em C:\TMP\opencode\ (create_release_*.ps1 / update_release_assets.ps1)
+   usa o token do GitHub
+
 ## Estado atual (v1.20)
 
-- Build = VPS = GitHub
-- Features: GUI/light-dark, Emulator (SoftCam.Key + Update SoftCam.Key remoto),
+- Build = VPS = GitHub- Features: GUI/light-dark, Emulator (SoftCam.Key + Update SoftCam.Key remoto),
   SKIPCWC, CWC (CW Cycle Check OSCam), NAGRA protection (18xx/19xx/1a0x),
   Health scoring, Fallback cross-protocol, Timing budget (ADAPTIVETTL),
   DCW MINTIME / DCW CYCLE_CHECK, DCW SKIPCWC_EXCLUDE SIDS,
