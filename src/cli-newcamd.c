@@ -2,10 +2,10 @@
 // TOOLS
 ///////////////////////////////////////////////////////////////////////////////
 
-static char string_newcamd[] = "Newcamd";
-static char string_mgcamd[] = "Mgcamd";
-static char string_newcamd_mcs[] = "Newcamd-MCS";
-static char string_mgcamd_mcs[] = "Mgcamd-MCS";
+static char string_newcamd[] = "Newcamd v6.06";
+static char string_mgcamd[] = "Mgcamd v1.46";
+static char string_newcamd_mcs[] = "Newcamd v6.06";
+static char string_mgcamd_mcs[] = "Mgcamd v1.46";
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -114,7 +114,6 @@ int cs_connect_srv(struct server_data *srv, int fd)
 		else srv->progname = string_mgcamd;
 	}
 	else if (clicd.provid==0x004D4353) {
-		sprintf( srv->version, "r%d", clicd.sid);
 		srv->progname = string_newcamd_mcs;
 	}
 	else srv->progname = string_newcamd;
