@@ -1619,6 +1619,9 @@ struct config_data
 			int norestart;
 		} show;
 		int autorefresh;
+		// login guard (brute-force): N falhas -> bloqueio S segundos por IP
+		int loginfails;
+		int locktime;
 		char title[512];
 		struct http_file_data *files;
 		pid_t pid;

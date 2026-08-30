@@ -197,6 +197,9 @@ void init_config(struct config_data *cfg)
 	cfg->http.port = 5500;
 	cfg->http.handle = -1;
 	cfg->http.autorefresh = 15;
+	// login guard (brute-force): defaults 5 falhas / 30s por IP
+	cfg->http.loginfails = 5;
+	cfg->http.locktime = 30;
 	strcpy(cfg->http.title, "Multi CardServer");
 #endif
 
@@ -1427,6 +1430,26 @@ link_camd35_server:
 				parse_spaces();
 				if (!cardserver) cfg->http.port = atoi(str);
 				else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config: skip http port, defined within profile\n");
+			}
+			else if (!strcmp(str,"LOGIN")) { // HTTP LOGIN MAXFAIL: N | HTTP LOGIN LOCKTIME: S
+				parse_name(str);
+				uppercase(str);
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0),"':' expected\n");
+					continue;
+				} else iparser++;
+				parse_int(str);
+				if (!strcmp(str,"MAXFAIL")) {
+					cfg->http.loginfails = atoi(str);
+					if (cfg->http.loginfails<1) cfg->http.loginfails = 1;
+					else if (cfg->http.loginfails>100) cfg->http.loginfails = 100;
+				}
+				else if (!strcmp(str,"LOCKTIME")) {
+					cfg->http.locktime = atoi(str);
+					if (cfg->http.locktime<1) cfg->http.locktime = 1;
+					else if (cfg->http.locktime>3600) cfg->http.locktime = 3600;
+				}
 			}
 /*
 http show editor:

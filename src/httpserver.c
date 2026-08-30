@@ -1860,6 +1860,16 @@ static void http_session_del(const char *token)
 	pthread_mutex_unlock(&http_session_mutex);
 }
 
+// termina TODAS as sessoes (usado no botao da GUI e quando a password muda)
+void http_session_clearall(void)
+{
+	pthread_mutex_lock(&http_session_mutex);
+	memset(http_sessions, 0, sizeof(http_sessions));
+	http_session_count = 0;
+	http_session_save();
+	pthread_mutex_unlock(&http_session_mutex);
+}
+
 static char *http_get_cookie(http_request *req, const char *name)
 {
 	int i;
@@ -1880,8 +1890,89 @@ static char *http_get_cookie(http_request *req, const char *name)
 	return NULL;
 }
 
-void http_send_login(int sock, http_request *req, int error)
+// ---------------- LOGIN GUARD (brute-force) ----------------
+// N falhas de login do mesmo IP -> bloqueio temporario (defaults: 5 falhas / 30s)
+// + throttle global: rajada de IPs distintos a falhar -> abrandar todos
+#define LOGIN_GUARD_MAX 64
+struct login_guard_data {
+	uint32_t ip;
+	int fails;
+	time_t lockuntil;
+};
+static struct login_guard_data login_guard[LOGIN_GUARD_MAX];
+static pthread_mutex_t login_guard_mutex = PTHREAD_MUTEX_INITIALIZER;
+static time_t login_guard_lastburst = 0;
+static int login_guard_burstips = 0;
+
+// 1 = IP bloqueado (e a tabela e varrida de entradas expiradas)
+static int login_guard_check(uint32_t ip)
 {
+	int locked = 0;
+	time_t now = time(NULL);
+	pthread_mutex_lock(&login_guard_mutex);
+	int i;
+	for (i=0; i<LOGIN_GUARD_MAX; i++) {
+		if (!login_guard[i].ip) continue;
+		if ( (login_guard[i].lockuntil>0) && (now >= login_guard[i].lockuntil) ) {
+			memset(&login_guard[i], 0, sizeof(struct login_guard_data)); // expirou
+			continue;
+		}
+		if ( (login_guard[i].ip==ip) && (login_guard[i].lockuntil>0) && (now < login_guard[i].lockuntil) ) locked = 1;
+	}
+	pthread_mutex_unlock(&login_guard_mutex);
+	return locked;
+}
+
+static void login_guard_fail(uint32_t ip)
+{
+	time_t now = time(NULL);
+	pthread_mutex_lock(&login_guard_mutex);
+	// throttle global: 10 IPs distintos a falhar em 10s -> abrandar todos
+	if ( (now - login_guard_lastburst) > 10 ) {
+		login_guard_lastburst = now;
+		login_guard_burstips = 0;
+	}
+	int known = 0;
+	int i, freei = -1;
+	for (i=0; i<LOGIN_GUARD_MAX; i++) {
+		if (!login_guard[i].ip) { if (freei<0) freei = i; continue; }
+		if (login_guard[i].ip==ip) {
+			known = 1;
+			login_guard[i].fails++;
+			if (login_guard[i].fails >= cfg.http.loginfails) {
+				login_guard[i].fails = 0;
+				login_guard[i].lockuntil = now + cfg.http.locktime;
+				mlogf(LOGINFO,DBG_HTTP," http: login guard - ip %s bloqueado %ds\n", (char*)ip2string(ip), cfg.http.locktime);
+			}
+			break;
+		}
+	}
+	if (!known && (freei>=0)) {
+		login_guard[freei].ip = ip;
+		login_guard[freei].fails = 1;
+		login_guard[freei].lockuntil = 0;
+		login_guard_burstips++;
+	}
+	pthread_mutex_unlock(&login_guard_mutex);
+	if ( (now - login_guard_lastburst) <= 10 ) {
+		if (login_guard_burstips >= 10) { usleep(1500000); } // rajada: abranda 1.5s
+	}
+}
+
+static void login_guard_clear(uint32_t ip)
+{
+	pthread_mutex_lock(&login_guard_mutex);
+	int i;
+	for (i=0; i<LOGIN_GUARD_MAX; i++) {
+		if (login_guard[i].ip==ip) {
+			memset(&login_guard[i], 0, sizeof(struct login_guard_data));
+			break;
+		}
+	}
+	pthread_mutex_unlock(&login_guard_mutex);
+}
+
+void http_send_login(int sock, http_request *req, int error){
 	char http_buf[4096];
 	struct tcp_buffer_data tcpbuf;
 	tcp_init(&tcpbuf);
@@ -1903,7 +1994,8 @@ void http_send_login(int sock, http_request *req, int error)
 	tcp_writestr(&tcpbuf, sock, "<input type='password' name='pass' placeholder='Password' autocomplete='current-password'>");
 	tcp_writestr(&tcpbuf, sock, "<input type='submit' value='Login'>");
 	tcp_writestr(&tcpbuf, sock, "</form>");
-	if (error) tcp_writestr(&tcpbuf, sock, "<div class='login-error'>Invalid user or password</div>");
+	if (error==1) tcp_writestr(&tcpbuf, sock, "<div class='login-error'>Invalid user or password</div>");
+	else if (error==2) tcp_writestr(&tcpbuf, sock, "<div class='login-error'>Too many failed attempts. Try again later.</div>");
 	tcp_writestr(&tcpbuf, sock, "</div></div></body></html>");
 	tcp_flush(&tcpbuf, sock);
 }
@@ -1917,7 +2009,14 @@ void http_login_submit(int sock, http_request *req)
 		if (!strcmp(req->postlist[i].name, "user")) strcpy(user, req->postlist[i].value);
 		else if (!strcmp(req->postlist[i].name, "pass")) strcpy(pass, req->postlist[i].value);
 	}
+	// login guard: IP bloqueado? nem verifica a password
+	if ( login_guard_check(req->ip) ) {
+		mlogf(LOGINFO,DBG_HTTP," http: login guard - ip %s bloqueado, pedido rejeitado\n", (char*)ip2string(req->ip));
+		http_send_login(sock, req, 2);
+		return;
+	}
 	if (user[0] && !strcmp(user, cfg.http.user) && !strcmp(pass, cfg.http.pass)) {
+		login_guard_clear(req->ip);
 		char *token = http_session_new();
 		char http_buf[512];
 		struct tcp_buffer_data tcpbuf;
@@ -1928,6 +2027,7 @@ void http_login_submit(int sock, http_request *req)
 		mlogf(LOGINFO,DBG_HTTP," http: login successful for user '%s'\n", user);
 	}
 	else {
+		login_guard_fail(req->ip);
 		mlogf(LOGINFO,DBG_HTTP," http: login failed for user '%s' from ip %s\n", user, (char*)ip2string(req->ip));
 		http_send_login(sock, req, 1);
 	}
@@ -9978,6 +10078,7 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 		"<div><input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\"><span class='cfgbtns-info'>Parse do teu CCcam.channelinfo sem restart</span></div>"
 		"<div><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\"><span class='cfgbtns-info'>Reconstroi o CCcam.channelinfo do KingOfSat e recarrega automaticamente</span></div>"
 		"<div><input type=button class='sbutton' value='Reload Main Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\"><span class='cfgbtns-info'>Aplica o multics.cfg e includes sem restart</span></div>"
+		"<div><a class='sbutton' href='/configurations?action=clearsessions' title='Termina todas as sessoes ativas (todos os browsers/scripts voltam ao login)' onclick=\"return confirm('Terminar TODAS as sessoes? Teras de voltar a fazer login.')\">Terminar todas as sessoes</a><span class='cfgbtns-info'>Invalida todas as cookies de sessao (tu incluido)</span></div>"
 		"</div></div>");
 	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 
@@ -10045,6 +10146,12 @@ void http_send_configurations(int sock, http_request *req)
 
 	// ===== ACTIONS =====
 	char *str_action = isset_get( req, "action");
+	if (str_action && !strcmp(str_action,"clearsessions")) {
+		http_session_clearall();
+		mlogf(LOGINFO, DBG_HTTP, " http: todas as sessoes terminadas\n");
+		http_send_redirect(sock, "/configurations");
+		return;
+	}
 	if (str_action && !strcmp(str_action,"block")) {
 		char *ip = isset_get( req, "ip");
 		if (ip && ip[0]) {
@@ -10175,18 +10282,25 @@ void http_send_configurations(int sock, http_request *req)
 											sprintf( backup, "%s.bak-%ld", fname, (long)time(NULL) );
 											if (rename( fname, backup )) { unlink(tmpsave); sprintf( http_buf, "<center><h3><span class='failed'>ERRO: sem permissoes em '%s'</span></h3><p>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</p></center>", fname, fname); http_send_text(sock, http_buf); return; }
 											if (rename( tmpsave, fname )) { rename( backup, fname ); sprintf( http_buf, "<center><h3><span class='failed'>ERRO: nao consegui gravar '%s'</span></h3><p>O ficheiro anterior foi reposto.</p></center>", fname); http_send_text(sock, http_buf); return; }
-											mlogf(LOGINFO, DBG_HTTP, " http: upload '%s' (%d bytes, backup %s)\n", fname, (int)(end-pdata), backup);
-											// reler e apanhar erros de parse deste ficheiro
-											int err0 = g_config_errors;
-											g_cfg_err_nb = 0; // reset do historico (so interessa este reload)
-											free_filenames( &cfg );
-											reread_config( &cfg );
-											check_config( &cfg );
-											cfg_set_id_counters( &cfg );
-											emu_load();
-											lite_load();
-											ipblock_load();
-											int badlines[MAX_CFG_ERRS];
+										mlogf(LOGINFO, DBG_HTTP, " http: upload '%s' (%d bytes, backup %s)\n", fname, (int)(end-pdata), backup);
+										// reler e apanhar erros de parse deste ficheiro
+										char oldpass[64];
+										strcpy( oldpass, cfg.http.pass );
+										int err0 = g_config_errors;
+										g_cfg_err_nb = 0; // reset do historico (so interessa este reload)
+										free_filenames( &cfg );
+										reread_config( &cfg );
+										check_config( &cfg );
+										cfg_set_id_counters( &cfg );
+										emu_load();
+										lite_load();
+										ipblock_load();
+										// password do admin mudou? termina todas as sessoes
+										if ( strcmp(oldpass, cfg.http.pass) ) {
+											mlogf(LOGINFO, DBG_HTTP, " http: password alterada - sessoes invalidadas\n");
+											http_session_clearall();
+										}
+										int badlines[MAX_CFG_ERRS];
 											int nbad = 0;
 											int e;
 											for (e=0; e<g_cfg_err_nb; e++) {
@@ -10334,9 +10448,12 @@ void http_send_configurations(int sock, http_request *req)
 				}
 			}
 		}
-		tcp_flush(&tcpbuf, sock);
-		// aplicar alteracoes imediatamente (sem restart)
-		mlogf(LOGINFO, DBG_HTTP, " http: config saved '%s' - reloading config...\n", fname);
+	tcp_flush(&tcpbuf, sock);
+	// aplicar alteracoes imediatamente (sem restart)
+	mlogf(LOGINFO, DBG_HTTP, " http: config saved '%s' - reloading config...\n", fname);
+	{
+		char oldpass[64];
+		strcpy( oldpass, cfg.http.pass );
 		free_filenames( &cfg );
 		reread_config( &cfg );
 		check_config( &cfg );
@@ -10344,8 +10461,13 @@ void http_send_configurations(int sock, http_request *req)
 		emu_load();
 		lite_load();
 		ipblock_load();
-		return;
+		if ( strcmp(oldpass, cfg.http.pass) ) {
+			mlogf(LOGINFO, DBG_HTTP, " http: password alterada - sessoes invalidadas\n");
+			http_session_clearall();
+		}
 	}
+	return;
+}
 
 	// ===== PAGE =====
 	sprintf( http_buf, html_title, cfg.http.title, "Configurations"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
