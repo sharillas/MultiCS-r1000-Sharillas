@@ -1922,7 +1922,7 @@ void http_login_submit(int sock, http_request *req)
 		char http_buf[512];
 		struct tcp_buffer_data tcpbuf;
 		tcp_init(&tcpbuf);
-		sprintf( http_buf, "HTTP/1.1 302 Found\r\nSet-Cookie: multics_session=%s; Path=/; HttpOnly; Max-Age=86400\r\nCache-Control: no-cache, no-store, must-revalidate\r\nLocation: /dashboard\r\nConnection: close\r\n\r\n", token);
+		sprintf( http_buf, "HTTP/1.1 302 Found\r\nSet-Cookie: multics_session=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400\r\nCache-Control: no-cache, no-store, must-revalidate\r\nLocation: /dashboard\r\nConnection: close\r\n\r\n", token);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_flush(&tcpbuf, sock);
 		mlogf(LOGINFO,DBG_HTTP," http: login successful for user '%s'\n", user);
@@ -1940,7 +1940,7 @@ void http_logout(int sock, http_request *req)
 	char http_buf[512];
 	struct tcp_buffer_data tcpbuf;
 	tcp_init(&tcpbuf);
-	sprintf( http_buf, "HTTP/1.1 302 Found\r\nSet-Cookie: multics_session=; Path=/; Max-Age=0\r\nLocation: /login\r\nConnection: close\r\n\r\n");
+	sprintf( http_buf, "HTTP/1.1 302 Found\r\nSet-Cookie: multics_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0\r\nLocation: /login\r\nConnection: close\r\n\r\n");
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_flush(&tcpbuf, sock);
 }

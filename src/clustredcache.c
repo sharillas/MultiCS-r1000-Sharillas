@@ -1740,7 +1740,7 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 
 
 		case TYPE_REQUEST:
-			if (received>16) break;
+			if (received<12) break; // pacote request = 12 bytes (tag..hash)
 			// Check Peer
 			peer = getpeerbyaddr(cache, recv_ip,recv_port);
 			if (!peer) break;
@@ -1786,7 +1786,7 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 
 
 		case TYPE_REPLY:
-			if (received>30) break;
+			if (received<13) break; // minimo: cabecalho (12) + tag reply
 			// Check Peer
 			peer = getpeerbyaddr(cache, recv_ip,recv_port);
 			if (!peer) break;
@@ -1869,6 +1869,7 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 #endif
 
 		case TYPE_PINGREQ:
+			if (received<13) break; // minimo para ler o porto (buf[11..12])
 			// Check Peer
 			peer = cache->peer;
 			int port = (buf[11]<<8)|buf[12];
