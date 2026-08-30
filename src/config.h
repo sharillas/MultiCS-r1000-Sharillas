@@ -1010,6 +1010,8 @@ struct PACK server_data
 // (loadbalance.c e incluido via th-ecm.c; cli-*.c chamam estas funcoes)
 void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
 int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
+// filtro de satelites: CAID com perfil no projeto? (main.c)
+int caid_in_profiles(uint16_t caid);
 
 
 
