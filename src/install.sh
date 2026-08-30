@@ -1,3 +1,0 @@
-
-cd encrypt
-make

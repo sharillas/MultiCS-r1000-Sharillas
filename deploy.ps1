@@ -3,17 +3,30 @@
 # Uso: .\deploy.ps1
 # Passos: build (zig musl) -> pscp -> backup -> restart -> verifica
 # Requisitos: plink/pscp em C:\TMP\opencode, VPS acessivel por SSH
+# SEGREDOS: as credenciais vivem em deploy.secrets.ps1 (NUNCA no
+#           git - esta no .gitignore). Exemplo do ficheiro:
+#             $VPSHost = "1.2.3.4"
+#             $VPSUser = "root"
+#             $VPSPass = "a-tua-password"
 # ============================================================
 $ErrorActionPreference = "Stop"
 
-# --- CONFIG (ajusta se necessario) ---
-$VPSHost = "187.124.172.185"
-$VPSUser = "root"
-$VPSPass = "114494"
-$VPSBin  = "/opt/multics/multics.x64"
-$VPSBin32 = "/opt/multics/multics.x32"
+# --- CONFIG ---
+$VPSHost = ""
+$VPSUser = ""
+$VPSPass = ""
 $ToolDir = "C:\TMP\opencode"
 $Root    = Split-Path -Parent $MyInvocation.MyCommand.Path
+$SecretsFile = Join-Path $Root "deploy.secrets.ps1"
+if (Test-Path $SecretsFile) {
+	. $SecretsFile
+}
+if (!$VPSHost -or !$VPSUser -or !$VPSPass) {
+	Write-Host "ERRO: cria o ficheiro deploy.secrets.ps1 (gitignored) com `$VPSHost/`$VPSUser/`$VPSPass" -ForegroundColor Red
+	exit 1
+}
+$VPSBin  = "/opt/multics/multics.x64"
+$VPSBin32 = "/opt/multics/multics.x32"
 
 Write-Host "== 1. Build =="
 cmd /c "powershell -ExecutionPolicy Bypass -File `"$Root\build.ps1`" > $ToolDir\bl.log 2>&1"

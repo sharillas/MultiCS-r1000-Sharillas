@@ -15,6 +15,8 @@ Os ficheiros ficam em `/var/etc/` (depois do `install.sh`). Qualquer alteração
 HTTP PORT: 5500
 HTTP USER: admin
 HTTP PASS: admin
+HTTP LOGIN MAXFAIL: 5    # falhas de login antes do bloqueio (brute-force)
+HTTP LOGIN LOCKTIME: 30  # segundos de bloqueio por IP (default 5/30)
 
 ######### TELNET #########
 TELNET PORT: 5600
@@ -96,6 +98,14 @@ C: host.do.reader 12000 user pass
 
 ```cfg
 N: host 34000 user pass 01 02 03 04 05 06 07 08 09 10 11 12 13 14 { profiles=15001,15002 }
+```
+
+**Topologia cliente + reader no mesmo IP externo** (a protecao anti-circular
+salta o reader porque o IP dele esta na lista do ECM). Opcao `nocheck`:
+
+```cfg
+C: 130.255.78.45 15000 user pass { nocheck=yes }
+N: 130.255.78.45 3000 user pass 01 02 03 04 05 06 07 08 09 10 11 12 13 14 { nocheck=yes }
 ```
 
 **Reader CacheEX** — `CacheEX.cfg`:
@@ -259,8 +269,23 @@ Um pedido **único** ao reader por ECM em voo: o 1º cliente com um ECM gera o p
 
 ---
 
-## 11. Verificação rápida
+## 11. ip2country (bandeiras na GUI)
 
+Base **diária** do repo [iplocate/ip-address-databases](https://github.com/iplocate/ip-address-databases):
+
+```bash
+# manual
+python3 /opt/multics/update_ip2country.py /var/etc/ip2country.csv
+# diário (cron)
+30 5 * * * python3 /opt/multics/update_ip2country.py /var/etc/ip2country.csv
+```
+
+- Formato aceite pelo MultiCS: `NETWORK/PREFIXO,CC` (ex: `130.255.0.0/16,PT`) ou `START,END,CC`
+- **Override manual**: acrescenta a linha no **fim** do ficheiro — a última linha tem prioridade na pesquisa
+
+---
+
+## 12. Verificação rápida
 ```bash
 systemctl restart multics && sleep 3
 journalctl -u multics -n 30          # sem "config(...) error" = parsing limpo
