@@ -3,9 +3,37 @@
 //
 ///////////////////////////////////////////////////////////////////////////////
 
-// 0: different ; 1:~equivalent
-int cs_cmp_card( struct cs_card_data *card, struct cardserver_data *cs)
+// NOK CACHE por reader+canal: depois de um NOK, o reader e "saltado" para
+// o mesmo canal durante NOK_CACHE_TTL ms (so quando ha outros servidores
+// disponiveis - evita martelar o reader em zappings rapidos).
+#define NOK_CACHE_TTL 8000
+
+void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid)
 {
+	if (!srv) return;
+	uint32_t ticks = GetTickCount();
+	int i = srv->nok_idx;
+	srv->nok_time[i] = ticks;
+	srv->nok_caid[i] = caid;
+	srv->nok_sid[i] = sid;
+	srv->nok_idx = (srv->nok_idx + 1) % NOK_CACHE_MAX;
+}
+
+int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid)
+{
+	if (!srv) return 0;
+	uint32_t ticks = GetTickCount();
+	int i;
+	for (i=0; i<NOK_CACHE_MAX; i++) {
+		if (!srv->nok_time[i]) continue;
+		if ( (uint32_t)(ticks - srv->nok_time[i]) > NOK_CACHE_TTL ) { srv->nok_time[i] = 0; continue; }
+		if ( (srv->nok_caid[i]==caid) && (srv->nok_sid[i]==sid) ) return 1;
+	}
+	return 0;
+}
+
+// 0: different ; 1:~equivalent
+int cs_cmp_card( struct cs_card_data *card, struct cardserver_data *cs){
 	int i,j,found;
 	int nbsame = 0;
 	int nbdiff = 0;
@@ -414,6 +442,24 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 	}
 	psrvlist[i] = NULL;
 	nbsrv = i;
+
+	// NOK CACHE: saltar readers com NOK recente neste canal (se houver alternativa)
+	{
+		int nok = 0;
+		for(j=0; j<nbsrv; j++)
+			if ( srv_nok_check(psrvlist[j]->srv, ecm->caid, ecm->sid) ) nok++;
+		if (nok && (nok<nbsrv)) {
+			i=0;
+			for(j=0; j<nbsrv; j++) {
+				if ( !srv_nok_check(psrvlist[j]->srv, ecm->caid, ecm->sid) ) {
+					if (i<j) psrvlist[i] = psrvlist[j];
+					i++;
+				}
+			}
+			psrvlist[i] = NULL;
+			nbsrv = i;
+		}
+	}
 
 
 	// Arrange by ECM LAST SENT TIME

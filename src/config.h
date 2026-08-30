@@ -894,6 +894,12 @@ struct PACK server_data
 	int priority; // Priority Server
 	// Nao aplicar a protecao anti-loop (cliente e reader no mesmo IP externo)
 	uint8_t nocheck;
+	// NOK cache: ultimos NOK por canal (evita martelar o reader em zappings)
+	#define NOK_CACHE_MAX 32
+	uint32_t nok_time[NOK_CACHE_MAX]; // GetTickCount do NOK
+	uint16_t nok_caid[NOK_CACHE_MAX];
+	uint16_t nok_sid[NOK_CACHE_MAX];
+	int nok_idx;
 	// Share Limits
 	struct sharelimit_data sharelimits[100];
 	// ACCEPTED SIDs
@@ -999,6 +1005,11 @@ struct PACK server_data
 		int hits; // Ecm hits got from this server 
 	} cstat[MAX_CSPORTS];
 };
+
+// NOK cache por reader+canal (loadbalance.c) - prototipos partilhados
+// (loadbalance.c e incluido via th-ecm.c; cli-*.c chamam estas funcoes)
+void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
+int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
 
 
 
