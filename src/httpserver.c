@@ -2398,7 +2398,7 @@ static struct { unsigned short caid; char *name; } caid_pkg_table[] = {
 	{ 0x0B00, "M7 Group (13E)" },
 	{ 0x0B01, "Orange/M7 (13E Polonia)" },
 	{ 0x0B02, "Focus Sat (0.8W Romenia)" },
-	{ 0x1884, "Platforma Canal+ (13E Polonia)" },
+	{ 0x1884, "Canal+ Polónia (13E Polonia)" },
 	{ 0x0100, "SECA/Mediaguard (13E)" },
 	{ 0x1803, "Polsat Box (13E Polonia)" },
 	{ 0x1861, "Polsat Box (13E Polonia)" },
@@ -2555,8 +2555,7 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 				}
 				char *provname = providerID(card->caid,card->prov[0]);
 				char *pkgname = caid_pkg_name(card->caid);
-				if (provname && pkgname) sprintf( temp,"<br><b>%04x:</b> %06x <font color=#CC3300>%s</font> <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",card->caid,card->prov[0], provname, pkgname);
-				else if (provname) sprintf( temp,"<br><b>%04x:</b> %06x <font color=#CC3300>%s</font>",card->caid,card->prov[0], provname);
+				if (provname) sprintf( temp,"<br><b>%04x:</b> %06x <font color=#CC3300>%s</font>",card->caid,card->prov[0], provname);
 				else if (pkgname) sprintf( temp,"<br><b>%04x:</b> %06x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",card->caid,card->prov[0], pkgname);
 				else sprintf( temp,"<br><b>%04x:</b> %06x",card->caid,card->prov[0]);
 				strcat( cell[6], temp );
@@ -3106,12 +3105,16 @@ void http_send_server(int sock, http_request *req)
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
 					provname = providerID(card->caid,card->prov[0]);
+					pkgname = caid_pkg_name(card->caid);
 					if (provname) sprintf( http_buf,"<td class=alt%d>[%d] <b>%04x:</b> %06x <font color=#CC3300>%s</font>",alt,card->uphops,card->caid,card->prov[0], provname);
+					else if (pkgname) sprintf( http_buf,"<td class=alt%d>[%d] <b>%04x:</b> %06x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->uphops,card->caid,card->prov[0], pkgname);
 					else sprintf( http_buf,"<td class=alt%d>[%d] <b>%04x:</b> %06x",alt,card->uphops,card->caid,card->prov[0]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #else
 					provname = providerID(card->caid,card->prov[0]);
+					pkgname = caid_pkg_name(card->caid);
 					if (provname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
+					else if (pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], pkgname);
 					else sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x",alt,card->caid,card->prov[0]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #endif
@@ -3139,7 +3142,7 @@ void http_send_server(int sock, http_request *req)
 					if (alt==1) alt=2; else alt=1;
 					provname = providerID(card->caid,card->prov[0]);
 					pkgname = caid_pkg_name(card->caid);
-					if (provname && pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font color=#CC3300>%s</font> <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], provname, pkgname);
+					if (provname && pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
 					else if (provname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
 					else if (pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], pkgname);
 					else sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x",alt,card->caid,card->prov[0]);

@@ -15,7 +15,7 @@
 0500:050F00|Redlight Mega Elite HD [V]
 0500:061500|SCT [V]
 0647:000000|Redlight Mega Elite HD [I]
-1884:000000|nc+ [N3]
+1884:000000|Canal+ Polónia (Nagra Cayman) [13E]
 0100:000068|nc+ [S3]
 1803:000000|Polsat Box (Nagra 3 - cartoes antigos Rom142) [13E]
 0B01:000000|nc+ [CX]
@@ -68,7 +68,7 @@
 0500:071000|Viaccess
 4B24:000000|Provider 4B24:000000
 4B63:000000|Provider 4B63:000000
-0500:050800|Viaccess
+0500:050800|Canal+ France (CSAT Viaccess) [19.2E]
 0500:060200|SRG SSR (Viaccess Orca V6/V7) [13E]
 0500:070200|Viaccess
 181D:00006E|Nagra
@@ -101,3 +101,4 @@
 098C:000002|Austriasat/Canal+ Austria (NDS Videoguard) [19.2E]
 0500:051E00|SCT/Redlight/Adultos (Viaccess fixo) [13E]
 0500:042830|Bis TV (Viaccess) [13E]
+186A:003411|HD+ HD04 (ident real) [19.2E]
