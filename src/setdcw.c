@@ -660,6 +660,28 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	// TIMING BUDGET: observar mudanca de CW para estimar o cryptoperiod
 	chnbudget_observe( ecm->caid, ecm->provid, ecm->sid, dcw );
 
+	// DEDUP: entregar o CW aos followers deste leader (mesma chave ECM)
+	ECM_DATA *flist[128];
+	int nbf = 0;
+	ECM_DATA *f = ecm->dedupnext;
+	while (f && (nbf<128)) {
+		ECM_DATA *fn = f->dedupnext;
+		if ( (f->dedupleader==ecm) && (f->dcwstatus==STAT_DCW_WAITDEDUP) ) {
+			f->dedupleader = NULL;
+			f->statusmsg = "Decode Success";
+			f->dcwsrctype = srctype;
+			f->dcwsrcid = srcid;
+			f->dcwstatus = STAT_DCW_SUCCESS;
+			f->checktime = 0;
+			f->waitserver = 0;
+			memcpy( f->cw, dcw, 16 );
+			sid_newecm(f);
+			flist[nbf++] = f;
+		}
+		f = fn;
+	}
+	ecm->dedupnext = NULL;
+
 	pthread_mutex_unlock(&prg.lockecm);
 
 	// Check timeout
@@ -667,6 +689,15 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	 //////if ( ecmtime > cs->option.dcw.timeout*ecm->period ) return;
 	// Send DCW to clients
 	clients_check_sendcw(ecm);
+
+	// DEDUP: enviar o CW aos clientes dos followers
+	{
+		int i;
+		for (i=0; i<nbf; i++) {
+			clients_check_sendcw(flist[i]);
+			cs->ecmok++;
+		}
+	}
 
 	// Update Stat
 	cs->ecmok++;

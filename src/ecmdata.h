@@ -27,6 +27,7 @@ typedef enum
 	STAT_DCW_FAILED,	// decode failed
 	STAT_DCW_WAIT,		// Wait servers answer
 	STAT_DCW_WAITCACHE,	// Wait cached servers answer
+	STAT_DCW_WAITDEDUP,	// Wait leader (dedup: pedido identico em voo)
 	STAT_DCW_SUCCESS	// dcw returned 
 } dcwstatus_type;
 
@@ -110,6 +111,11 @@ struct ecm_request {
 
 	int period; // ==1, number of retries to decode ecm. 
 
+	// DEDUP (1 pedido unico ao reader por ECM em voo - fix flood/TVCine)
+	struct ecm_request *dedupleader; // leader deste follower (NULL = nao follower)
+	struct ecm_request *dedupnext;   // lista de followers (no leader)
+	uint8_t dedupchecked;            // ja tentou juntar-se a um leader
+
 	uint32_t iplist[20]; 	// Clients ip list: to Remove Circular request: check for client ip & srv ip
 	uint32_t srviplist[20]; 	// Clients ip list: to Remove Circular request: check for client ip & srv ip
 
@@ -125,6 +131,12 @@ typedef struct ecm_request ECM_DATA;
 
 extern struct ecm_request *ecmdata;
 extern int totalecm;
+
+// contadores globais do DEDUP (1 pedido unico por ECM em voo)
+extern int g_ecm_unique;
+extern int g_ecm_dedup;
+// top de canais com dedup (para a GUI) - devolve n entradas ordenadas por repetidos
+int dedup_ch_top(int max, uint16_t *caid, uint16_t *sid, uint32_t *uni, uint32_t *ded);
 
 void init_ecmdata();
 uint32_t ecm_crc( uint8_t *ecm, int ecmlen);

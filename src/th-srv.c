@@ -63,6 +63,13 @@ void *cs_connect_srv_th(struct server_data *srv)
 			close(fd);
 		}
 	}
+	else if (srv->type==TYPE_CCAM3) {
+		if ( ccam3_connect_srv(srv,fd)!=0 ) {
+			mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," server: connection failed to CCcam3 server (%s:%d)\n", srv->host->name,srv->port);
+			srv->connection.status = 0;
+			close(fd);
+		}
+	}
 #endif
 #ifdef RADEGAST_CLI
 	else if (srv->type==TYPE_RADEGAST) {
