@@ -260,6 +260,22 @@ struct ecm_request *store_ecmdata(struct cardserver_data *cs,uint8_t *ecm,int ec
 		new = ecmdata->prev;
 		if ( (new->recvtime+TIME_ECMALIVE*2) < ticks ) {
 			cs_delecmdata(new->cs, new);
+			// DEDUP: desligar de listas de followers antes da reciclagem
+			if (new->dedupleader) {
+				struct ecm_request *w = new->dedupleader->dedupnext;
+				struct ecm_request *p = NULL;
+				while (w) {
+					if (w==new) {
+						if (p) p->dedupnext = w->dedupnext;
+						else new->dedupleader->dedupnext = w->dedupnext;
+						break;
+					}
+					p = w;
+					w = w->dedupnext;
+				}
+				new->dedupleader = NULL;
+			}
+			new->dedupnext = NULL;
 			// cache is dead, add data to this one without allocating new data
 			struct ecm_request *tmp = new->prev; // store previous
 			memset( new, 0,  sizeof(struct ecm_request) );
