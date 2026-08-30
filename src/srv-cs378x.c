@@ -502,6 +502,7 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 					}
 					else {
 						ecm->period++; // RETRY
+						ecm->recvtime = ticks; // FIX: nova tentativa comeca agora
 						cs378x_store_ecmclient(ecm, cli);
 						mlogf(LOGINFO,getdbgflagpro(DBG_CS378X,0,cli->id, cs->id)," <- ecm from cs378x client '%s' ch %04x:%06x:%04x:%08x**\n", cli->user, caid, provid, sid, ecm->hash);
 						cli->ecm.busy=1;

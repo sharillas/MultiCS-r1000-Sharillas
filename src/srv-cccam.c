@@ -8,6 +8,7 @@
 
 void cc_senddcw_cli(struct cc_client_data *cli);
 void cccam_srv_accept2(struct cccam_server_data *cccam);
+int ccam3_send_cw_cli(struct cc_client_data *cli, ECM_DATA *ecm); // srv-ccam3.c
 
 
 struct cccam_server_data *getcccamserverbyid(uint32_t id)
@@ -771,13 +772,22 @@ void cc_senddcw_cli(struct cc_client_data *cli)
 	if ( (ecm->dcwstatus==STAT_DCW_SUCCESS)&&(ecm->hash==cli->ecm.hash) ) {
 		memcpy( buf, ecm->cw, 16 );
 
-		cc_crypt_cw( cli->nodeid, cli->ecm.cardid , buf);
-		if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_REQUEST, 16, buf) ) {
-			cc_disconnect_cli( cli );
-			return;
+		if (cli->isccam3) {
+			// cliente CCcam3: framing propria (sem NOK no fail)
+			if (!ccam3_send_cw_cli(cli, ecm)) {
+				cc_disconnect_cli( cli );
+				return;
+			}
 		}
-		cc_encrypt(&cli->sendblock, buf, 16); // additional crypto step
-		mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," => cw to CCcam client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
+		else {
+			cc_crypt_cw( cli->nodeid, cli->ecm.cardid , buf);
+			if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_REQUEST, 16, buf) ) {
+				cc_disconnect_cli( cli );
+				return;
+			}
+			cc_encrypt(&cli->sendblock, buf, 16); // additional crypto step
+		}
+		mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," => cw to CCcam%s client '%s' ch %04x:%06x:%04x (%dms)\n", cli->isccam3?"3":"", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
 		//
 		cli->lastecm.dcwsrctype = ecm->dcwsrctype;
 		cli->lastecm.dcwsrcid = ecm->dcwsrcid;
@@ -789,12 +799,18 @@ void cc_senddcw_cli(struct cc_client_data *cli)
 		memcpy( cli->lastecm.dcw, ecm->cw, 16 );
 	}
 	else { //if (ecm->data->dcwstatus==STAT_DCW_FAILED)
-		if (enablefreeze) cli->freeze++;
-		if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
-			cc_disconnect_cli( cli );
-			return;
+		if (cli->isccam3) {
+			// CCcam3 nao tem NOK - o cliente fica a espera (timeout do lado dele)
+			mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam3 client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
 		}
-		mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
+		else {
+			if (enablefreeze) cli->freeze++;
+			if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
+				cc_disconnect_cli( cli );
+				return;
+			}
+			mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
+		}
 		//
 		cli->lastecm.dcwsrctype = DCW_SOURCE_NONE;
 		cli->lastecm.dcwsrcid = 0;
@@ -949,6 +965,7 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 					}
 					else {
 						ecm->period++; // RETRY
+						ecm->recvtime = ticks; // FIX: nova tentativa comeca agora (timeout/send window frescos)
 						cc_store_ecmclient(ecm, cardid, cli);
 						mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,cs->id)," <- ecm from CCcam client '%s' ch %04x:%06x:%04x:%08x**\n", cli->user, caid, provid, sid, ecm->hash);
 #ifdef ECMLIST

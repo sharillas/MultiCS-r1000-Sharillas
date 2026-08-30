@@ -397,6 +397,7 @@ void camd35_recvmsg( struct camd35_server_data *camd35 )
 					}
 					else {
 						ecm->period++; // RETRY
+						ecm->recvtime = ticks; // FIX: nova tentativa comeca agora
 						camd35_store_ecmclient(ecm, cli);
 						mlogf(LOGINFO,getdbgflagpro(DBG_CAMD35,0,cli->id, cs->id)," <- ecm from camd35 client '%s' ch %04x:%06x:%04x:%08x**\n", cli->user, caid, provid, sid, ecm->hash);
 						cli->ecm.busy=1;

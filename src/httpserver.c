@@ -498,7 +498,8 @@ int total_profiles()
 	int count=0;
 	struct cardserver_data *cs = cfg.cardserver;
 	while(cs) {
-		count++;
+		// perfis internos nao aparecem na lista (DEFAULT e o emulador BISS)
+		if ( strcmp(cs->name,"DEFAULT") && strcmp(cs->name,"BISS Emu") ) count++;
 		cs = cs->next;
 	}
 	return count;
@@ -1431,7 +1432,7 @@ void http_send_index(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	int activeecm=0;
 	ECM_DATA *ecmwalk=ecmdata;
-	while (ecmwalk) { if (ecmwalk->dcwstatus==STAT_DCW_WAIT) activeecm++; ecmwalk=ecmwalk->next; }
+	while (ecmwalk) { if (ecmwalk->dcwstatus==STAT_DCW_WAIT) activeecm++; ecmwalk=ecmwalk->next; if (ecmwalk==ecmdata) break; }
 	sprintf( http_buf, "<span class=stat-label>Active ECMs:</span> %d<br>", activeecm );
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #ifdef CACHEEX
@@ -1448,6 +1449,7 @@ void http_send_index(int sock, http_request *req)
 	while (ecmwalk) {
 		if (ecmwalk->recvtime) { ecmreq = ecmwalk; break; }
 		ecmwalk = ecmwalk->next;
+		if (ecmwalk==ecmdata) break;
 	}
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
 	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Current Ecm Request</h3>");
@@ -2367,19 +2369,28 @@ char *providerID( unsigned short caid, unsigned int provid )
 
 // nome do pacote/operadora por CAID (posicao + pais) - coluna Cards
 static struct { unsigned short caid; char *name; } caid_pkg_table[] = {
-	{ 0x1814, "NOS ID (30W Portugal)" },
-	{ 0x1813, "MEO (30W Portugal)" },
+	{ 0x1814, "MEO ID (30W Portugal)" },
+	{ 0x1813, "Canal+ Polónia nc+ (13E)" },
+	{ 0x1802, "NOS ID (30W Portugal)" },
+	{ 0x1880, "Digi TV (0.8W Hungria)" },
 	{ 0x1810, "Movistar+ (19.2E Espanha)" },
-	{ 0x1830, "HD+ (19.2E Alemanha)" },
-	{ 0x1843, "HD+ (19.2E Alemanha)" },
+	{ 0x1830, "HD+ HD01 (19.2E Alemanha)" },
+	{ 0x1843, "HD+ HD02 (19.2E Alemanha)" },
+	{ 0x1860, "HD+ HD03 (19.2E Alemanha)" },
+	{ 0x186A, "HD+ HD04 (19.2E Alemanha)" },
+	{ 0x188A, "HD+ HD05 (19.2E Alemanha)" },
+	{ 0x098C, "Sky DE (19.2E Alemanha)" },
 	{ 0x098D, "Sky DE (19.2E Alemanha)" },
+	{ 0x1818, "TNT SAT (19.2E Franca)" },
+	{ 0x1817, "Canal Digitaal NL (19.2E)" },
+	{ 0x181D, "TV Vlaanderen (19.2E Belgica)" },
 	{ 0x0D95, "ORF Digital (19.2E Austria)" },
 	{ 0x0D96, "Skylink (23.5E)" },
 	{ 0x0648, "ORF Digital (19.2E Austria)" },
 	{ 0x0650, "ORF Digital (19.2E Austria)" },
 	{ 0x1702, "BetaDigital (19.2E Alemanha)" },
 	{ 0x1722, "BetaDigital (19.2E Alemanha)" },
-	{ 0x1811, "Canal+ FR (19.2E Franca)" },
+	{ 0x1811, "Canal+ France (19.2E Franca)" },
 	{ 0x0500, "Viaccess/TNTSAT (19.2E Franca)" },
 	{ 0x0963, "Sky UK (28.2E Reino Unido)" },
 	{ 0x0960, "Sky UK (28.2E Reino Unido)" },
@@ -2402,9 +2413,8 @@ static struct { unsigned short caid; char *name; } caid_pkg_table[] = {
 	{ 0x093B, "Sky Italia (13E Italia)" },
 	{ 0x09CD, "Sky Italia (13E Italia)" },
 	{ 0x09BD, "Vivacom (13E Bulgaria)" },
-	{ 0x1802, "Digi TV (0.8W Hungria)" },
 	{ 0x1880, "Digi TV (0.8W Hungria)" },
-	{ 0x0624, "Skylink/Irdeto (23.5E)" },
+	{ 0x0624, "Skylink (23.5E) / Austriasat-Canal+ AT (19.2E)" },
 	{ 0x090F, "Viasat (4.8E)" },
 	{ 0x093E, "Viasat (4.8E)" },
 	{ 0x1887, "HD+ Astra (19.2E Alemanha)" },
@@ -2474,6 +2484,10 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 #ifdef CS378X_CLI
 	else if (srv->type==TYPE_CS378X) sprintf( cell[2],"Cs738x TCP v0.3.x");
 #endif
+	else if (srv->type==TYPE_CCAM3) {
+		if (srv->handle>0 && srv->version[0]) sprintf( cell[2],"CCcam3 v%s", srv->version);
+		else sprintf( cell[2],"CCcam3");
+	}
 	else sprintf( cell[2],"Unknown");
 
 	// CELL3
@@ -2502,7 +2516,7 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 	{
 		// CELL4
 		if (srv->ecmnb)
-			sprintf( cell[4],"%d / %d<span style=\"float: right;\">%d%%</span><br>Hits = %d",srv->ecmok ,srv->ecmnb, (srv->ecmok*100)/srv->ecmnb, srv->hits);
+			sprintf( cell[4],"%d / %d<span style=\"float: right;\">%d%%</span><br>Hits = %d",srv->ecmok ,srv->ecmnb, srv->ecmnb?((srv->ecmok*100)/srv->ecmnb):0, srv->hits);
 		else
 			sprintf( cell[4],"<span style=\"float: right;\">0%%</span>");
 		// Health score (quando HEALTH ativo nalgum perfil deste server)
@@ -2517,7 +2531,7 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 		}
 		// CELL5
 		if (srv->ecmok)
-			sprintf( cell[5],"%d ms",(srv->ecmoktime/srv->ecmok) ); //, srv->hits );
+			sprintf( cell[5],"%d ms", srv->ecmok?((srv->ecmoktime/srv->ecmok)):0 ); //, srv->hits );
 		else
 			sprintf( cell[5],"-- ms");
 	}
@@ -2534,20 +2548,21 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 		struct cs_card_data *card = srv->card;
 		while (card) {
 			if (card->uphops<=1) {
-				if (icard>3) {
-					strcat( cell[6], "<br> ..." );
+				if (icard>12) {
+					sprintf( temp,"<br><a href='/server?id=%d'>+ %d cards ... (ver todos)</a>", srv->id, srv_cardcount(srv,-1)-icard);
+					if ( (strlen(cell[6])+strlen(temp)) < (sizeof(cell[6])-8) ) strcat( cell[6], temp );
 					break;
 				}
 				char *provname = providerID(card->caid,card->prov[0]);
 				char *pkgname = caid_pkg_name(card->caid);
-				if (provname && pkgname) sprintf( temp,"<br><b>%04x:</b> %x <font color=#CC3300>%s</font> <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",card->caid,card->prov[0], provname, pkgname);
-				else if (provname) sprintf( temp,"<br><b>%04x:</b> %x <font color=#CC3300>%s</font>",card->caid,card->prov[0], provname);
-				else if (pkgname) sprintf( temp,"<br><b>%04x:</b> %x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",card->caid,card->prov[0], pkgname);
-				else sprintf( temp,"<br><b>%04x:</b> %x",card->caid,card->prov[0]);
+				if (provname && pkgname) sprintf( temp,"<br><b>%04x:</b> %06x <font color=#CC3300>%s</font> <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",card->caid,card->prov[0], provname, pkgname);
+				else if (provname) sprintf( temp,"<br><b>%04x:</b> %06x <font color=#CC3300>%s</font>",card->caid,card->prov[0], provname);
+				else if (pkgname) sprintf( temp,"<br><b>%04x:</b> %06x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",card->caid,card->prov[0], pkgname);
+				else sprintf( temp,"<br><b>%04x:</b> %06x",card->caid,card->prov[0]);
 				strcat( cell[6], temp );
 				for(i=1; i<card->nbprov; i++) {
 					char *provname = providerID(card->caid,card->prov[i]);
-					if (provname) sprintf( temp,", %x <font color=#CC3300>%s</font>", card->prov[i], provname); else sprintf( temp,", %x", card->prov[i]);
+					if (provname) sprintf( temp,", %06x <font color=#CC3300>%s</font>", card->prov[i], provname); else sprintf( temp,", %06x", card->prov[i]);
 					if ( (strlen(cell[6])+strlen(temp))<sizeof(cell[6]) )  strcat( cell[6], temp );
 				}
 				icard++;
@@ -2830,7 +2845,7 @@ void http_send_servers(int sock, http_request *req)
 	if (get_action==0) {
 		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >ECM Dedup</h3><div class=stat-value>");
 		if ((g_ecm_unique+g_ecm_dedup)>0) {
-			sprintf( http_buf, "Pedidos unicos ao reader: <b>%d</b> | Repetidos evitados (dedup): <b>%d</b> (%d%%%%)<br>", g_ecm_unique, g_ecm_dedup, (g_ecm_dedup*100)/(g_ecm_unique+g_ecm_dedup));
+			sprintf( http_buf, "Pedidos unicos ao reader: <b>%d</b> | Repetidos evitados (dedup): <b>%d</b> (%d%%%%)<br>", g_ecm_unique, g_ecm_dedup, (g_ecm_unique+g_ecm_dedup)?((g_ecm_dedup*100)/(g_ecm_unique+g_ecm_dedup)):0);
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
 		else tcp_writestr(&tcpbuf, sock, "Sem atividade de ECM ainda.<br>");
@@ -3013,7 +3028,7 @@ void http_send_server(int sock, http_request *req)
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		//Ecm Time
 		if (srv->ecmok) {
-			sprintf( http_buf,"<tr><td class=left>Average Time</td><td class=right>%d ms</td></tr>\n",(srv->ecmoktime/srv->ecmok) );
+			sprintf( http_buf,"<tr><td class=left>Average Time</td><td class=right>%d ms</td></tr>\n", srv->ecmok?((srv->ecmoktime/srv->ecmok)):0 );
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
 		// EOT
@@ -3091,19 +3106,19 @@ void http_send_server(int sock, http_request *req)
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
 					provname = providerID(card->caid,card->prov[0]);
-					if (provname) sprintf( http_buf,"<td class=alt%d>[%d] <b>%04x:</b> %x <font color=#CC3300>%s</font>",alt,card->uphops,card->caid,card->prov[0], provname);
-					else sprintf( http_buf,"<td class=alt%d>[%d] <b>%04x:</b> %x",alt,card->uphops,card->caid,card->prov[0]);
+					if (provname) sprintf( http_buf,"<td class=alt%d>[%d] <b>%04x:</b> %06x <font color=#CC3300>%s</font>",alt,card->uphops,card->caid,card->prov[0], provname);
+					else sprintf( http_buf,"<td class=alt%d>[%d] <b>%04x:</b> %06x",alt,card->uphops,card->caid,card->prov[0]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #else
 					provname = providerID(card->caid,card->prov[0]);
-					if (provname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
-					else sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x",alt,card->caid,card->prov[0]);
+					if (provname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
+					else sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x",alt,card->caid,card->prov[0]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #endif
 					int i;
 					for(i=1; i<card->nbprov; i++) {
 						provname = providerID(card->caid,card->prov[i]);
-						if (provname) sprintf( http_buf,", %x <font color=#CC3300>%s</font>", card->prov[i], provname); else sprintf( http_buf,", %x", card->prov[i]);
+						if (provname) sprintf( http_buf,", %06x <font color=#CC3300>%s</font>", card->prov[i], provname); else sprintf( http_buf,", %06x", card->prov[i]);
 						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 					}
 					sprintf( http_buf,"</td></tr>");
@@ -3124,16 +3139,16 @@ void http_send_server(int sock, http_request *req)
 					if (alt==1) alt=2; else alt=1;
 					provname = providerID(card->caid,card->prov[0]);
 					pkgname = caid_pkg_name(card->caid);
-					if (provname && pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x <font color=#CC3300>%s</font> <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], provname, pkgname);
-					else if (provname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
-					else if (pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], pkgname);
-					else sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %x",alt,card->caid,card->prov[0]);
+					if (provname && pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font color=#CC3300>%s</font> <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], provname, pkgname);
+					else if (provname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font color=#CC3300>%s</font>",alt,card->caid,card->prov[0], provname);
+					else if (pkgname) sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>",alt,card->caid,card->prov[0], pkgname);
+					else sprintf( http_buf,"<td class=alt%d><b>%04x:</b> %06x",alt,card->caid,card->prov[0]);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 					int i;
 					for(i=1; i<card->nbprov; i++) {
 						provname = providerID(card->caid,card->prov[i]);
-						if (provname) sprintf( http_buf,", %x <font color=#CC3300>%s</font>", card->prov[i], provname);
-						else sprintf( http_buf,", %x", card->prov[i]);
+						if (provname) sprintf( http_buf,", %06x <font color=#CC3300>%s</font>", card->prov[i], provname);
+						else sprintf( http_buf,", %06x", card->prov[i]);
 						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 					}
 					sprintf( http_buf,"</td></tr>");
@@ -3796,10 +3811,14 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][2048])
 		usr = usr->next;
 	}
 	getstatcell2(j,i,cell[8]);
-	// CELL9 # Caid:Providers
-	sprintf( cell[9],"<b>%04X:</b> %x ",cs->card.caid,cs->card.prov[0].id);
+	// CELL9 # Caid:Providers (com nomes de ident do CCcam.providers)
+	char *provname = providerID(cs->card.caid, cs->card.prov[0].id);
+	if (provname) sprintf( cell[9],"<b>%04X:</b> %06x <font color=#CC3300>%s</font>",cs->card.caid,cs->card.prov[0].id,provname);
+	else sprintf( cell[9],"<b>%04X:</b> %06x",cs->card.caid,cs->card.prov[0].id);
 	for(i=1; i<cs->card.nbprov; i++) {
-		sprintf( temp,",%x ",cs->card.prov[i].id);
+		provname = providerID(cs->card.caid, cs->card.prov[i].id);
+		if (provname) sprintf( temp,", %06x <font color=#CC3300>%s</font>",cs->card.prov[i].id,provname);
+		else sprintf( temp,", %06x",cs->card.prov[i].id);
 		strcat( cell[9], temp );
 	}
 
@@ -4074,6 +4093,15 @@ void http_send_profiles(int sock, http_request *req)
 							while (*a && *a!=']' && n<120) secname[n++] = *a++;
 							secname[n] = 0;
 							if (secname[0]) {
+								// perfis internos (DEFAULT/BISS Emu) nao aparecem na lista
+								if (!strcmp(secname,"DEFAULT") || !strcmp(secname,"BISS Emu")) {
+									struct cardserver_data *w2 = cfg.cardserver;
+									while (w2) {
+										if (!strcmp(w2->name, secname)) { if (nrendered<128) rendered[nrendered++] = w2->id; break; }
+										w2 = w2->next;
+									}
+								}
+								else {
 								struct cardserver_data *fcs = NULL;
 								struct cardserver_data *walk = cfg.cardserver;
 								while (walk) {
@@ -4100,6 +4128,7 @@ void http_send_profiles(int sock, http_request *req)
 									sprintf( http_buf,"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span></span></td></tr>", alt, secname, encname);
 									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 								}
+								} // fim do else (skip DEFAULT/BISS Emu)
 							}
 						}
 						if (hasnl) *eol = '\n';
@@ -4113,7 +4142,7 @@ void http_send_profiles(int sock, http_request *req)
 	// 2) perfis ativos que nao estao no profiles.cfg
 	struct cardserver_data *cs = cfg.cardserver;
 	while(cs) {
-		if (!profile_is_rendered(rendered, nrendered, cs->id)) {
+		if ( strcmp(cs->name,"DEFAULT") && strcmp(cs->name,"BISS Emu") && !profile_is_rendered(rendered, nrendered, cs->id)) {
 			if (alt==1) alt=2; else alt=1;
 			getprofilecells( cs, cell );
 			sprintf( http_buf,"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td class=%s>%s</td><td align=center>%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",cs->id,alt,cs->id,cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9]);

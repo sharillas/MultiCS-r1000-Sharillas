@@ -1,14 +1,103 @@
 # ============================================================
 # CCcam.providers - NOMES DE PROVIDERS (mostrados na GUI)
+# Consolidado dos 10 ficheiros Providers SRVID (2026-08-12/14)
+# Formato: CAID:PROVID|NOME
 # ============================================================
-#
-# FORMATO: CAID:PROVID:NOME DO PROVIDER
-#   O nome do provider (em claro, pode ter espacos) aparece na GUI
-#   junto do par CAID:PROVID (ex: em vez de "0500:030B00" mostra
-#   "0500:030B00 - TNTSAT").
-# ============================================================
+1814:000000|MEO ID (Nagra Merlin - ident emulacao)
+1813:000000|Canal+ Polónia (nc+ N3 tunnelled - emulacao)
+1810:000000|Movistar+ (Nagra - iPlus HD) [19.2E]
+1810:004101|Digital+ / Movistar+
+0100:003311|MEO (Seca/legado)
+098D:000000|Sky Deutschland (NDS Videoguard V15) [19.2E]
+0500:030B00|TNT SAT (Viaccess - classicos V5/V6) [19.2E]
+2600:000000|BISS (constant CW)
+0500:043800|Redlight Mega Elite HD [V]
+0500:050F00|Redlight Mega Elite HD [V]
+0500:061500|SCT [V]
+0647:000000|Redlight Mega Elite HD [I]
+1884:000000|nc+ [N3]
+0100:000068|nc+ [S3]
+1803:000000|Polsat Box (Nagra 3 - cartoes antigos Rom142) [13E]
+0B01:000000|nc+ [CX]
+1861:000000|Cyfrowy Polsat [N3/1861]
+0500:032A00|Orange Polska [V3]
+186C:000000|Cyfrowy Polsat [N3/186C]
+183D:000000|Tivùsat (Nagra Tiger - cartoes azuis/brancos) [13E]
+183E:000000|Tivùsat (Nagra Tiger - cartoes dourados) [13E]
+1856:000000|Tivùsat (Nagra Merlin 4K) [13E]
+09BD:000000|Vivacom [NDS]
+09CD:000000|SKY IT [NDS]
+0500:000000|ELITE HD 10+/SCT
+1807:000000|ELITE HD 10+/SCT
+0100:000000|CANAL+
+0B02:000000|CANAL+
+1870:000000|Polsat Box
+06ED:000000|Polsat Box
+0911:000000|ESP HD
+091F:000000|ESP HD
+069F:000000|ESP HD
+0604:000000|ESP HD
+0699:000000|ESP HD
+5604:000000|ESP HD
+0919:000000|TivuSat/Sky IT
+093B:000000|TivuSat/Sky IT
+4AFC:000000|SSR/SRG
+1819:000000|Nagra
+181D:000000|TV Vlaanderen (Nagra Merlin) [19.2E]
+0614:000000|Provider 0614:000000
+0B00:000000|Conax
+0624:000000|Austriasat/Canal+ Austria (Irdeto 2) [19.2E] | Skylink [23.5E]
+0653:000000|Provider 0653:000000
+1818:000000|TNT SAT (Nagra - cartoes TNTSAT 7) [19.2E]
+0641:000000|Nagra
+0500:042820|Viaccess
+0500:051900|Canal Digitaal NL (Viaccess Orca) [19.2E]
+0500:033A00|Viaccess
+1819:00006D|Nagra
+0100:00006D|Seca
+0500:050600|Viaccess
+1813:000068|Canal+ Polónia (nc+ N3 tunnelled - ident real)
+0500:061200|Viaccess
+0500:051A40|Viaccess
+0500:051910|Viaccess
+0500:051A00|Viaccess
+0500:051A10|Viaccess
+0500:051200|Viaccess
+0500:051A20|Viaccess
+0500:061400|Viaccess
+0500:071000|Viaccess
+4B24:000000|Provider 4B24:000000
+4B63:000000|Provider 4B63:000000
+0500:050800|Viaccess
+0500:060200|SRG SSR (Viaccess Orca V6/V7) [13E]
+0500:070200|Viaccess
+181D:00006E|Nagra
+1818:00006C|Provider 1818:00006C
+0100:00006C|TV Vlaanderen (Mediaguard Seca3) [19.2E]
+06E1:000000|Provider 06E1:000000
+1EC0:000000|Provider 1EC0:000000
+1878:000000|Provider 1878:000000
+0659:000000|Provider 0659:000000
 
-098D:000000:Sky Deutschland
-0500:030B00:TNTSAT
-0100:003311:MEO
-2600:000000:BISS
+1814:005211|MEO ID (ident real transmissao)
+1814:000007|MEO ID_SAT
+1814:005221|MEO ID
+1802:000000|NOS ID (Nagra 3/Rom142 - ident emulacao)
+1802:004801|NOS ID (ident real primario)
+1802:004901|NOS ID (ident historico/ZON)
+186F:000000|NOS (Nagra Merlin 4K - pairing, nao partilhavel)
+0100:000000|MEO (Seca/legado - DESATIVADO pela MEO)
+1810:004001|Movistar+ (Seca tunnelled) [19.2E]
+1811:003311|Canal+ France (Nagra Merlin) [19.2E]
+0500:032830|Canal+ France (Viaccess Orca V5/V6) [19.2E]
+098C:000000|Sky Deutschland (NDS Videoguard V14) [19.2E]
+1830:000000|HD+ (Nagra - cartao branco HD01) [19.2E]
+1843:000000|HD+ (Nagra - cartao preto HD02) [19.2E]
+1860:000000|HD+ (Nagra - cartao HD03) [19.2E]
+186A:000000|HD+ (Nagra - cartao HD04) [19.2E]
+188A:000000|HD+ (Nagra - cartao HD05) [19.2E]
+0100:00006A|Canal Digitaal NL (Mediaguard Seca3) [19.2E]
+1817:000000|Canal Digitaal NL (Nagra Merlin) [19.2E]
+098C:000002|Austriasat/Canal+ Austria (NDS Videoguard) [19.2E]
+0500:051E00|SCT/Redlight/Adultos (Viaccess fixo) [13E]
+0500:042830|Bis TV (Viaccess) [13E]

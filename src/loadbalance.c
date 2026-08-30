@@ -110,6 +110,11 @@ int sidata_getval(struct server_data *srv, struct cardserver_data *cs, uint16_t 
 		}
 		return selsidvalue;
 	}
+	else if (srv->type==TYPE_CCAM3) {
+		// CCcam3: carta sintetica (o protocolo nao envia lista de cards)
+		*selcard = srv->card;
+		return 0;
+	}
 #endif
 	return 0;
 }
@@ -155,7 +160,7 @@ int srv_healthscore(struct cardserver_data *cs, struct server_data *srv)
 {
 	if (!cs->option.health.enable) return 0;
 	int ecmnb = srv->ecmnb;
-	if (ecmnb < cs->option.health.minecms) return 0;
+	if ( (ecmnb<=0) || (ecmnb < cs->option.health.minecms) ) return 0;
 
 	int wsuc = cs->option.health.wsuc;
 	int wlat = cs->option.health.wlat;
@@ -234,13 +239,13 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		if ( !IS_DISABLED(srv->flags)&&(srv->connection.status>0) )
 		if (
 			( cs->option.fallownewcamd && (srv->type==TYPE_NEWCAMD) )
-			|| ( cs->option.fallowcccam && (srv->type==TYPE_CCCAM) )
+			|| ( cs->option.fallowcccam && ( (srv->type==TYPE_CCCAM) || (srv->type==TYPE_CCAM3) ) )
 			|| ( cs->option.fallowradegast && (srv->type==TYPE_RADEGAST) )
 			|| ( cs->option.fallowcamd35 && (srv->type==TYPE_CAMD35) )
 			|| ( cs->option.fallowcs378x && (srv->type==TYPE_CS378X) )
 		)
 		// Remove Circular request: check for client ip & srv ip
-		if ( (srv->host->ip==0x0100007F) || ( !ecm_checkip(ecm, srv->host->ip) && !ecm_checksrvip(ecm, srv->host->ip) ) )
+		if ( srv->nocheck || (srv->host->ip==0x0100007F) || ( !ecm_checkip(ecm, srv->host->ip) && !ecm_checksrvip(ecm, srv->host->ip) ) )
 		{
 			// Check for CS PORTS
 			for(i=0; i<MAX_CSPORTS; i++ ) {
@@ -410,8 +415,6 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 	psrvlist[i] = NULL;
 	nbsrv = i;
 
-
-//// ARRANGE
 
 	// Arrange by ECM LAST SENT TIME
 	for(i=0; i<nbsrv-1; i++)
