@@ -47,11 +47,13 @@ struct server_data *getcesrvbyid(uint32_t id)
 char *getsrvtype(struct server_data *srv)
 {
 	static char *_cccam = "CCcam";
+	static char *_ccam3 = "CCcam3";
 	static char *_newcamd = "newcamd";
 static char *_radegast = "Cs357x UDP v0.3.x";
 static char *_camd35 = "Camd35 v0.3.x";
 static char *_cs378x = "Cs738x TCP v0.3.x";
 	if (srv->type==TYPE_CCCAM) return _cccam;
+	else if (srv->type==TYPE_CCAM3) return _ccam3;
 	else if (srv->type==TYPE_NEWCAMD) return _newcamd;
 	else if (srv->type==TYPE_RADEGAST) return _radegast;
 	else if (srv->type==TYPE_CAMD35) return _camd35;
