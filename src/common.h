@@ -21,7 +21,7 @@
 #define REVISION_STR  "1000"
 
 #ifndef VERSION_STR
-#define VERSION_STR "1.20"
+#define VERSION_STR "1.21"
 #endif
 
 #ifndef GIT_COMMIT

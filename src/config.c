@@ -152,8 +152,14 @@ void init_cccamserver(struct cccam_server_data *cccam)
 	cccam->client = NULL;
 	cccam->handle = -1;
 	cccam->port = 0;
+	cccam->ccam3_port = 0;
+	cccam->ccam3_handle = -1;
 #endif
 }
+
+#ifdef CCCAM_SRV
+void *ccam3_srv_thread(void *param); // servidor CCcam3 (srv-ccam3.c)
+#endif
 
 void init_mgcamdserver(struct mgcamdserver_data *mgcamd)
 {
@@ -459,6 +465,10 @@ void parse_server_data( struct server_data *tsrv )
 				else if (!strcmp(str,"shares")) parse_option_shares( tsrv->sharelimits );
 				else if (!strcmp(str,"priority")) {
 					if (parse_int(str)) tsrv->priority = atoi(str);
+				}
+				else if (!strcmp(str,"nocheck")) {
+					// nao aplicar a protecao anti-loop (cliente e reader no mesmo IP)
+					tsrv->nocheck = parse_boolean();
 				}
 #ifdef CACHEEX
 				else if (!strcmp(str,"cacheex_mode")) {
@@ -2717,6 +2727,29 @@ link_cccam_server:
 			pthread_mutex_init( &srv->lock, NULL );
 			cfg_addserver(cfg, srv);
 		}
+
+		else if (!strcmp(str,"C3")) {
+			// CCcam3 reader: C3: host porta user pass
+			parse_spaces();
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			srv = malloc( sizeof(struct server_data) );
+			memset(srv,0,sizeof(struct server_data) );
+			srv->type = TYPE_CCAM3;
+			parse_str(str);
+			srv->host = add_host(cfg, str);
+			parse_int(str);
+			srv->port = atoi( str );
+			if (*iparser==',') iparser++;
+			parse_str(srv->user);
+			parse_str(srv->pass);
+			parse_server_data( srv );
+			srv->handle = -1;
+			pthread_mutex_init( &srv->lock, NULL );
+			cfg_addserver(cfg, srv);
+		}
 #endif
 
 #ifdef CCCAM_SRV
@@ -2884,6 +2917,28 @@ link_cccam_client:
 		//}
 
 #ifdef CCCAM
+		else if (!strcmp(str,"CCCAM3")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"PORT")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cccam = cfg->cccam.server;
+				if (!cccam) {
+					cccam = malloc( sizeof(struct cccam_server_data) );
+					init_cccamserver(cccam);
+					cccam->id = 0;
+					cccam->next = NULL;
+					cfg_addcccamserver(cfg, cccam);
+				}
+				cccam->ccam3_port = atoi(str);
+			}
+		}
+
 		else if (!strcmp(str,"CCCAM")) {
 			parse_name(str);
 			uppercase(str);
@@ -5437,24 +5492,55 @@ int read_providers( struct config_data *cfg )
 		nbline++;
 		parse_spaces();
 
-		if ( parse_hex(str)==8 ) {
-			caprovid = hex2int(str);
-			parse_spaces();
-			if (*iparser=='"') {
-				iparser++;
-				char *end = iparser;
-				while ( (*end!='"')&&(*end!='\n')&&(*end!='\r')&&(*end!=0) ) end++;
-				if (end-iparser) {
-					*end = 0;
-					//strcpy(str,iparser);
-					//mlogf(LOGDEBUG,getdbgflag(DBG_CONFIG,0,0),"%04x:%06x:%04x '%s'\n",caid,prov,sid,iparser);
-					struct providers_data *prov = malloc( sizeof(struct providers_data) + strlen(iparser) + 1 );
-					prov->caprovid = caprovid;
-					strcpy( prov->name, iparser );
-					prov->next = cfg->providers;
-					cfg->providers = prov;
-					provcount++;
+		// Formato 1: CAPROVID_8HEX "NOME"
+		// Formato 2: CAID:PROVID|NOME  (SRVID)
+		int ishex = ( ((*iparser>='0')&&(*iparser<='9')) || ((*iparser>='a')&&(*iparser<='f')) || ((*iparser>='A')&&(*iparser<='F')) );
+		if (ishex) {
+			parse_hex(str);
+			int nhex = strlen(str);
+			uint32_t caprovid = 0;
+			char *name = NULL;
+			if ( (nhex==8) && (*iparser!=':') ) {
+				// formato 1: 8 hex seguidos
+				caprovid = hex2int(str);
+				parse_spaces();
+				if (*iparser=='"') {
+					iparser++;
+					char *end = iparser;
+					while ( (*end!='"')&&(*end!='\n')&&(*end!='\r')&&(*end!=0) ) end++;
+					if (end-iparser) {
+						*end = 0;
+						name = iparser;
+					}
 				}
+			}
+			else if ( (nhex<=4) && (*iparser==':') ) {
+				// formato 2: CAID:PROVID|NOME
+				uint32_t caid = hex2int(str);
+				iparser++;
+				parse_spaces();
+				parse_hex(str);
+				uint32_t provid = hex2int(str);
+				caprovid = (caid<<16) | provid;
+				parse_spaces();
+				if (*iparser=='|') {
+					iparser++;
+					parse_spaces();
+					char *end = iparser;
+					while ( (*end!='\n')&&(*end!='\r')&&(*end!=0) ) end++;
+					if (end>iparser) {
+						*end = 0;
+						name = iparser;
+					}
+				}
+			}
+			if (caprovid && name && name[0]) {
+				struct providers_data *prov = malloc( sizeof(struct providers_data) + strlen(name) + 1 );
+				prov->caprovid = caprovid;
+				strcpy( prov->name, name );
+				prov->next = cfg->providers;
+				cfg->providers = prov;
+				provcount++;
 			}
 		}
 	}
@@ -7350,6 +7436,25 @@ int check_config(struct config_data *cfg)
 			else {
 				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," CCcam server %d started on port %d (version: %s)\n",cccam->id, cccam->port,cfg->cccam.version);
 				CHECK_IP_ADRESS(cccam->handle);
+			}
+		}
+		cccam = cccam->next;
+	}
+	// Open port for CCcam3 server (protocolo CCcam 3 - boxes CCcam3)
+	cccam = cfg->cccam.server;
+	while (cccam) {
+		if (cccam->ccam3_port && (cccam->ccam3_handle<=0)) {
+			if ( (cccam->ccam3_port<1024)||(cccam->ccam3_port>0xffff) ) {
+				mlogf(LOGWARNING,getdbgflag(DBG_CONFIG,0,0)," CCcam3 Server: invalid port value (%d)\n", cccam->ccam3_port);
+				cccam->ccam3_handle = -1;
+			}
+			else if ( (cccam->ccam3_handle=CreateServerSockTcp_nonb(cccam->ccam3_port, IP_ADRESS)) == -1) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," CCcam3 Server: bind port failed (%d)\n", cccam->ccam3_port);
+				cccam->ccam3_handle = -1;
+			}
+			else {
+				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," CCcam3 server started on port %d\n", cccam->ccam3_port);
+				create_thread( &cccam->tid_ccam3, (void*(*)(void*))ccam3_srv_thread, cccam );
 			}
 		}
 		cccam = cccam->next;
