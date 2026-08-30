@@ -1,8 +1,8 @@
-﻿# MultiCS r1000 v1.20 - by Sharillas
+﻿# MultiCS r1000 v1.23 - by Sharillas
 
-Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruído e muito expandido: GUI web moderna, Softcam BISS/CW, proteções contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs** (1 pedido único por ECM em voo), validação de uploads sem crash, e dezenas de fixes.
+Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruído e muito expandido: GUI web moderna, Softcam BISS/CW, proteções contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs** (1 pedido único por ECM em voo), login guard anti brute-force, NOK cache, validação de uploads sem crash, e dezenas de fixes.
 
-> **Versão:** v1.20 | **Licença:** Sharillas@2026
+> **Versão:** v1.23 | **Licença:** Sharillas@2026
 
 ---
 
@@ -83,15 +83,23 @@ Fluxo mínimo para funcionar:
 
 ---
 
-## Features desta build (v1.20)
+## Features desta build (v1.23)
 
 ### GUI web
-- Páginas: Dashboard, Servers, Cache, CacheEX, Newcamd, Mgcamd, CCcam, Cs358x/Camd35, Profiles, Softcam, Configs
-- Temas Dark/Light, login com sessões, tabelas sortáveis, bandeiras de país, menu sticky (sempre visível)
-- **Servers**: coluna Cards com **nome do pacote por CAID** (ex: `1814 NOS ID (30W Portugal)`, `1802 Digi TV (0.8W Hungria)`), cores de estado na linha (offline vermelho suave), stats de **ECM Dedup** (únicos vs repetidos evitados, top de canais)
-- **Softcam**: upload SoftCam.Key com feedback "Guardado", Update SoftCam.Key (download remoto + merge), Reload Keys, nomes de canal limpos (sem `;` colado)
-- **Configs**: Upload Configs (15 ficheiros) + editor com **todos os ficheiros**, save por AJAX com feedback inline, caminhos resolvidos da config (funciona em qualquer layout: `/var/etc`, `/emu/multics`, …)
-- **Debug**: filtros, 500 entradas, botão **Download Log (txt)**
+- Páginas: Dashboard, Servers, Cache, CacheEX, Newcamd, Mgcamd, CCcam, Cs358x/Camd35, Profiles, **Packages**, Softcam, Configs
+- Temas Dark/Light, login com sessões persistentes, tabelas sortáveis, bandeiras de país (base diária iplocate), menu sticky, responsivo em telemóvel (tabelas com scroll)
+- **Packages**: dashboard por satélite (30W/13E/19.2E) — package, CAID:Ident, perfil ligado, Ecm OK, readers que servem
+- **Test Channel**: define um canal de teste pela GUI (ativo na sessão ou gravado no multics.cfg) e segue-o no Debug Log
+- **Servers**: coluna Cards com ident a 6 dígitos + nomes de ident e pacote (ex: `1814: 005211 MEO ID (ident real transmissao)`), cores de estado na linha, stats de **ECM Dedup**
+- **Softcam**: upload SoftCam.Key com feedback, Update SoftCam.Key (download remoto + merge), Reload Keys
+- **Configs**: Upload Configs + editor com todos os ficheiros, save por AJAX, caminhos resolvidos da config, botão **Terminar todas as sessões**
+- **Debug**: filtros, 500 entradas, botão Download Log (txt)
+
+### Segurança (GUI)
+- **Login guard anti brute-force**: 5 falhas → bloqueio 30s por IP (configurável: `HTTP LOGIN MAXFAIL` / `HTTP LOGIN LOCKTIME`), throttle global contra rajadas de IPs, reset no login com sucesso
+- Cookie de sessão `HttpOnly; SameSite=Lax`; sessões persistentes em ficheiro; **todas as sessões são invalidadas quando a password muda**
+- Log com `vsnprintf` (sem stack overflow com nomes longos), validação de datagramas UDP da cache, fuzz-testing do parser HTTP
+- Crash handler gera core dump + serviço `multics-crashreport` regista o backtrace automaticamente
 
 ### Proteções e otimizações
 - **SKIPCWC** (default ON): ignora CWs exatamente iguais à anterior no mesmo canal (fakes repetidas) — por perfil, com SIDLIST de exclusões
@@ -104,6 +112,7 @@ Fluxo mínimo para funcionar:
   - **Reader**: linha `C3: host porta user pass` — o MultiCS lê cards de um server CCcam3
   - Crypto implementada em **C puro** (sem OpenSSL): SHA1/SHA256, HMAC, PBKDF2, RC4, AES-256 (ECB+GCM) — binário continua estático musl sem dependências
 - **DEDUP de ECMs**: 1 pedido único ao reader por ECM em voo (clientes com o mesmo ECM ficam à espera do mesmo CW) — resolve o flood em canais críticos (ex: TVCine) e protege o card de throttling
+- **NOK cache por reader+canal** (~8s): um reader que responde NOK num canal é saltado nos zappings seguintes (só quando há alternativa) — menos tráfego NOK
 - **Fallback mais rápido**: intervalo adaptativo — se o reader atual está lento, o próximo é tentado mais cedo
 - **Health scoring / Fallback cross-protocol / Timing budget**: ordenação por saúde, ordem de protocolos, budget de cryptoperíodo
 - **BUILD LITE**: filtro de canais activos (CCcam.lite) — o perfil ignora ECMs fora da lista
@@ -114,12 +123,13 @@ Fluxo mínimo para funcionar:
 - **Upload validado**: deteta erros de parse por ficheiro/linha, comenta automaticamente as linhas más, aplica defaults, e em último recurso faz rollback do backup (`.bak-<timestamp>`) — nunca crasha nem fica sem arrancar
 - Escrita atómica (tmp+rename) com mensagens de erro claras (permissões, etc.)
 - Opções legadas de builds antigas aceites como no-op (compatibilidade)
-- Serviço systemd `User=root` + `chmod 666` nas configs
+- Serviço systemd `User=root` + `chmod 666` nas configs + log em ficheiro com rotação (`-f` → `/var/tmp/multics.log`)
 - Restart fiável em qualquer setup (systemd/crontab/paths diferentes)
-- SIG_HANDLER: registos de crash com RIP/CR2 no log
+- SIG_HANDLER: registos de crash com RIP/CR2 no log + **core dump** para análise post-mortem
+- **ip2country diário**: base do repo iplocate/ip-address-databases via `tools/update_ip2country.py` (cron: `30 5 * * * python3 /opt/multics/update_ip2country.py /var/etc/ip2country.csv`)
+- **CI GitHub Actions**: build musl automático em cada push
 - **Assinaturas de protocolo** na coluna info server: `Newcamd v6.06`, `Mgcamd v1.46`, `Camd35 v0.3.x`, `Cs738x TCP v0.3.x`, `Cs357x UDP v0.3.x`, `Csp-Cache | Mcs1000`, `Cache EX | Mcs1000` (CCcam mantém versão + build + nodeid da config)
 - Ferramentas GUI: **Update Channel Info** (KingOfSat → CCcam.channelinfo + CCcam.lite) e **Update SoftCam.Key** — resolvidas junto do binário
-- Latência medida: cache peer ~20ms, reader loopback ~79ms, cache hit 0–1ms
 
 Lista completa de fixes e implementação: **[docs/IMPLEMENTACAO.md](docs/IMPLEMENTACAO.md)**
 
@@ -134,8 +144,8 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 # empacotar (dist/)
 powershell -ExecutionPolicy Bypass -File package.ps1
 
-# deploy para VPS (scp+ssh)
-powershell -ExecutionPolicy Bypass -File deploy.ps1 -Host "IP_VPS"
+# deploy para a VPS (credenciais em deploy.secrets.ps1 - gitignored)
+powershell -ExecutionPolicy Bypass -File deploy.ps1
 
 # regenerar CSS/JS embutido (httpstyle.c) depois de mudar Configs/multics.css
 python tools_generate_httpstyle.py
@@ -149,11 +159,13 @@ Build flags (equivalentes ao Makefile original):
 ## Segurança
 
 - **Muda já** o `HTTP USER/PASS` e `TELNET USER/PASS` no `multics.cfg`
+- Login guard ativo por defeito (5 falhas/30s por IP) — ajustável em `HTTP LOGIN MAXFAIL` / `HTTP LOGIN LOCKTIME`
 - Expõe só as portas que precisas (a web UI 5500 é a mais sensível)
+- Credenciais de deploy vivem **fora do repo** (`deploy.secrets.ps1`, gitignored)
 - Binários estáticos: sem dependências da libc da VPS
 
 ---
 
 ## Créditos
 
-Base: (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.20
+Base: (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.23

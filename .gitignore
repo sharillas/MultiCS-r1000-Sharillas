@@ -4,3 +4,8 @@ dist/
 Bins_Analisar/
 backup_originais/
 projeto_final/
+
+# segredos locais - nunca versionar
+deploy.secrets.ps1
+*.secrets.ps1
+.secrets/
