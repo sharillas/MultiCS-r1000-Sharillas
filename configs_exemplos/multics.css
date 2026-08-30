@@ -157,3 +157,60 @@ body.light-mode .maintable tr.row-busy td { background:rgba(200,160,0,0.10) !imp
 
 /* ---------- mobile: tabelas com scroll horizontal ---------- */
 @media (max-width:900px) { table.maintable { display:block; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; } .menu ul { justify-content:flex-start; } .menu-right { margin-left:0; } }
+
+
+/* ---------- LIGHT MODE DIM: versao suave (menos brilho, mais conforto) ---------- */
+html.light-mode, body.light-mode { background:#b9bdc0; }
+body.light-mode td { color:#22262a; }
+body.light-mode .menu { background:#c3c7ca; border-bottom-color:#a8acaf; box-shadow:0 2px 8px rgba(0,0,0,0.12); }
+body.light-mode .mbtn { background:#d3d7da; border-color:#9fb3c4; color:#2875a7; }
+body.light-mode .menu a.mbtn, body.light-mode .menu a.mbtn:link, body.light-mode .menu a.mbtn:visited,
+body.light-mode .menu a.mbtn:hover, body.light-mode .menu a.mbtn:active { color:#2875a7 !important; }
+body.light-mode .mbtn:hover { background:#e2e6e8; border-color:#2875a7; }
+body.light-mode .mbtn.on { background:#d5e3ef; color:#2875a7; border-color:#2875a7; }
+body.light-mode .menu .brand { color:#101214; }
+body.light-mode .menu .brand-by { color:#4d5358; }
+body.light-mode .maintable th { background:#c3c7ca; color:#202428; border-color:#a8acaf; }
+body.light-mode .maintable td { border-color:#b4b8bb; color:#22262a; }
+body.light-mode .maintable tr.alt1 td { background:#d3d6d9; }
+body.light-mode .maintable tr.alt2 td { background:#cdd0d3; }
+body.light-mode .maintable td.left, body.light-mode .maintable a:link,
+body.light-mode .maintable a:visited, body.light-mode .stat-section a:link,
+body.light-mode .stat-section a:visited, body.light-mode #mainDiv a:link,
+body.light-mode #mainDiv a:visited { color:#1a4d80; }
+body.light-mode .stat-section, body.light-mode .login-box,
+body.light-mode div.outer > .top, body.light-mode table.infotable,
+body.light-mode table.option, body.light-mode .card-grid .card-item,
+body.light-mode div.outer > .top > ul > li, body.light-mode .toolbar-badge,
+body.light-mode .infomenu, body.light-mode .connect_data td,
+body.light-mode .option th, body.light-mode .option td,
+body.light-mode tr.dbgrow td { background:#d6d9dc; border-color:#a8acaf; }
+body.light-mode .stat-section h3.stitle { color:#202428; border-bottom-color:#a8acaf; }
+body.light-mode .stat-label, body.light-mode .toolbar-label,
+body.light-mode .login-box .brand-by, body.light-mode .home-footer .hf-by,
+body.light-mode .cfgbtns .cfgbtns-info { color:#4d5358; }
+body.light-mode .stat-value { color:#3f79ad; }
+body.light-mode .stat-value2 { color:#8c2020; }
+body.light-mode #mainDiv { background:rgba(0,0,0,0.05); border-color:#a8acaf; box-shadow:0 2px 10px rgba(0,0,0,0.10); }
+body.light-mode .toolbar { background:rgba(0,0,0,0.05); border-bottom-color:#a8acaf; color:#4d5358; }
+body.light-mode .toolbar-badge { background:#c3c7ca; border-color:#a8acaf; color:#1d2023; }
+body.light-mode textarea, body.light-mode input, body.light-mode select,
+body.light-mode input[type=file] { background:#e6e9eb; color:#1d2023; border-color:#a8acaf; }
+body.light-mode input:hover, body.light-mode select:hover { background:#eef1f3; }
+body.light-mode pre, body.light-mode fieldset { background:#e4e7e9; border-color:#a8acaf; color:#1d2023; }
+body.light-mode legend { color:#1a4d80; }
+body.light-mode .sbutton { background:#cfd3d6; color:#232629; border-color:#a8acaf; }
+body.light-mode .sbutton:hover { background:#dcdfe2; }
+body.light-mode .home-footer, body.light-mode .brand-line { border-top-color:#a8acaf; }
+body.light-mode .home-footer .hf-ver { color:#1a4d80; }
+body.light-mode .login-box .brand { color:#101214; }
+body.light-mode .login-box input[type=text], body.light-mode .login-box input[type=password],
+body.light-mode .login-box input[type=submit] { background:#e6e9eb; border-color:#a8acaf; color:#1d2023; }
+body.light-mode .login-box input[type=submit] { background:#cfd3d6; color:#232629; }
+body.light-mode .login-box input[type=submit]:hover { background:#dcdfe2; }
+body.light-mode ::-webkit-scrollbar-track { background:#b9bdc0; }
+body.light-mode ::-webkit-scrollbar-thumb { background:#9aa0a4; }
+body.light-mode ::-webkit-scrollbar-thumb:hover { background:#8a9094; }
+body.light-mode .icobtn { background:#d6d9dc; color:#1d2023; border-color:#a8acaf; }
+body.light-mode .icobtn:hover { background:#eef1f3; border-color:#9da2a6; }
+body.light-mode .smsdot { background:#9aa0a4; }
