@@ -351,6 +351,11 @@ void cs_srv_recvmsg(struct server_data *srv)
 //	MSG_SERVER_2_CLIENT_ADDCARD = 0xd3,
 			case 0xD3:  // ADD CARD
 				if (srvcd.caid) { // CAID != 0x0000
+					// FILTRO DE SATELITES: CAID sem perfil no projeto -> ignorar
+					if ( !caid_in_profiles(srvcd.caid) ) {
+						mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,srv->id)," Mgcamd: card ignored (%s:%d) caid %04x (sem perfil no projeto)\n", srv->host->name, srv->port, srvcd.caid);
+						break;
+					}
 					struct cs_card_data tcard;
 					memset(&tcard, 0, sizeof(struct cs_card_data) );
 					tcard.caid = srvcd.caid;
