@@ -7,7 +7,7 @@
 1813:000000|Canal+ Polónia (nc+ N3 tunnelled - emulacao)
 1810:000000|Movistar+ (Nagra - iPlus HD) [19.2E]
 1810:004101|Digital+ / Movistar+
-0100:003311|MEO (Seca/legado)
+0100:003311|Canal+ France (Seca - DESATIVADO) [19.2E]
 098D:000000|Sky Deutschland (NDS Videoguard V15) [19.2E]
 0500:030B00|TNT SAT (Viaccess - classicos V5/V6) [19.2E]
 2600:000000|BISS (constant CW)
@@ -16,12 +16,12 @@
 0500:061500|SCT [V]
 0647:000000|Redlight Mega Elite HD [I]
 1884:000000|Canal+ Polónia (Nagra Cayman) [13E]
-0100:000068|nc+ [S3]
+0100:000068|Canal+ Polska (Cameleon Seca) [13E]
 1803:000000|Polsat Box (Nagra 3 - cartoes antigos Rom142) [13E]
-0B01:000000|nc+ [CX]
+0B01:000000|NC+ (Conax) [13E]
 1861:000000|Cyfrowy Polsat [N3/1861]
 0500:032A00|Orange Polska [V3]
-186C:000000|Cyfrowy Polsat [N3/186C]
+186C:000000|Polsat Box (Nagra Merlin) [13E]
 183D:000000|Tivùsat (Nagra Tiger - cartoes azuis/brancos) [13E]
 183E:000000|Tivùsat (Nagra Tiger - cartoes dourados) [13E]
 1856:000000|Tivùsat (Nagra Merlin 4K) [13E]
@@ -31,7 +31,7 @@
 1807:000000|ELITE HD 10+/SCT
 0100:000000|CANAL+
 0B02:000000|CANAL+
-1870:000000|Polsat Box
+1870:000000|Polsat Box (Nagra secundario) [13E]
 06ED:000000|Polsat Box
 0911:000000|ESP HD
 091F:000000|ESP HD
@@ -68,7 +68,7 @@
 0500:071000|Viaccess
 4B24:000000|Provider 4B24:000000
 4B63:000000|Provider 4B63:000000
-0500:050800|Canal+ France (CSAT Viaccess) [19.2E]
+0500:050800|SRG SSR (Viaccess antigo) [13E]
 0500:060200|SRG SSR (Viaccess Orca V6/V7) [13E]
 0500:070200|Viaccess
 181D:00006E|Nagra
@@ -85,7 +85,7 @@
 1802:000000|NOS ID (Nagra 3/Rom142 - ident emulacao)
 1802:004801|NOS ID (ident real primario)
 1802:004901|NOS ID (ident historico/ZON)
-186F:000000|NOS (Nagra Merlin 4K - pairing, nao partilhavel)
+186F:000000|NOS (Nagra Merlin 4K - pairing, BLOQUEADO) [30W]
 0100:000000|MEO (Seca/legado - DESATIVADO pela MEO)
 1810:004001|Movistar+ (Seca tunnelled) [19.2E]
 1811:003311|Canal+ France (Nagra Merlin) [19.2E]
@@ -102,3 +102,7 @@
 0500:051E00|SCT/Redlight/Adultos (Viaccess fixo) [13E]
 0500:042830|Bis TV (Viaccess) [13E]
 186A:003411|HD+ HD04 (ident real) [19.2E]
+1811:003315|Canal+ France (tematicos tunelados) [19.2E]
+1811:003317|Canal+ France (Cine+/aluguer) [19.2E]
+09C4:000000|Sky DE (NDS V13 - DESATIVADO) [19.2E]
+0100:005211|MEO (Seca historico - DESATIVADO) [30W]
