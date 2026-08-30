@@ -810,6 +810,7 @@ char http_javascript[] = "<script src=\"/customjs.js\"></script>\n";
 #define PAGE_EMULATOR  15
 #define PAGE_IPTABLES  16
 #define PAGE_CONFIGURATIONS 17
+#define PAGE_PACKAGES  18
 
 
 char *yesno( int a )
@@ -928,6 +929,11 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		} else class = cDisabled;
 		sprintf( label, "Profiles [<span class='badge-count'> %d </span>]", cfg.totalprofiles);
 		sprintf( buf, class, "/profiles", label); tcp_writestr(tcpbuf, sock, buf);
+	}
+	// Packages (dashboard por satelite/pacote)
+	{
+		if (selected==PAGE_PACKAGES) class = cSelected; else class = cNormal;
+		sprintf( buf, class, "/packages", "Packages"); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Softcam
 	{
@@ -1739,6 +1745,54 @@ static struct http_session_data http_sessions[HTTP_MAX_SESSIONS];
 static int http_session_count = 0;
 static pthread_mutex_t http_session_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// SESSOES PERSISTENTES: sobrevivem a restarts (o browser nao volta ao login)
+#define HTTP_SESSION_FILE "/var/tmp/multics.sessions"
+static int http_sessions_loaded = 0;
+
+static void http_session_load(void)
+{
+	if (http_sessions_loaded) return;
+	http_sessions_loaded = 1;
+	FILE *fp = fopen(HTTP_SESSION_FILE, "r");
+	if (!fp) return;
+	time_t now = time(NULL);
+	uint32_t ticks = (uint32_t)GetTickCount();
+	char tok[40];
+	long long exp;
+	while ( fscanf(fp, "%39s %lld", tok, &exp)==2 ) {
+		long long remain = exp - (long long)now;
+		if ( (remain<=0) || (remain>86400) ) continue;
+		int i;
+		for (i=0; i<HTTP_MAX_SESSIONS; i++) {
+			if (!http_sessions[i].token[0]) {
+				strncpy(http_sessions[i].token, tok, sizeof(http_sessions[i].token)-1);
+				http_sessions[i].token[sizeof(http_sessions[i].token)-1] = 0;
+				http_sessions[i].expire = ticks + (uint32_t)(remain*1000);
+				http_session_count++;
+				break;
+			}
+		}
+	}
+	fclose(fp);
+}
+
+static void http_session_save(void)
+{
+	FILE *fp = fopen(HTTP_SESSION_FILE ".tmp", "w");
+	if (!fp) return;
+	time_t now = time(NULL);
+	uint32_t ticks = (uint32_t)GetTickCount();
+	int i;
+	for (i=0; i<HTTP_MAX_SESSIONS; i++) {
+		if (http_sessions[i].token[0] && (http_sessions[i].expire>ticks)) {
+			long long exp = (long long)now + (long long)(http_sessions[i].expire-ticks)/1000;
+			fprintf(fp, "%s %lld\n", http_sessions[i].token, exp);
+		}
+	}
+	fclose(fp);
+	rename(HTTP_SESSION_FILE ".tmp", HTTP_SESSION_FILE);
+}
+
 static char *http_session_new()
 {
 	static char token[33];
@@ -1766,6 +1820,7 @@ static char *http_session_new()
 			break;
 		}
 	}
+	http_session_save();
 	pthread_mutex_unlock(&http_session_mutex);
 	return token;
 }
@@ -1776,11 +1831,12 @@ static int http_session_check(const char *token)
 	int ok = 0;
 	uint32_t ticks = (uint32_t)GetTickCount();
 	pthread_mutex_lock(&http_session_mutex);
+	http_session_load();
 	int i;
 	for (i=0; i<HTTP_MAX_SESSIONS; i++) {
 		if (http_sessions[i].token[0] && !strcmp(http_sessions[i].token, token)) {
 			if (http_sessions[i].expire > ticks) ok = 1;
-			else memset(&http_sessions[i], 0, sizeof(struct http_session_data));
+			else { memset(&http_sessions[i], 0, sizeof(struct http_session_data)); http_session_count--; http_session_save(); }
 			break;
 		}
 	}
@@ -1796,6 +1852,8 @@ static void http_session_del(const char *token)
 	for (i=0; i<HTTP_MAX_SESSIONS; i++) {
 		if (http_sessions[i].token[0] && !strcmp(http_sessions[i].token, token)) {
 			memset(&http_sessions[i], 0, sizeof(struct http_session_data));
+			http_session_count--;
+			http_session_save();
 			break;
 		}
 	}
@@ -9173,14 +9231,29 @@ void http_send_mgcamd_client(int sock, http_request *req)
 
 #ifdef TESTCHANNEL
 
-void http_send_testchannel(int sock, http_request *req)
-{
+// grava/remove a linha TESTCHANNEL: no multics.cfg (escrita atomica)
+void testchannel_cfg_save(uint16_t caid, uint32_t prid, uint16_t sid);
+
+void http_send_testchannel(int sock, http_request *req){
 
 	char *caid = isset_get( req, "caid");
 	char *sid = isset_get( req, "sid");
 	char *prid = isset_get( req, "prid");
+	char *action = isset_get( req, "action");
 
-	if (caid && sid && prid) {
+	if (action && !strcmp(action,"off")) {
+		cfg.testchn.caid = 0;
+		cfg.testchn.provid = 0;
+		cfg.testchn.sid = 0;
+		testchannel_cfg_save(0,0,0);
+	}
+	else if (action && !strcmp(action,"save") && caid && prid && sid) {
+		cfg.testchn.caid = hex2int( caid );
+		cfg.testchn.provid = hex2int( prid );
+		cfg.testchn.sid = hex2int( sid );
+		testchannel_cfg_save(cfg.testchn.caid, cfg.testchn.provid, cfg.testchn.sid);
+	}
+	else if (caid && sid && prid) {
 		cfg.testchn.caid = hex2int( caid );
 		cfg.testchn.provid = hex2int( prid );
 		cfg.testchn.sid = hex2int( sid );
@@ -9193,7 +9266,7 @@ void http_send_testchannel(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-	sprintf( http_buf, html_title, cfg.http.title, "testchannel"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf, html_title, cfg.http.title, "Test Channel"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
 	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
 	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
@@ -9201,9 +9274,210 @@ void http_send_testchannel(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_body, strlen(http_body) );
 	tcp_write_menu(&tcpbuf, sock,0);
 
-	sprintf( http_buf,"<br> CAID = %04X<br>PROVIDER = %06X<br>SID = %04X<br>\n", cfg.testchn.caid, cfg.testchn.provid, cfg.testchn.sid);
+	tcp_writestr(&tcpbuf, sock, "<div style='margin:10px'>");
+	sprintf( http_buf, "<h3 class=stitle>Test Channel</h3><br>CAID = %04X<br>PROVIDER = %06X<br>SID = %04X<br><br>\n", cfg.testchn.caid, cfg.testchn.provid, cfg.testchn.sid);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	tcp_writestr(&tcpbuf, sock, "<p style='font-size:12px;'>Define o canal de teste (CAID:PROVIDER:SID). Os pedidos deste canal sao registados no Debug Log com o detalhe completo (ECMs recebidos, CWs, falhas com o motivo exato).</p>");
+	tcp_writestr(&tcpbuf, sock, "<form method='GET' action='/testchannel'>");
+	tcp_writestr(&tcpbuf, sock, "CAID: <input type='text' name='caid' size='5' placeholder='1802'>&nbsp;");
+	tcp_writestr(&tcpbuf, sock, "PROVIDER: <input type='text' name='prid' size='7' placeholder='000000'>&nbsp;");
+	tcp_writestr(&tcpbuf, sock, "SID: <input type='text' name='sid' size='5' placeholder='03F9'>&nbsp;");
+	tcp_writestr(&tcpbuf, sock, "<input type='submit' value='Ativar (so nesta sessao)'>");
+	tcp_writestr(&tcpbuf, sock, "</form><br>");
+	tcp_writestr(&tcpbuf, sock, "<form method='GET' action='/testchannel'>");
+	tcp_writestr(&tcpbuf, sock, "CAID: <input type='text' name='caid' size='5' placeholder='1802'>&nbsp;");
+	tcp_writestr(&tcpbuf, sock, "PROVIDER: <input type='text' name='prid' size='7' placeholder='000000'>&nbsp;");
+	tcp_writestr(&tcpbuf, sock, "SID: <input type='text' name='sid' size='5' placeholder='03F9'>&nbsp;");
+	tcp_writestr(&tcpbuf, sock, "<input type='hidden' name='action' value='save'>");
+	tcp_writestr(&tcpbuf, sock, "<input type='submit' class='sbutton' value='Gravar no multics.cfg (fica apos restart)'>");
+	tcp_writestr(&tcpbuf, sock, "</form><br>");
+	tcp_writestr(&tcpbuf, sock, "<a class='sbutton' href='/testchannel?action=off'>Desativar</a>");
+	tcp_writestr(&tcpbuf, sock, "</div>");
 
+	tcp_flush(&tcpbuf, sock);
+}
+
+// grava/remove a linha TESTCHANNEL: no multics.cfg (escrita atomica)
+void testchannel_cfg_save(uint16_t caid, uint32_t prid, uint16_t sid)
+{
+	char fname[512];
+	strcpy(fname, config_file);
+	FILE *in = fopen(fname, "r");
+	if (!in) return;
+	char tmpf[520];
+	sprintf(tmpf, "%s.tmpfix", fname);
+	FILE *out = fopen(tmpf, "w");
+	if (!out) { fclose(in); return; }
+	char line[1024];
+	int done = 0;
+	while (fgets(line, sizeof(line), in)) {
+		if (!strncmp(line, "TESTCHANNEL", 11)) { // remove linhas antigas
+			if (!done && caid) {
+				fprintf(out, "TESTCHANNEL: %04X:%06X:%04X\n", caid, prid, sid);
+				done = 1;
+			}
+			continue;
+		}
+		fputs(line, out);
+	}
+	if (caid && !done) fprintf(out, "TESTCHANNEL: %04X:%06X:%04X\n", caid, prid, sid);
+	fclose(in);
+	fclose(out);
+	rename(tmpf, fname);
+}
+
+// ---------------- PACKAGES (dashboard por satelite/pacote) ----------------
+struct pkg_data {
+	const char *sat;
+	const char *name;
+	uint16_t caid;
+	uint32_t ident;
+	const char *note;
+};
+static const struct pkg_data pkg_table[] = {
+	{ "Hispasat 30W", "Abertis TDT (BISS)", 0x2600, 0x000000, "chaves no Softcam.cfg" },
+	{ "Hispasat 30W", "MEO", 0x1814, 0x005211, "ident real" },
+	{ "Hispasat 30W", "MEO", 0x1814, 0x005221, "" },
+	{ "Hispasat 30W", "MEO", 0x1814, 0x000007, "ID_SAT" },
+	{ "Hispasat 30W", "NOS", 0x1802, 0x000000, "wildcard" },
+	{ "Hispasat 30W", "NOS", 0x1802, 0x004801, "ident real" },
+	{ "Hotbird 13E", "Canal+ Polska", 0x1813, 0x000068, "tunel Seca/Nagra" },
+	{ "Hotbird 13E", "Canal+ Polska", 0x1884, 0x000000, "Cayman" },
+	{ "Hotbird 13E", "Polsat Box", 0x1803, 0x000000, "" },
+	{ "Hotbird 13E", "Polsat Box", 0x186C, 0x000000, "Merlin" },
+	{ "Hotbird 13E", "Tivusat", 0x1856, 0x000000, "4K" },
+	{ "Hotbird 13E", "Tivusat", 0x183E, 0x000000, "HD" },
+	{ "Hotbird 13E", "Tivusat", 0x183D, 0x000000, "SD" },
+	{ "Hotbird 13E", "SRG SSR", 0x0500, 0x060200, "" },
+	{ "Hotbird 13E", "Bis TV", 0x0500, 0x042830, "" },
+	{ "Hotbird 13E", "Adultos", 0x0500, 0x051E00, "" },
+	{ "Astra 19.2E", "Movistar+", 0x1810, 0x000000, "" },
+	{ "Astra 19.2E", "Movistar+", 0x1810, 0x004001, "Seca tunel" },
+	{ "Astra 19.2E", "Canal+ France", 0x1811, 0x003311, "Nagra Merlin" },
+	{ "Astra 19.2E", "Canal+ France", 0x0500, 0x032830, "Viaccess" },
+	{ "Astra 19.2E", "TNT SAT", 0x1818, 0x000000, "TNTSAT 7" },
+	{ "Astra 19.2E", "TNT SAT", 0x0500, 0x030B00, "Viaccess" },
+	{ "Astra 19.2E", "Sky DE", 0x098D, 0x000000, "V15" },
+	{ "Astra 19.2E", "Sky DE", 0x098C, 0x000000, "V14" },
+	{ "Astra 19.2E", "HD+", 0x1830, 0x000000, "HD01" },
+	{ "Astra 19.2E", "HD+", 0x1843, 0x000000, "HD02" },
+	{ "Astra 19.2E", "HD+", 0x1860, 0x000000, "HD03" },
+	{ "Astra 19.2E", "HD+", 0x186A, 0x003411, "HD04" },
+	{ "Astra 19.2E", "HD+", 0x188A, 0x000000, "HD05" },
+	{ "Astra 19.2E", "Canal Digitaal", 0x1817, 0x000000, "Nagra Merlin" },
+	{ "Astra 19.2E", "Canal Digitaal", 0x0100, 0x00006A, "Seca3" },
+	{ "Astra 19.2E", "Canal Digitaal", 0x0500, 0x051900, "Viaccess" },
+	{ "Astra 19.2E", "TV Vlaanderen", 0x181D, 0x000000, "" },
+	{ "Astra 19.2E", "Austriasat", 0x0624, 0x000000, "Irdeto2" },
+	{ "Astra 19.2E", "Austriasat", 0x098C, 0x000002, "NDS" },
+};
+
+// perfil que aceita este caid:ident (procura exata como getcsbycaidprov)
+static struct cardserver_data *pkg_findcs(uint16_t caid, uint32_t ident)
+{
+	struct cardserver_data *cs = cfg.cardserver;
+	while (cs) {
+		if (cs->card.caid==caid) {
+			int i;
+			for (i=0; i<cs->card.nbprov; i++)
+				if (cs->card.prov[i].id==ident) return cs;
+			if ( (caid>=0x1800 && caid<=0x19FF) || (caid>=0x0900 && caid<=0x09FF) || (caid>=0x0B00 && caid<=0x0BFF) ) {
+				if (ident==0) return cs;
+			}
+			if ( (caid!=0x0100) && (caid!=0x0500) && ident==0 ) return cs;
+		}
+		cs = cs->next;
+	}
+	return NULL;
+}
+
+// readers com card compativel com este caid:ident
+static int pkg_count_readers(uint16_t caid, uint32_t ident, char *out, int outsz)
+{
+	int n = 0;
+	out[0] = 0;
+	struct server_data *srv = cfg.server;
+	while (srv) {
+		if ( IS_DISABLED(srv->flags) ) { srv = srv->next; continue; }
+		struct cs_card_data *card = srv->card;
+		while (card) {
+			if (card->caid==caid) {
+				int match = 0;
+				if (ident==0) {
+					if ( (caid!=0x0100) && (caid!=0x0500) ) match = 1;
+					else {
+						int i;
+						for (i=0; i<card->nbprov; i++) if (card->prov[i]==ident) { match = 1; break; }
+					}
+				}
+				else {
+					int i;
+					for (i=0; i<card->nbprov; i++) if (card->prov[i]==ident) { match = 1; break; }
+					if (!match && card->nbprov==1 && card->prov[0]==0) match = 1; // card "todos"
+				}
+				if (match) {
+					n++;
+					if ( (int)strlen(out)+strlen(srv->host->name)+12 < outsz )
+						sprintf(out+strlen(out), "%s%s:%d", n>1?", ":"", srv->host->name, srv->port);
+					break;
+				}
+			}
+			card = card->next;
+		}
+		srv = srv->next;
+	}
+	return n;
+}
+
+void http_send_packages(int sock, http_request *req)
+{
+	char http_buf[4096];
+	struct tcp_buffer_data tcpbuf;
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+	sprintf( http_buf, html_title, cfg.http.title, "Packages"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+	tcp_write(&tcpbuf, sock, http_body, strlen(http_body) );
+	tcp_write_menu(&tcpbuf, sock, PAGE_PACKAGES);
+	tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+
+	int np = (int)(sizeof(pkg_table)/sizeof(pkg_table[0]));
+	const char *lastsat = "";
+	int i, alt = 0;
+	for (i=0; i<np; i++) {
+		if (strcmp(pkg_table[i].sat, lastsat)) {
+			if (lastsat[0]) tcp_writestr(&tcpbuf, sock, "</table><br>");
+			lastsat = pkg_table[i].sat;
+			sprintf( http_buf, "<h3 class=stitle>%s</h3>", lastsat);
+			tcp_writestr(&tcpbuf, sock, http_buf);
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable width=100%><tr><th width=160px>Package</th><th width=120px>CAID:Ident</th><th>Nota</th><th width=110px>Perfil</th><th width=90px>Ecm OK</th><th>Readers</th></tr>");
+		}
+		if (alt==1) alt=2; else alt=1;
+
+		struct cardserver_data *cs = pkg_findcs(pkg_table[i].caid, pkg_table[i].ident);
+		char profcell[160];
+		char okcell[80];
+		if (cs) {
+			sprintf( profcell, "<a href='/profile?id=%d'>%s</a> (%d)", cs->id, cs->name, cs->newcamd.port);
+			if (cs->ecmaccepted) sprintf( okcell, "%d%%", (cs->ecmok*100)/cs->ecmaccepted);
+			else sprintf( okcell, "--");
+		}
+		else { sprintf( profcell, "<span style='color:#8899aa'>sem perfil</span>"); sprintf( okcell, "--"); }
+
+		char rdcell[512];
+		pkg_count_readers(pkg_table[i].caid, pkg_table[i].ident, rdcell, sizeof(rdcell));
+
+		sprintf( http_buf, "<tr class=alt%d><td>%s</td><td><b>%04X:</b> %06X</td><td style='font-size:11px;color:#8899aa'>%s</td><td style='font-size:12px;'>%s</td><td>%s</td><td style='font-size:12px;'>%s</td></tr>",
+			alt, pkg_table[i].name, pkg_table[i].caid, pkg_table[i].ident, pkg_table[i].note, profcell, okcell, rdcell);
+		tcp_writestr(&tcpbuf, sock, http_buf);
+	}
+	tcp_writestr(&tcpbuf, sock, "</table>");
+	tcp_writestr(&tcpbuf, sock, "\n</div></body></html>");
 	tcp_flush(&tcpbuf, sock);
 }
 
@@ -10410,6 +10684,9 @@ void *gererClient(struct connect_data *param)
 					http_send_testchannel(sock,&req);
 				}
 #endif
+				else if (!strcmp(req.path,"/packages")) {
+					http_send_packages(sock,&req);
+				}
 				else if ( !memcmp(req.path,"/flag_",6) && !memcmp(req.path+8,".gif",4) ) {
 					// check for code
 					char code[3];

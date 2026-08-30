@@ -911,6 +911,10 @@ static void x64_sighandlerPrint(int signo, int code, ucontext_t *context)
 void sighandler(int signo, siginfo_t *si, void *ctx)
 {
 	x64_sighandlerPrint (signo, si->si_code, (ucontext_t *) ctx);
+	// relancar o sinal com o handler por defeito -> gera core dump
+	// (para analise post-mortem com gdb) e o exit passa a ser o do sinal
+	signal(signo, SIG_DFL);
+	raise(signo);
 	_exit (1);
 }
 
