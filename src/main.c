@@ -967,17 +967,11 @@ int main(int argc, char *argv[])
 	return 0;
 */
 
-	char pg[] = "Multi CardServer r"REVISION_STR"-"GIT_COMMIT" based on the work by ";
-	char evil[] = "evileyes";
-	char email[] = " (http://www.infosat.org)\n";
-
-	printf("%s", pg);
+	printf("MultiCS r1000 v"VERSION_STR" by Sharillas - iniciado\n");
 
 #ifdef SIG_HANDLER
 	install_handler();
 #endif
-
-	printf("%s", evil );
 
 	flag_debugscr = 0;
 	flag_debugfile = 0;
@@ -985,9 +979,7 @@ int main(int argc, char *argv[])
 	flag_debugnet = 0;
 #endif
 
-	printf("%s", email );
-	if (IP_ADRESS) printf("*Server IP: %s\n", ip2string(IP_ADRESS)); 
-	// Extract filename
+	if (IP_ADRESS) printf("*Server IP: %s\n", ip2string(IP_ADRESS)); 	// Extract filename
 	char *p = argv[0];
 	char *slash = p;
 	char *dot = NULL;
