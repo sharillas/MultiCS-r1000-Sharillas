@@ -53,7 +53,8 @@ int g_cfg_err_nb = 0;
 
 void add_dbgline(char *line)
 {
-	strncpy( dbgline[idbgline], line, MAX_DBGLINE_LEN );
+	strncpy( dbgline[idbgline], line, MAX_DBGLINE_LEN-1 );
+	dbgline[idbgline][MAX_DBGLINE_LEN-1] = 0;
 	idbgline++;
 	if (idbgline>=MAX_DBGLINES) idbgline = 0;
 }
@@ -190,7 +191,7 @@ void mlogf(int lineloglevel, uint32_t flag, char *format, ...)
 	char fstr[MAX_DBGLINE_LEN];
 	if (format[0]==0) { // DECRYPT
 		decryptstr(format, fstr);
-	} else strcpy(fstr, format);
+	} else { strncpy(fstr, format, sizeof(fstr)-1); fstr[sizeof(fstr)-1] = 0; }
 
 	if (strstr(fstr, "config(")) {
 		g_config_errors++;
@@ -229,7 +230,7 @@ void mlogf(int lineloglevel, uint32_t flag, char *format, ...)
 	
 		va_list args;
 		va_start (args, format);
-		vsprintf( debugline+index, fstr, args);
+		vsnprintf( debugline+index, sizeof(debugline)-index, fstr, args);
 		va_end( args );
 
 		dbgflag[idbgline] = flag;
