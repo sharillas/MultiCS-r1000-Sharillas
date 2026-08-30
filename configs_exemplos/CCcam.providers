@@ -3,7 +3,7 @@
 # Consolidado dos 10 ficheiros Providers SRVID (2026-08-12/14)
 # Formato: CAID:PROVID|NOME
 # ============================================================
-1814:000000|MEO ID (Nagra Merlin - ident emulacao)
+1814:000000|MEO ID (Nagra Merlin - wildcard/emulacao, todas as boxes)
 1813:000000|Canal+ Polónia (nc+ N3 tunnelled - emulacao)
 1810:000000|Movistar+ (Nagra - iPlus HD) [19.2E]
 1810:004101|Digital+ / Movistar+
@@ -79,14 +79,14 @@
 1878:000000|Provider 1878:000000
 0659:000000|Provider 0659:000000
 
-1814:005211|MEO ID (ident real transmissao)
-1814:000007|MEO ID_SAT
-1814:005221|MEO ID
+1814:005211|MEO ID (ident reportado pelos cartoes MEO atuais)
+1814:000007|MEO ID_SAT (ident secundario da rede Nagra)
+1814:005221|MEO ID (ident da migracao Seca->Nagra)
 1802:000000|NOS ID (Nagra 3/Rom142 - ident emulacao)
 1802:004801|NOS ID (ident real primario)
 1802:004901|NOS ID (ident historico/ZON)
 186F:000000|NOS (Nagra Merlin 4K - pairing, BLOQUEADO) [30W]
-0100:000000|MEO (Seca/legado - DESATIVADO pela MEO)
+0100:005221|MEO (Seca - boxes RDV antigas, DESATIVADO)
 1810:004001|Movistar+ (Seca tunnelled) [19.2E]
 1811:003311|Canal+ France (Nagra Merlin) [19.2E]
 0500:032830|Canal+ France (Viaccess Orca V5/V6) [19.2E]
