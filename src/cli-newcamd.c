@@ -335,6 +335,7 @@ void cs_srv_recvmsg(struct server_data *srv)
 					}
 					ecm_setsrvflag(ecm, srv->id, ECM_SRV_REPLY_FAIL);
 					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," <| decode failed from server (%s:%d) ch %04x:%06x:%04x (%dms)\n", srv->host->name,srv->port, ecm->caid,ecm->provid,ecm->sid, ticks-srv->lastecmtime);
+					srv_nok_record( srv, ecm->caid, ecm->sid ); // NOK cache
 #ifdef SID_FILTER
 					// ADD IN SID LIST
 					if (cs) {

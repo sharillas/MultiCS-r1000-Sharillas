@@ -1,0 +1,40 @@
+name: build-musl
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup zig 0.15.2
+        run: |
+          curl -sL -o zig.tar.xz https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.15.2" >> $GITHUB_PATH
+
+      - name: Build x64 (musl)
+        working-directory: src
+        run: |
+          set -e
+          OPTS="-DCHECK_NEXTDCW -DSID_FILTER -DNEWCACHE -DCCCAM_CLI -DRADEGAST_CLI -DCAMD35_CLI -DCS378X_CLI -DHTTP_SRV -DTELNET -DMGCAMD_SRV -DCCCAM_SRV -DCAMD35_SRV -DCS378X_SRV -DSRV_CSCACHE -DEXPIREDATE -DDCWSWAP -DCACHEEX -DIPLIST -DTESTCHANNEL -DTHREAD_DCW -DEPOLL_NEWCAMD -DEPOLL_CCCAM -DEPOLL_MGCAMD -DEPOLL_ECM -DPEERLIST -DECMLIST -DEPOLL_FREECCCAM -DSIG_HANDLER -DCLI_CSCACHE -DSRV_CSCACHE"
+          mkdir -p ../build-actions/obj
+          for s in sha1.c des.c md5.c aes.c dcw.c convert.c tools.c debug.c parser.c ipdata.c threads.c sockets.c msg-newcamd.c msg-cccam.c msg-radegast.c config.c ecmdata.c httpserver.c telnet.c main.c; do
+            zig cc -target x86_64-linux-musl -O3 -fpack-struct -I. -std=gnu90 $OPTS -c $s -o ../build-actions/obj/${s%.c}.o
+          done
+          zig cc -target x86_64-linux-musl ../build-actions/obj/*.o -o ../build-actions/multics.x64 -pthread -s
+
+      - name: Smoke test (banner)
+        run: |
+          build-actions/multics.x64 -h | head -3 || true
+          ls -la build-actions/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multics.x64
+          path: build-actions/multics.x64

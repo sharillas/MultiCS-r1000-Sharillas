@@ -92,6 +92,23 @@ void debug(char *str)
 	if (flag_debugscr) printf( "%s", str );
 
 	if (flag_debugfile) {
+		// rotacao simples: multics.log > 5MB -> multics.log.1 (a cada 512 linhas)
+		static uint32_t wcount = 0;
+		wcount++;
+		if ((wcount & 0x1FF)==0) {
+			FILE *tf = fopen(debug_file, "r");
+			if (tf) {
+				fseek(tf, 0, SEEK_END);
+				if (ftell(tf) > 5*1024*1024) {
+					char old[300];
+					sprintf(old, "%s.1", debug_file);
+					fclose(tf);
+					remove(old);
+					rename(debug_file, old);
+				}
+				else fclose(tf);
+			}
+		}
 		FILE *fhandle;
 		fhandle=fopen(debug_file, "at");
 		if (fhandle!=0) {

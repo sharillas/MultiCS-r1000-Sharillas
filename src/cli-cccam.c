@@ -257,6 +257,7 @@ void cc_srv_recvmsg(struct server_data *srv)
 				}
 #endif
 				ecm_setsrvflag(srv->ecm.request, srv->id, ECM_SRV_REPLY_FAIL);
+				srv_nok_record( srv, ecm->caid, ecm->sid ); // NOK cache: nao martelar este reader neste canal
 
 				srv->busy = 0;
 				pthread_mutex_unlock(&prg.lockecm); //###
