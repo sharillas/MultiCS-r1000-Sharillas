@@ -5363,6 +5363,55 @@ int read_ip2country( struct config_data *cfg )
 		nbvalues = 0;
 
 		parse_spaces();
+		if (*iparser=='#') continue;
+
+		// FORMATO SEM ASPAS: START,END,CC  ou  NETWORK/PREFIXO,CC
+		// (ficheiros gerados pelo update_ip2country.py - iplocate daily)
+		if (*iparser!='"') {
+			char a[64], b[64], cc[8];
+			int nf = sscanf(iparser, "%63[^,\r\n],%63[^,\r\n],%7[^,\r\n]", a, b, cc);
+			if (nf==2) { strncpy(cc, b, 7); cc[7]=0; nf = 3; } // CIDR 2 colunas: NETWORK/PREFIXO,CC
+			if ( nf==3 ) {
+				if (strlen(cc)!=2) continue;
+				unsigned int ip4[4];
+				if ( strchr(a,'/') ) { // CIDR: NETWORK/PREFIXO,CC
+					int prefix = 24;
+					char net[64];
+					strcpy(net, a);
+					char *sl = strchr(net, '/');
+					if (sl) { *sl = 0; prefix = atoi(sl+1); }
+					if ( (prefix<0)||(prefix>32) ) continue;
+					if ( sscanf(net,"%d.%d.%d.%d", &ip4[0], &ip4[1], &ip4[2], &ip4[3])!=4 ) continue;
+					unsigned int base = (ip4[0]<<24)|(ip4[1]<<16)|(ip4[2]<<8)|(ip4[3]);
+					unsigned int mask = (prefix==0) ? 0 : (0xFFFFFFFFu << (32-prefix));
+					struct ip2country_data *data = malloc( sizeof(struct ip2country_data) );
+					memset( data, 0, sizeof(struct ip2country_data) );
+					data->ipstart = base & mask;
+					data->ipend = data->ipstart | ~mask;
+					strcpy(data->code, cc);
+					data->next = cfg->ip2country;
+					cfg->ip2country = data;
+					linecount++;
+					continue;
+				}
+				if ( sscanf(a,"%d.%d.%d.%d", &ip4[0], &ip4[1], &ip4[2], &ip4[3])==4 ) {
+					unsigned int s = (ip4[0]<<24)|(ip4[1]<<16)|(ip4[2]<<8)|(ip4[3]);
+					if ( sscanf(b,"%d.%d.%d.%d", &ip4[0], &ip4[1], &ip4[2], &ip4[3])==4 ) {
+						struct ip2country_data *data = malloc( sizeof(struct ip2country_data) );
+						memset( data, 0, sizeof(struct ip2country_data) );
+						data->ipstart = s;
+						data->ipend = (ip4[0]<<24)|(ip4[1]<<16)|(ip4[2]<<8)|(ip4[3]);
+						strcpy(data->code, cc);
+						data->next = cfg->ip2country;
+						cfg->ip2country = data;
+						linecount++;
+						continue;
+					}
+				}
+			}
+			continue;
+		}
+
 		if (*iparser!='"') continue;
 
 		while (*iparser=='"') {
