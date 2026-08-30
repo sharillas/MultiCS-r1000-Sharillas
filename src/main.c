@@ -452,6 +452,8 @@ int pipe_send_cacheex_push_cache(struct cache_data *pcache, uint8_t *cw, uint8_t
 #include "cli-newcamd.c"
 #ifdef CCCAM_CLI
 #include "cli-cccam.c"
+#include "cli-ccam3.c"
+#include "ccam3_crypto.c"
 #endif
 
 
@@ -483,6 +485,7 @@ void forward_cs378x(ECM_DATA *ecm);
 
 #ifdef CCCAM_SRV
 #include "srv-cccam.c"
+#include "srv-ccam3.c"
 #endif
 
 #ifdef FREECCCAM_SRV
@@ -1104,6 +1107,10 @@ OPTIONS\n\
 		execv( selfexe, newargv );
 		// fallback: funciona mesmo que o binario tenha sido movido/substituido
 		execv( "/proc/self/exe", newargv );
+		{
+			FILE *ef = fopen("/tmp/multics_execv_err.txt","w");
+			if (ef) { fprintf(ef, "execv failed: %s (errno=%d) exe=%s\n", strerror(errno), errno, selfexe); fclose(ef); }
+		}
 		perror("execv");
 		exit(1);
 	}

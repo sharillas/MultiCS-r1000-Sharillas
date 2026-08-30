@@ -854,6 +854,7 @@ struct cardserver_data
 #define TYPE_RADEGAST   4
 #define TYPE_CAMD35     5
 #define TYPE_CS378X     6
+#define TYPE_CCAM3      7
 
 
 
@@ -891,6 +892,8 @@ struct PACK server_data
 	uint16_t csport[MAX_CSPORTS];
 	// Server Priority
 	int priority; // Priority Server
+	// Nao aplicar a protecao anti-loop (cliente e reader no mesmo IP externo)
+	uint8_t nocheck;
 	// Share Limits
 	struct sharelimit_data sharelimits[100];
 	// ACCEPTED SIDs
@@ -901,6 +904,9 @@ struct PACK server_data
 	char version[32];
 	uint8_t sessionkey[16];
 	struct message_data msg;
+	// CCcam3 session (reader C3:)
+	uint8_t ccam3key[32];   // chave de sessao (20B legacy / 32B RSA_AES)
+	uint8_t ccam3crypt;     // modo de criptografia (C3_CRYPT_*)
 #ifdef CLI_CSCACHE
 	int cscached; // flag for newcamd cached servers
 #endif
@@ -1009,6 +1015,10 @@ struct PACK cc_client_data { // Connected Client
 
 	uint32_t id; // unique id
 	struct cccam_server_data *parent;
+	// CCcam3 session (cliente do protocolo CCcam3)
+	uint8_t isccam3;
+	uint8_t ccam3crypt;
+	uint8_t ccam3key[32];
 	//fline
 	char user[64];
 	char pass[64];
@@ -1160,6 +1170,9 @@ struct cccam_server_data {
 	int handle;
 	int ipoll;
 	int port; // output port
+	int ccam3_port;   // porta do servidor CCcam3
+	int ccam3_handle; // socket do servidor CCcam3
+	pthread_t tid_ccam3;
 	struct ip_hacker_data *iplist;
 	// for faster poll()
 	struct {

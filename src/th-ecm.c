@@ -4,13 +4,69 @@
 uint32_t dcwtimeout(struct cardserver_data *cs, ECM_DATA *ecm)
 {
 	uint32_t t = cs->option.dcw.timeout*ecm->period;
+	if (t<1) t = 1;
 	if (!cs->option.timing.enable) return t;
 	int period = chnbudget_getperiod( ecm->caid, ecm->provid, ecm->sid );
-	if (period >= cs->option.timing.minperiod) {
+	if ( period>0 && (cs->option.timing.minperiod>0) && (period >= cs->option.timing.minperiod) ) {
 		uint32_t budget = ((uint32_t)period * cs->option.timing.fraction)/100;
-		if (budget < t) return budget;
+		if ( (budget>0) && (budget < t) ) return budget;
 	}
 	return t;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// DEDUP: 1 pedido unico ao reader por ECM em voo (fix flood em canais criticos)
+///////////////////////////////////////////////////////////////////////////////
+int g_ecm_unique = 0;
+int g_ecm_dedup = 0;
+
+#define DEDUP_CH_MAX 128
+static struct { uint16_t caid; uint16_t sid; uint32_t uni; uint32_t ded; uint32_t last; } dedup_ch[DEDUP_CH_MAX];
+
+static void dedup_ch_add(uint16_t caid, uint16_t sid, int uni)
+{
+	uint32_t ticks = GetTickCount();
+	int i, freei = -1, oldi = 0;
+	for (i=0; i<DEDUP_CH_MAX; i++) {
+		if ( (dedup_ch[i].caid==caid) && (dedup_ch[i].sid==sid) ) {
+			if (uni) dedup_ch[i].uni++; else dedup_ch[i].ded++;
+			dedup_ch[i].last = ticks;
+			return;
+		}
+		if (!dedup_ch[i].caid && (freei<0)) freei = i;
+		if (dedup_ch[i].last < dedup_ch[oldi].last) oldi = i;
+	}
+	i = (freei>=0) ? freei : oldi;
+	memset( &dedup_ch[i], 0, sizeof(dedup_ch[i]) );
+	dedup_ch[i].caid = caid;
+	dedup_ch[i].sid = sid;
+	if (uni) dedup_ch[i].uni = 1; else dedup_ch[i].ded = 1;
+	dedup_ch[i].last = ticks;
+}
+
+// top de canais com mais dedup (para a GUI) - ordenados por repetidos desc
+int dedup_ch_top(int max, uint16_t *caid, uint16_t *sid, uint32_t *uni, uint32_t *ded)
+{
+	int idx[DEDUP_CH_MAX];
+	int n = 0, i, j;
+	for (i=0; i<DEDUP_CH_MAX; i++) {
+		if (dedup_ch[i].caid && dedup_ch[i].ded) idx[n++] = i;
+	}
+	for (i=0; i<n-1; i++) {
+		for (j=i+1; j<n; j++) {
+			if (dedup_ch[idx[j]].ded > dedup_ch[idx[i]].ded) {
+				int t = idx[i]; idx[i] = idx[j]; idx[j] = t;
+			}
+		}
+	}
+	if (n>max) n = max;
+	for (i=0; i<n; i++) {
+		caid[i] = dedup_ch[idx[i]].caid;
+		sid[i]  = dedup_ch[idx[i]].sid;
+		uni[i]  = dedup_ch[idx[i]].uni;
+		ded[i]  = dedup_ch[idx[i]].ded;
+	}
+	return n;
 }
 
 void clients_check_sendcw(ECM_DATA *ecm)
@@ -57,6 +113,24 @@ void wakeup_sendecm() // not needed in mono-thread
 
 void ecm_faileddcw( ECM_DATA *ecm )
 {
+	// DEDUP: falhar os followers deste leader (partilham o resultado)
+	ECM_DATA *f = ecm->dedupnext;
+	while (f) {
+		ECM_DATA *fn = f->dedupnext;
+		if ( (f->dedupleader==ecm) && (f->dcwstatus==STAT_DCW_WAITDEDUP) ) {
+			f->dedupleader = NULL;
+			f->dcwstatus = STAT_DCW_FAILED;
+			f->checktime = 0;
+			f->waitserver = 0;
+			f->statusmsg = ecm->statusmsg;
+			f->nokbiss = ecm->nokbiss;
+			sid_newecm(f);
+			clients_check_sendcw(f);
+		}
+		f = fn;
+	}
+	ecm->dedupnext = NULL;
+
 	ecm->dcwstatus = STAT_DCW_FAILED;
 	ecm->checktime = 0;
 	ecm->waitserver = 0;
@@ -74,6 +148,16 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 {
 	ecm->checktime = 0; // invalid
 	ecm->waitserver = 0;
+
+	// follower do DEDUP: espera pelo resultado do leader (timeout de seguranca)
+	if (ecm->dcwstatus==STAT_DCW_WAITDEDUP) {
+		if ( (ticks-ecm->recvtime) >= dcwtimeout(ecm->cs, ecm) ) {
+			ecm->statusmsg = "Decode failed, dedup timeout";
+			ecm_faileddcw( ecm );
+		}
+		else ecm->checktime = ticks + 500;
+		return;
+	}
 
 	// EMULATOR (constcw / BISS)
 	if ( (ecm->dcwstatus==STAT_DCW_WAIT)||(ecm->dcwstatus==STAT_DCW_WAITCACHE) ) {
@@ -157,6 +241,26 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 			ecm_faileddcw( ecm );
 			return;
 		}
+		// DEDUP: junta-se a um pedido identico em voo (1 pedido unico por ECM)
+		if (!ecm->dedupchecked) {
+			ecm->dedupchecked = 1;
+			ECM_DATA *l = search_ecmdata_byhash( ecm->caid, ecm->sid, ecm->hash );
+			while (l && l->dedupleader) l = l->dedupleader;
+			if ( l && (l!=ecm) && (l->cs==ecm->cs) && (l->provid==ecm->provid)
+				&& ( (l->dcwstatus==STAT_DCW_WAIT)||(l->dcwstatus==STAT_DCW_WAITCACHE) ) ) {
+				ecm->dedupleader = l;
+				ecm->dedupnext = l->dedupnext;
+				l->dedupnext = ecm;
+				ecm->dcwstatus = STAT_DCW_WAITDEDUP;
+				ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
+				g_ecm_dedup++;
+				dedup_ch_add( ecm->caid, ecm->sid, 0 );
+				mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," ecm: DEDUP join ch %04x:%06x:%04x:%08x (pedido unico em voo)\n", ecm->caid, ecm->provid, ecm->sid, ecm->hash);
+				return;
+			}
+			g_ecm_unique++;
+			dedup_ch_add( ecm->caid, ecm->sid, 1 );
+		}
 		//check for decode failed
 		// Check for Max used Servers
 		if ( (cs->option.server.max>0) && (ecm->server_totalsent>=cs->option.server.max) ) {
@@ -189,9 +293,18 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				ecm->cachestatus = ECM_CACHE_REQ;
 			}
 			// check for decode failed with no remaining server to wait, send to new cardserver
+			// intervalo adaptativo: se o server atual esta lento (media >1s), tenta o proximo mais cedo
+			unsigned int srvinterval = cs->option.server.interval;
+			if (ecm->server_totalsent>0) {
+				struct server_data *lsrv = getsrvbyid( ecm->server[ecm->server_totalsent-1].srvid );
+				if ( lsrv && lsrv->ecmok && ((lsrv->ecmoktime/lsrv->ecmok)>1000) ) {
+					srvinterval = srvinterval/2;
+					if (srvinterval<200) srvinterval = 200;
+				}
+			}
 			if ( !ecm->server_totalwait
 				|| (cs->option.server.first>ecm->server_totalsent)
-				|| ((ticks-ecm->lastsendtime)>=cs->option.server.interval)
+				|| ((ticks-ecm->lastsendtime)>=srvinterval)
 			) {
 				//mlogf(LOGDEBUG,0," check_sendecm[%s] ch %04x:%06x:%04x\n", cs->name,ecm->caid,ecm->provid,ecm->sid);
 				struct server_data *newsrv = NULL;
@@ -241,6 +354,20 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 							newsrv->ecmnb++;
 							struct cs_card_data *card = cc_getcardbyid( newsrv, newsrv->busycardid );
 							if (card) card->ecmnb++;
+							newsrv->busy=1;
+							newsrv->ecm.request = ecm;
+							newsrv->ecm.hash = ecm->hash;
+							newsrv->retry=0;
+							ecm_addsrv(ecm, newsrv->id);
+							ecm_addsrvip(ecm, newsrv->host->ip);
+						}
+					}
+					else if (newsrv->type==TYPE_CCAM3) {
+						if (ccam3_sendecm_srv(newsrv, ecm)>0) {
+							ecm->lastsendtime = ticks;
+							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to CCcam3 server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
+							newsrv->lastecmtime = ticks;
+							newsrv->ecmnb++;
 							newsrv->busy=1;
 							newsrv->ecm.request = ecm;
 							newsrv->ecm.hash = ecm->hash;
@@ -491,6 +618,7 @@ inline void srv_recvmsg( struct server_data *srv )
 	if (srv->type==TYPE_NEWCAMD) cs_srv_recvmsg(srv);
 #ifdef CCCAM_CLI
 	else if (srv->type==TYPE_CCCAM) cc_srv_recvmsg(srv);
+	else if (srv->type==TYPE_CCAM3) ccam3_srv_recvmsg(srv);
 #endif
 #ifdef RADEGAST_CLI
 	else if (srv->type==TYPE_RADEGAST) rdgd_srv_recvmsg(srv);

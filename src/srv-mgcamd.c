@@ -771,6 +771,7 @@ void mg_cli_recvmsg(struct mg_client_data *cli)
 						}
 						else {
 							ecm->period++; // RETRY
+							ecm->recvtime = ticks; // FIX: nova tentativa comeca agora
 							mg_store_ecmclient(ecm, cli, clicd.msgid);
 							mlogf(LOGINFO,getdbgflagpro(DBG_MGCAMD,0,cli->id, cs->id)," <- ecm from mgcamd client '%s' ch %04x:%06x:%04x:%08x**\n",cli->user,clicd.caid,clicd.provid,clicd.sid,ecm->hash);
 #ifdef ECMLIST

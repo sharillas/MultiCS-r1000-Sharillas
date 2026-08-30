@@ -492,6 +492,7 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 							}
 							else {
 								ecm->period++; // RETRY
+								ecm->recvtime = ticks; // FIX: nova tentativa comeca agora
 								cs_store_ecmclient(cs, ecm, cli, clicd.msgid);
 								mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," <- ecm from client '%s' ch %04x:%06x:%04x:%08x**\n",cli->user,clicd.caid,clicd.provid,clicd.sid,ecm->hash);
 								cli->ecm.busy=1;
