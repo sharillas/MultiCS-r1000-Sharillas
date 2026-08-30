@@ -209,6 +209,19 @@ struct cardserver_data *getcsbyid(uint32_t id)
 	return NULL;
 }
 
+// FILTRO DE SATELITES: o CAID tem perfil no projeto?
+// Cards de CAIDs sem perfil sao ignorados (nao entram na info nem no trafego)
+int caid_in_profiles(uint16_t caid)
+{
+	if (!caid) return 0;
+	struct cardserver_data *cs = cfg.cardserver;
+	while (cs) {
+		if (cs->card.caid==caid) return 1;
+		cs = cs->next;
+	}
+	return 0;
+}
+
 
 struct cardserver_data *getcsbyport(int port)
 {

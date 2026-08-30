@@ -317,6 +317,11 @@ void cc_srv_recvmsg(struct server_data *srv)
 					memcpy( tcard.nodeid, buf+26+buf[24]*7, 8);
 					tcard.caid = (buf[12]<<8)+(buf[13]);
 					tcard.nbprov = buf[24];
+					// FILTRO DE SATELITES: CAID sem perfil no projeto -> ignorar
+					if ( !caid_in_profiles(tcard.caid) ) {
+						mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " CCcam: card ignored (%s:%d) caid %04x (sem perfil no projeto)\n", srv->host->name, srv->port, tcard.caid);
+						break;
+					}
 					i = 26+buf[24]*7;
 					if (tcard.nbprov>CARD_MAXPROV) tcard.nbprov = CARD_MAXPROV;
 					mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " CCcam: new card (%s:%d) %02x%02x%02x%02x%02x%02x%02x%02x_%x uphops %d caid %04x providers %d\n",srv->host->name,srv->port, buf[i],buf[i+1],buf[i+2],buf[i+3],buf[i+4],buf[i+5],buf[i+6],buf[i+7],tcard.shareid ,tcard.uphops, tcard.caid, tcard.nbprov);
