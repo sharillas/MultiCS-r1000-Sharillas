@@ -154,3 +154,6 @@ body.light-mode .maintable tr:has(td.busy) td { background:rgba(200,160,0,0.10) 
 body.light-mode .maintable tr.row-offline td { background:rgba(217,83,79,0.14) !important; }
 body.light-mode .maintable tr.row-online td { background:rgba(60,122,79,0.10) !important; }
 body.light-mode .maintable tr.row-busy td { background:rgba(200,160,0,0.10) !important; }
+
+/* ---------- mobile: tabelas com scroll horizontal ---------- */
+@media (max-width:900px) { table.maintable { display:block; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; } .menu ul { justify-content:flex-start; } .menu-right { margin-left:0; } }
