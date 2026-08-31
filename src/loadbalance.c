@@ -491,7 +491,12 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 			if (havegood) {
 				i=0;
 				for(j=0; j<nbsrv; j++) {
-					if (psrvlist[j]->health >= cs->option.health.dropoff) {
+					// FIX v1.26: servers SEM amostras (ecmnb < minecms) sao
+					// "desconhecidos", nao "doentes" - participam para poderem
+					// ganhar historial (antes: reader novo com health=0 era
+					// excluido para sempre enquanto existisse um veterano bom)
+					if ( (psrvlist[j]->health >= cs->option.health.dropoff) ||
+					     (psrvlist[j]->srv->ecmnb < cs->option.health.minecms) ) {
 						if (i<j) psrvlist[i] = psrvlist[j];
 						i++;
 					}
