@@ -749,6 +749,8 @@ void cc_senddcw_cli(struct cc_client_data *cli)
 	uint32_t ticks = GetTickCount();
 	ECM_DATA *ecm = cli->ecm.request;
 	if (!ecm) return;
+	// SILENT NOK: adiar o NOK para antes do timeout da box (evita reconexoes e storm de retries)
+	if ( (ecm->dcwstatus!=STAT_DCW_SUCCESS) && ecm->cs && ecm->cs->option.dcw.silentnok && ((ticks-cli->ecm.recvtime) < SILENT_NOK_DELAY) ) return;
 	//FREEZE
 	int samechannel = (cli->lastecm.caid==ecm->caid)&&(cli->lastecm.prov==ecm->provid)&&(cli->lastecm.sid==ecm->sid);
 	int enablefreeze=0;
@@ -805,11 +807,9 @@ void cc_senddcw_cli(struct cc_client_data *cli)
 		}
 		else {
 			if (enablefreeze) cli->freeze++;
-			if ( (ecm->cs==NULL) || !ecm->cs->option.dcw.silentnok ) {
-				if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
-					cc_disconnect_cli( cli );
-					return;
-				}
+			if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
+				cc_disconnect_cli( cli );
+				return;
 			}
 			mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam client '%s' ch %04x:%06x:%04x (%dms)%s\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime, (ecm->cs&&ecm->cs->option.dcw.silentnok)?" [SILENT]":"");
 		}
@@ -965,6 +965,7 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 								break;
 							}
 						}
+						else cc_store_ecmclient(ecm, cardid, cli); // NOK adiado: manter pedido para entrega pelo recv thread
 						mlogf(LOGINFO,getdbgflag(DBG_CCCAM,cli->parent->id,cli->id)," <|> decode failed to CCcam client '%s' ch %04x:%06x:%04x:%08x, already failed%s\n",cli->user, caid, provid, sid, ecm->hash, cs->option.dcw.silentnok?" [SILENT]":"");
 					}
 					else {
@@ -1265,6 +1266,23 @@ void *cc_recvmsg_thread(void *param)
 	if ( epoll_ctl(prg.epoll.cccam, EPOLL_CTL_ADD, prg.pipe.cccam[0], &ev) == -1 ) mlogf(LOGERROR,0,"epoll_ctl erroc cccam -1");
 
 	while (!prg.restart) {
+		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
+		{
+			struct cccam_server_data *ccsrv = cfg.cccam.server;
+			uint32_t now = GetTickCount();
+			while (ccsrv) {
+				struct cc_client_data *cccli = ccsrv->client;
+				while (cccli) {
+					if ( !IS_DISABLED(cccli->flags) && (cccli->connection.status>0) && cccli->ecm.busy && cccli->ecm.request ) {
+						ECM_DATA *e = cccli->ecm.request;
+						if ( e->cs && e->cs->option.dcw.silentnok && (e->dcwstatus==STAT_DCW_FAILED) && ((now-cccli->ecm.recvtime) >= SILENT_NOK_DELAY) )
+							cc_senddcw_cli(cccli);
+					}
+					cccli = cccli->next;
+				}
+				ccsrv = ccsrv->next;
+			}
+		}
 		int ready = epoll_wait( prg.epoll.cccam, evlist, MAX_EPOLL_EVENTS, 1002);
 		if (ready == -1) {
 			if ( (errno==EINTR)||(errno==EAGAIN) ) {
@@ -1308,6 +1326,23 @@ void *cc_recvmsg_thread(void *param)
 #endif
 
 	while (!prg.restart) {
+		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
+		{
+			struct cccam_server_data *ccsrv = cfg.cccam.server;
+			uint32_t now = GetTickCount();
+			while (ccsrv) {
+				struct cc_client_data *cccli = ccsrv->client;
+				while (cccli) {
+					if ( !IS_DISABLED(cccli->flags) && (cccli->connection.status>0) && cccli->ecm.busy && cccli->ecm.request ) {
+						ECM_DATA *e = cccli->ecm.request;
+						if ( e->cs && e->cs->option.dcw.silentnok && (e->dcwstatus==STAT_DCW_FAILED) && ((now-cccli->ecm.recvtime) >= SILENT_NOK_DELAY) )
+							cc_senddcw_cli(cccli);
+					}
+					cccli = cccli->next;
+				}
+				ccsrv = ccsrv->next;
+			}
+		}
 		pfdcount = 0;
 		// PIPE
 		pfd[pfdcount].fd = prg.pipe.cccam[0];
