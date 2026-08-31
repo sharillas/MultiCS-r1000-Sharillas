@@ -3432,7 +3432,7 @@ void getcachecells(struct cachepeer_data *peer, char cell[12][2048] )
 	}
 	else strcpy( cell[11], " ");
 
-	strcat( cell[11], "<span style='float:right;'>");
+	strcat( cell[11], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(peer->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
 		if (peer->flags&FLAG_DISABLE) {
 			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cachepeer?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",peer->id);
@@ -3946,7 +3946,7 @@ void http_send_cache_peer(int sock, http_request *req)
 ///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////
-void getprofilecells(struct cardserver_data *cs, char cell[11][2048])
+void getprofilecells(struct cardserver_data *cs, char cell[11][4096])
 {
 	char temp[2048];
 	// CELL0 # Profile name
@@ -4000,21 +4000,24 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][2048])
 		provname = providerID(cs->card.caid, cs->card.prov[i].id);
 		if (provname) sprintf( temp,", %06x <font color=#CC3300>%s</font>",cs->card.prov[i].id,provname);
 		else sprintf( temp,", %06x",cs->card.prov[i].id);
-		strcat( cell[9], temp );
+		if ( (strlen(cell[9])+strlen(temp)) < (sizeof(cell[9])-16) ) strcat( cell[9], temp );
 	}
 
-	strcat( cell[9], "<span style='float:right;'>");
+	// botoes em linha propria (guard de tamanho)
+	#define C9ADD(s) if ( (strlen(cell[9])+strlen(s)) < (sizeof(cell[9])-16) ) strcat( cell[9], s )
+	C9ADD("<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if (cs->flags&FLAG_DISABLE) {
 		sprintf( temp," <span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=on',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span>",cs->id);
-		strcat( cell[9], temp );
+		C9ADD(temp);
 	}
 	else {
 		sprintf( temp," <span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">OFF</span>",cs->id);
-		strcat( cell[9], temp );
+		C9ADD(temp);
 	}
 	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/profile?id=%d&action=dbginfo')\">DBG</span>",cs->id,cs->id);
-	strcat( cell[9], temp );
-	strcat( cell[9], "</span>");
+	C9ADD(temp);
+	C9ADD("</span>");
+	#undef C9ADD
 }
 
 
@@ -4117,7 +4120,7 @@ void http_send_profiles(int sock, http_request *req)
 	char http_buf[2048];
 	struct tcp_buffer_data tcpbuf;
 
-	char cell[11][2048];
+	char cell[11][4096];
 
 	//  Get Params
 	char *str_action = isset_get( req, "action");
@@ -4566,7 +4569,7 @@ void getnewcamdclientcells(struct cs_client_data *cli, char cell[10][2048])
 	}
 	else strcpy( cell[8], " ");
 
-	strcat( cell[8], "<span style='float:right;'>");
+	strcat( cell[8], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
 		if (cli->flags&FLAG_DISABLE) {
 			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/newcamdclient?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
@@ -5665,7 +5668,7 @@ void getcccamcells(struct cc_client_data *cli, char cell[10][2048])
 		strcat( cell[8], "</span>" );
 	}
 	else strcpy( cell[8], " ");
-	strcat( cell[8], "<span style='float:right;'>");
+	strcat( cell[8], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
 		if (cli->flags&FLAG_DISABLE) {
 			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cccamclient?action=enable&id=%d',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
@@ -6106,7 +6109,7 @@ void getcs378xcells(struct camd35_client_data *cli, char cell[10][2048])
 	}
 	else strcpy( cell[7], " ");
 
-	strcat( cell[7], "<span style='float:right;'>");
+	strcat( cell[7], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
 		if (cli->flags&FLAG_DISABLE) {
 			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cs378xclient?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
@@ -6791,7 +6794,7 @@ void getcamd35cells(struct camd35_client_data *cli, char cell[10][2048])
 	}
 	else strcpy( cell[7], " ");
 
-	strcat( cell[7], "<span style='float:right;'>");
+	strcat( cell[7], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
 		if (cli->flags&FLAG_DISABLE) {
 			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/camd35client?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
@@ -7554,7 +7557,7 @@ void cacheex_server_cells(struct server_data *srv, char cell[10][2048], int off 
 		}
 		else strcpy( cell[8], " ");
 	}
-	strcat( cell[8], "<span style='float:right;'>");
+	strcat( cell[8], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if (srv->flags&FLAG_DISABLE) {
 		sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cacheex?action=enable&id=%d',this);setTimeout('updateDiv()',600)\">ON</span>",srv->id+off);
 	}
@@ -7658,7 +7661,7 @@ void cacheex_cccamclient_cells(struct cc_client_data *cli, char cell[10][2048], 
 		}
 		else strcpy( cell[8], " ");
 	}
-	strcat( cell[8], "<span style='float:right;'>");
+	strcat( cell[8], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if (cli->flags&FLAG_DISABLE) {
 		sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cacheex?action=enable&id=%d',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id+off);
 	}
@@ -7763,7 +7766,7 @@ void cacheex_camd35client_cells(struct camd35_client_data *cli, char cell[10][20
 		}
 		else strcpy( cell[8], " ");
 	}
-	strcat( cell[8], "<span style='float:right;'>");
+	strcat( cell[8], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if (cli->flags&FLAG_DISABLE) {
 		sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cacheex?action=enable&id=%d',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id+off);
 	}
@@ -8666,7 +8669,7 @@ void getmgcamdcells(struct mg_client_data *cli, char cell[10][2048])
 	}
 	else strcpy( cell[8], " ");
 
-	strcat( cell[8], "<span style='float:right;'>");
+	strcat( cell[8], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
 		if (cli->flags&FLAG_DISABLE) {
 			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/mgcamdclient?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
