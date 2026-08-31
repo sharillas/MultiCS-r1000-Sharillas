@@ -4046,7 +4046,7 @@ int profile_config_toggle(char *name, int on)
 	char *fname = NULL;
 	struct filename_data *fs = cfg.files;
 	while (fs) {
-		if (strstr(fs->name,"perfis.cfg") || strstr(fs->name,"profiles.cfg")) { fname = fs->name; break; }
+		if (strstr(fs->name,"profiles.cfg")) { fname = fs->name; break; }
 		fs = fs->next;
 	}
 	if (!fname) return -1;
@@ -9990,13 +9990,10 @@ void http_send_editor(int sock, http_request *req, int index)
 // ficheiros extra editaveis (whitelist do upload) mesmo que nao estejam
 // registados no parse (FILE directives) - sao lidos/gravados de /var/etc/
 static const char *editor_extra_files[] = {
-	"multics.cfg","perfis.cfg","CCcam.channelinfo","CCcam.lite",
+	"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.providers","CCcam.lite",
 	"servidores.cfg","clientes_cccam.cfg","clientes_mgcamd.cfg",
 	"clientes_cs378x.cfg","clientes_camd35.cfg","clientes_cache.cfg",
-	"Softcam.cfg","blocked_ips.cfg","ip2country.csv","multics.css",
-	// nomes antigos (compatibilidade com instalacoes anteriores)
-	"profiles.cfg","Nlines.cfg","users.cfg","Mgcamd.cfg","Camd35.cfg",
-	"Cache.cfg","CacheEX.cfg","1-Clients.cfg", NULL };
+	"Softcam.cfg","blocked_ips.cfg","ip2country.csv","multics.css", NULL };
 
 // o nome (basename) ja esta registado na lista do parse?
 static int editor_in_cfgfiles(const char *name)
@@ -10039,6 +10036,7 @@ static void resolve_cfg_path(const char *name, char *out, int outsz)
 	const char *wanted = NULL;
 	if (!strcmp(name,"multics.cfg")) wanted = config_file;
 	else if (!strcmp(name,"CCcam.channelinfo")) wanted = cfg.channelinfo_file;
+	else if (!strcmp(name,"CCcam.providers")) wanted = cfg.providers_file;
 	else if (!strcmp(name,"CCcam.lite")) wanted = cfg.lite_file;
 	else if (!strcmp(name,"Softcam.cfg")) wanted = cfg.constcw_file;
 	else if (!strcmp(name,"blocked_ips.cfg")) wanted = cfg.blockedip_file;
@@ -10281,13 +10279,10 @@ void http_send_configurations(int sock, http_request *req)
 	if (str_action && !strcmp(str_action,"upload")) {
 		// upload de ficheiro de config (whitelist) para /var/etc/
 		static const char *upload_whitelist[] = {
-			"multics.cfg","perfis.cfg","CCcam.channelinfo","CCcam.lite",
+			"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.providers","CCcam.lite",
 			"servidores.cfg","clientes_cccam.cfg","clientes_mgcamd.cfg",
 			"clientes_cs378x.cfg","clientes_camd35.cfg","clientes_cache.cfg",
-			"Softcam.cfg","blocked_ips.cfg","ip2country.csv","multics.css",
-			// nomes antigos (compatibilidade com instalacoes anteriores)
-			"profiles.cfg","Nlines.cfg","users.cfg","Mgcamd.cfg","Camd35.cfg",
-			"Cache.cfg","CacheEX.cfg","1-Clients.cfg", NULL };
+			"Softcam.cfg","blocked_ips.cfg","ip2country.csv","multics.css", NULL };
 		char *fnameparam = isset_get( req, "file");
 		int okname = 0;
 		if (fnameparam) {
@@ -10551,7 +10546,7 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "<form method='POST' enctype='multipart/form-data' action='/configurations?action=upload' onsubmit=\"this.action='/configurations?action=upload&file='+this.elements['file'].value;\">");
 	tcp_writestr(&tcpbuf, sock, "Ficheiro de destino: <select name='file' style='width:250px;'>");
 	tcp_writestr(&tcpbuf, sock, "<option value='multics.cfg'>multics.cfg (mestre - pode conter tudo)</option>");
-	tcp_writestr(&tcpbuf, sock, "<option value='perfis.cfg'>perfis.cfg (perfis + users newcamd)</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='profiles.cfg'>profiles.cfg (perfis + users newcamd)</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='servidores.cfg'>servidores.cfg (N:/C:/L:, cache, cacheex, camd35)</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='clientes_cccam.cfg'>clientes_cccam.cfg (F-lines)</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='clientes_mgcamd.cfg'>clientes_mgcamd.cfg</option>");
@@ -10559,6 +10554,7 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "<option value='clientes_camd35.cfg'>clientes_camd35.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='clientes_cache.cfg'>clientes_cache.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.channelinfo'>CCcam.channelinfo</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.providers'>CCcam.providers</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.lite'>CCcam.lite</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='Softcam.cfg'>Softcam.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='blocked_ips.cfg'>blocked_ips.cfg</option>");
