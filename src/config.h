@@ -667,6 +667,7 @@ struct cardserver_data
 #endif
 			int retry; // number of retries to decode ecm
 			uint8_t silentnok; // SILENT NOK: adiar a resposta NOK ao cliente (box espera sem reconectar)
+			uint8_t icam;      // DCW ICAM: transformacao icam da CW (NDS/Nagra 09xx/1802/1814)
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
@@ -719,6 +720,36 @@ struct cardserver_data
 			uint16_t sids[64];      // DCW SKIPCWC_EXCLUDE_SIDLIST
 			int nsids;
 		} skipcwc_exclude;
+		// ECM FILTER: regras genericas de validacao do ECM (PREFIX/LEN/BYTE INMASK)
+		struct {
+			int enable;
+			int mode;    // 0=LOGONLY 1=DROP
+			int nrules;
+			struct {
+				uint8_t type;    // 1=PREFIX 2=LEN 3=BYTE
+				uint8_t off;     // BYTE: posicao no ECM (a partir de 0)
+				uint64_t mask;   // BYTE: bitmask (bit do valor do byte tem de estar ativo)
+				uint8_t nvals;
+				uint32_t vals[16]; // PREFIX: (nbytes<<24)|b0<<16|b1<<8|b2 ; LEN: comprimento
+			} rules[16];
+		} ecmfilter;
+		// DCW FILTER: blacklist de CWs (CWPK/cartoes marcados/fake)
+		struct {
+			int enable;
+			int mode;    // 0=LOGONLY 1=DROP
+			int nrules;
+			struct {
+				uint8_t type;    // 1=EXACT 2=MASK 3=ALLEQUAL
+				uint8_t n;       // EXACT: numero de CWs (ate 8 por regra)
+				uint8_t cw[8][16]; // EXACT: lista de CWs; MASK: cw[0] + mask
+				uint8_t mask[16];
+			} rules[16];
+		} dcwfilter;
+		// ECMRATELIMIT: protecao do cartao fisico
+		struct {
+			int sidtime;  // ms entre ECMs do mesmo SID (0=off)
+			int maxecm;   // max ECMs por segundo no perfil (0=off)
+		} ratelimit;
 		int fenableemu;    // ENABLE EMULATOR BISS (default ON)
 		int fenablelite;   // ENABLE LITE (filtro de canais CCcam.lite, default OFF)
 		// Health scoring (ordena/elimina servers por saude: sucesso, latencia,
@@ -794,6 +825,12 @@ struct cardserver_data
 
 	int ecmlen[30];
 
+	// ECMRATELIMIT state (por perfil)
+	uint32_t rl_win_time;  // janela de 1s para o contador MAXECM
+	int rl_win_count;
+	struct { uint16_t sid; uint32_t time; } rl_sid[8];
+	int rl_sid_idx;
+
 	///////////////////////////////////////////////////////////////////////////
 
 	struct {
@@ -858,6 +895,8 @@ struct cardserver_data
 #define TYPE_CAMD35     5
 #define TYPE_CS378X     6
 #define TYPE_CCAM3      7
+#define TYPE_MGCAMD     8
+#define TYPE_CACHE      9
 
 
 
@@ -1652,9 +1691,24 @@ struct config_data
 	void *lastecm;
 
 	struct {
-		uint32_t time;
-		int count; 
+		int enable;
+		uint32_t bantime; // segundos de ban (ipblock)
+		int max_cccam;
+		int max_newcamd;
+		int max_mgcamd;
+		int max_camd35;
+		int max_cs378x;
+		int max_cache;
+		uint32_t time; // janela de contagem (legado)
+		int count;
 	} failban;
+
+	// ANTICASCADE: deteccao de reshare por zapping excessivo
+	struct {
+		int maxzap;
+		int window;  // segundos
+		int bantime; // segundos
+	} anticascade;
 };
 
 // Static Data

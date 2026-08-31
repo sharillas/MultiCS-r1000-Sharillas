@@ -425,6 +425,14 @@ int cs_check_ecmlen(struct cardserver_data *cs, int len)
 	return 0;
 }
 
+// protection.c (incluido mais abaixo) - prototipos para o aceite do ECM
+void dcw_icam_apply(uint8_t cw[16]);
+char *ecm_filter_check(struct cardserver_data *cs, uint8_t *ecmdata, uint16_t ecmlen);
+int dcw_filter_check(struct cardserver_data *cs, uint8_t dcw[16]);
+void failban_bad(uint32_t ip, int proto, char *reason);
+int anticascade_zap(uint32_t ip);
+char *ratelimit_check(struct cardserver_data *cs, uint16_t sid);
+
 char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, uint16_t sid, uint16_t chid, uint16_t ecmlen, uint8_t *ecmdata, uint8_t *cw1cycle )
 {
 	//
@@ -449,6 +457,16 @@ char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, 
 	// check for viaccess
 	if (cs->option.checkecm) {
 		if (caid==0x0500) if ( !viaccess_checkECM( ecmdata, ecmlen ) ) return("Invalid viaccess ecm");
+	}
+	// ECMRATELIMIT: protecao do cartao fisico
+	{
+		char *rl = ratelimit_check(cs, sid);
+		if (rl) return(rl);
+	}
+	// ECM FILTER: regras genericas (PREFIX/LEN/BYTE INMASK)
+	{
+		char *ef = ecm_filter_check(cs, ecmdata, ecmlen);
+		if (ef) return(ef);
 	}
 	return NULL;
 }
@@ -542,6 +560,7 @@ void forward_cs378x(ECM_DATA *ecm);
 #include "nagra.c" // NAGRA protection (18xx/19xx)
 #include "lite.c"  // BUILD LITE: filtro de canais CCcam.lite
 #include "ipblock.c" // Lista de IPs bloqueados (Iptables)
+#include "protection.c" // ECM/DCW filters, FAILBAN, ANTICASCADE, RATELIMIT, ICAM
 
 ///////////////////////////////////////////////////////////////////////////////
 

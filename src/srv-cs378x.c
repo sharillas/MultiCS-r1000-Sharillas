@@ -248,7 +248,7 @@ void cs378x_senddcw_cli(struct camd35_client_data *cli)
 	if (samechannel) {
 		if ( (cli->lastecm.hash!=ecm->hash)&&(cli->lastecm.tag!=ecm->ecm[0]) )
 		if ( (cli->lastecm.status=1)&&(cli->lastdcwtime+200<ticks) ) enablefreeze = 1;
-	} else cli->zap++;
+	} else { cli->zap++; if (cfg.anticascade.maxzap && anticascade_zap(cli->ip)) { mlogf(LOGWARNING,getdbgflag(DBG_ERROR,0,0)," ANTICASCADE: desconectando cliente por zapping excessivo\n"); cli->flags |= FLAG_DISCONNECT; return; } }
 	//
 	cli->lastecm.caid = ecm->caid;
 	cli->lastecm.prov = ecm->provid;

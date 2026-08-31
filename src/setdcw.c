@@ -247,6 +247,18 @@ void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		return;
 	}
 
+	// ICAM: transformacao da CW (permutacao + checksum) antes de qualquer validacao
+	if (cs->option.dcw.icam) {
+		dcw_icam_apply(dcw);
+	}
+
+	// DCW FILTER: blacklist CWPK (cartoes marcados / fakes)
+	if ( dcw_filter_check(cs, dcw) ) {
+		ecm->lastdecode.error++;
+		mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: CW rejeitada (DROP) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
+		return;
+	}
+
 	int cwpart = 2;
 	if (ecm->cw1cycle) {
 		if (ecm->ecm[0]==ecm->cw1cycle) cwpart = 1; else cwpart = 0;
@@ -541,6 +553,18 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	// FILTRO EMBUTIDO (nao configuravel): fake cw com ultimo byte XOR 0xF0
 	if ( isfakecw_xorF0(dcw) && !acceptDCW_nanoe0(dcw) ) {
 		mlogf(LOGWARNING,0," !!! fake cw detected in setdcw (last byte XOR 0xF0) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
+		return;
+	}
+
+	// ICAM: transformacao da CW (permutacao + checksum) antes de qualquer validacao
+	if (cs->option.dcw.icam) {
+		dcw_icam_apply(dcw);
+	}
+
+	// DCW FILTER: blacklist CWPK (cartoes marcados / fakes)
+	if ( dcw_filter_check(cs, dcw) ) {
+		ecm->lastdecode.error++;
+		mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: CW rejeitada (DROP) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
 		return;
 	}
 
