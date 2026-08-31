@@ -1682,6 +1682,76 @@ sid accept:
 			}
 		}
 
+		// FAILBAN: ban de IPs com eventos maos (bad CW de clientes/peers)
+		else if (!strcmp(str,"FAILBAN")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"ENABLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cfg->failban.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"BANTIME")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cfg->failban.bantime = atoi(str);
+				if (cfg->failban.bantime<60) cfg->failban.bantime=60;
+				else if (cfg->failban.bantime>86400) cfg->failban.bantime=86400;
+			}
+			else if (!strcmp(str,"CCCAM")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_cccam = atoi(str); }
+			else if (!strcmp(str,"NEWCAMD")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_newcamd = atoi(str); }
+			else if (!strcmp(str,"MGCAMD")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_mgcamd = atoi(str); }
+			else if (!strcmp(str,"CAMD35")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_camd35 = atoi(str); }
+			else if (!strcmp(str,"CS378X")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_cs378x = atoi(str); }
+			else if (!strcmp(str,"CACHE")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_cache = atoi(str); }
+		}
+
+		// ANTICASCADE: deteccao de reshare por zapping excessivo
+		else if (!strcmp(str,"ANTICASCADE")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"MAXZAP")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cfg->anticascade.maxzap = atoi(str);
+				if (cfg->anticascade.maxzap<0) cfg->anticascade.maxzap=0;
+				else if (cfg->anticascade.maxzap>1000) cfg->anticascade.maxzap=1000;
+			}
+			else if (!strcmp(str,"WINDOW")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cfg->anticascade.window = atoi(str);
+				if (cfg->anticascade.window<5) cfg->anticascade.window=5;
+				else if (cfg->anticascade.window>3600) cfg->anticascade.window=3600;
+			}
+			else if (!strcmp(str,"BANTIME")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cfg->anticascade.bantime = atoi(str);
+				if (cfg->anticascade.bantime<60) cfg->anticascade.bantime=60;
+				else if (cfg->anticascade.bantime>86400) cfg->anticascade.bantime=86400;
+			}
+		}
+
 
 #ifdef TESTCHANNEL
 		else if (!strcmp(str,"TESTCHANNEL")) {
@@ -2668,7 +2738,38 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.cwc.enable = parse_boolean();
 				}
-				else if (!strcmp(str,"HEALTH")) {
+		else if (!strcmp(str,"ECMRATELIMIT")) {
+			if (!cardserver) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip ECMRATELIMIT, undefined profile\n",file->nbline,iparser-currentline);
+				continue;
+			}
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"SIDTIME")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.ratelimit.sidtime = atoi(str);
+				if (cardserver->option.ratelimit.sidtime<0) cardserver->option.ratelimit.sidtime=0;
+				else if (cardserver->option.ratelimit.sidtime>60000) cardserver->option.ratelimit.sidtime=60000;
+			}
+			else if (!strcmp(str,"MAXECM")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.ratelimit.maxecm = atoi(str);
+				if (cardserver->option.ratelimit.maxecm<0) cardserver->option.ratelimit.maxecm=0;
+				else if (cardserver->option.ratelimit.maxecm>10000) cardserver->option.ratelimit.maxecm=10000;
+			}
+		}
+
+		else if (!strcmp(str,"HEALTH")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
 						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
@@ -3877,6 +3978,84 @@ link_mgcamd_user:
 					cardserver->option.checkecm = parse_boolean();
 				}
 			}
+			else if (!strcmp(str,"FILTER")) {
+				// ECM FILTER: YES | ECM FILTER MODE: DROP/LOGONLY
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					parse_name(str);
+					uppercase(str);
+					if (!strcmp(str,"MODE")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							continue;
+						} else iparser++;
+						parse_name(str);
+						uppercase(str);
+						cardserver->option.ecmfilter.mode = strcmp(str,"LOGONLY")?1:0;
+					}
+					continue;
+				}
+				iparser++;
+				cardserver->option.ecmfilter.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"RULE")) {
+				// ECM RULE n: PREFIX a,b | LEN a,b | BYTE off INMASK mask
+				parse_int(str);
+				int n = atoi(str);
+				if ((n<1)||(n>16)) continue;
+				parse_spaces();
+				if (*iparser==':') iparser++;
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"PREFIX")) {
+					cardserver->option.ecmfilter.rules[n-1].type = 1;
+					int x = 0;
+					while (x<16) {
+						parse_spaces();
+						if ( parse_hex(str)>0 ) {
+							uint32_t v = strtoul(str, NULL, 16);
+							int nb = (int)strlen(str)/2;
+							if ((nb<1)||(nb>3)) { iparser++; continue; }
+							cardserver->option.ecmfilter.rules[n-1].vals[x] = ((uint32_t)nb<<24) | (v & 0xffffff);
+							x++;
+						}
+						else break;
+						if (*iparser==',') iparser++;
+					}
+					cardserver->option.ecmfilter.rules[n-1].nvals = x;
+					if (x && cardserver->option.ecmfilter.nrules<n) cardserver->option.ecmfilter.nrules = n;
+				}
+				else if (!strcmp(str,"LEN")) {
+					cardserver->option.ecmfilter.rules[n-1].type = 2;
+					int x = 0;
+					while (x<16) {
+						parse_spaces();
+						if ( parse_hex(str)>0 ) {
+							cardserver->option.ecmfilter.rules[n-1].vals[x] = hex2int(str);
+							x++;
+						}
+						else break;
+						if (*iparser==',') iparser++;
+					}
+					cardserver->option.ecmfilter.rules[n-1].nvals = x;
+					if (x && cardserver->option.ecmfilter.nrules<n) cardserver->option.ecmfilter.nrules = n;
+				}
+				else if (!strcmp(str,"BYTE")) {
+					cardserver->option.ecmfilter.rules[n-1].type = 3;
+					parse_int(str);
+					cardserver->option.ecmfilter.rules[n-1].off = atoi(str);
+					parse_name(str);
+					uppercase(str);
+					if (!strcmp(str,"INMASK")) {
+						parse_spaces();
+						if (*iparser==':') iparser++;
+						parse_hex(str);
+						cardserver->option.ecmfilter.rules[n-1].mask = strtoull(str, NULL, 16);
+						if (cardserver->option.ecmfilter.nrules<n) cardserver->option.ecmfilter.nrules = n;
+					}
+				}
+			}
 		}
 
 		else if (!strcmp(str,"DCW")) {
@@ -4004,6 +4183,78 @@ link_mgcamd_user:
 			}
 #endif
 #endif
+			else if (!strcmp(str,"ICAM")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.dcw.icam = parse_boolean();
+			}
+			else if (!strcmp(str,"FILTER")) {
+				// DCW FILTER: YES | DCW FILTER MODE: DROP/LOGONLY | DCW FILTER RULES: n
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					parse_name(str);
+					uppercase(str);
+					if (!strcmp(str,"MODE")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							continue;
+						} else iparser++;
+						parse_name(str);
+						uppercase(str);
+						cardserver->option.dcwfilter.mode = strcmp(str,"LOGONLY")?1:0;
+					}
+					continue;
+				}
+				iparser++;
+				cardserver->option.dcwfilter.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"RULE")) {
+				// DCW RULE n: EXACT <hex32> | MASK <hex32> <hex32> | ALLEQUAL
+				parse_int(str);
+				int n = atoi(str);
+				if ((n<1)||(n>16)) continue;
+				parse_spaces();
+				if (*iparser==':') iparser++;
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"EXACT")) {
+					cardserver->option.dcwfilter.rules[n-1].type = 1;
+					int x = 0;
+					while (x<8) {
+						int j, ok = 1;
+						for (j=0; j<16; j++) {
+							if ( parse_hex(str)!=2 ) { ok = 0; break; }
+							cardserver->option.dcwfilter.rules[n-1].cw[x][j] = hex2int(str);
+						}
+						if (!ok) break;
+						x++;
+						parse_spaces();
+						if (*iparser==',') iparser++;
+					}
+					cardserver->option.dcwfilter.rules[n-1].n = x;
+				}
+				else if (!strcmp(str,"MASK")) {
+					cardserver->option.dcwfilter.rules[n-1].type = 2;
+					int j;
+					for (j=0; j<16; j++) {
+						if ( parse_hex(str)!=2 ) break;
+						cardserver->option.dcwfilter.rules[n-1].cw[0][j] = hex2int(str);
+					}
+					for (j=0; j<16; j++) {
+						if ( parse_hex(str)!=2 ) break;
+						cardserver->option.dcwfilter.rules[n-1].mask[j] = hex2int(str);
+					}
+				}
+				else if (!strcmp(str,"ALLEQUAL")) {
+					cardserver->option.dcwfilter.rules[n-1].type = 3;
+				}
+				else continue;
+				if (cardserver->option.dcwfilter.nrules<n) cardserver->option.dcwfilter.nrules = n;
+			}
 		}
 
 		else if (!strcmp(str,"HEALTH")) {
