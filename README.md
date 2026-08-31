@@ -1,8 +1,8 @@
-﻿# MultiCS r1000 v1.23 - by Sharillas
+# MultiCS r1000 v1.24 - by Sharillas
 
 Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruído e muito expandido: GUI web moderna, Softcam BISS/CW, proteções contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs** (1 pedido único por ECM em voo), login guard anti brute-force, NOK cache, validação de uploads sem crash, e dezenas de fixes.
 
-> **Versão:** v1.23 | **Licença:** Sharillas@2026
+> **Versão:** v1.24 | **Licença:** Sharillas@2026
 
 ---
 
@@ -83,7 +83,7 @@ Fluxo mínimo para funcionar:
 
 ---
 
-## Features desta build (v1.23)
+## Features desta build (v1.24)
 
 ### GUI web
 - Páginas: Dashboard, Servers, Cache, CacheEX, Newcamd, Mgcamd, CCcam, Cs358x/Camd35, Profiles, **Packages**, Softcam, Configs
@@ -168,4 +168,4 @@ Build flags (equivalentes ao Makefile original):
 
 ## Créditos
 
-Base: (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.23
+Base: (evileyes). Mod, GUI e fixes: **Sharillas@2026** — v1.24

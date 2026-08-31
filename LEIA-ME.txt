@@ -1,4 +1,4 @@
-﻿MultiCS r1000 v1.23 - by Sharillas@2026
+MultiCS r1000 v1.24 - by Sharillas@2026
 ==========================================
 
 Pacote de release (última build estável)
@@ -14,7 +14,7 @@ CONTÉM:
                          serviço systemd como root, chmod 666 nas configs)
 
 INSTALAÇÃO NA VPS (Debian/Ubuntu, como root):
-  cd /tmp && tar xzf multics-r1000-v1.23.tar.gz && cd multics-r1000
+  cd /tmp && tar xzf multics-r1000-v1.24.tar.gz && cd multics-r1000
   bash install.sh /opt/multics
   systemctl start multics
 
@@ -24,7 +24,7 @@ WEB UI:  http://IP:5500   (user: admin / pass: admin - mudar no multics.cfg)
 Portas: HTTP 5500, Telnet 5600, CCcam 16000, CCcam3 16001, MGcamd 21000,
         camd35 7502, cs378x 8600, cache 5599, perfis newcamd 15000+
 
-PRINCIPAIS CARACTERÍSTICAS (v1.23):
+PRINCIPAIS CARACTERÍSTICAS (v1.24):
   - GUI completa (dark/light, responsiva em telemóvel): Dashboard, Servers,
     Cache, CacheEX, Newcamd, Mgcamd, CCcam, Cs358x/Camd35, Profiles,
     Packages, Softcam, Configs
