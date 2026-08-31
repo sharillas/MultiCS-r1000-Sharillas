@@ -6,6 +6,12 @@
 #include <stdarg.h>
 #include <unistd.h>
 
+// protection.c (unidade do main.c) - prototipos usados na GUI
+void prot_event_add(const char *fmt, ...);
+char *prot_event_get(int n, unsigned int *age_ms);
+unsigned int prot_uptime_ticks(void);
+int dcw_filter_learned_count(void);
+
 #ifdef WIN32
 
 #include <windows.h>
@@ -1497,6 +1503,39 @@ void http_send_index(int sock, http_request *req)
 	cache_peers( cfg.cache.server, &cache_total, &cache_active );
 	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Cache Stats</h3><table class=maintable><tr><th>Metric</th><th>Value</th></tr><tr><td>Cache Servers</td><td>%d</td></tr><tr><td>Active Peers</td><td>%d</td></tr><tr><td>Unread SMS</td><td>%d</td></tr></table></div>", cfg.cache.totalservers, cache_active, unreadsms());
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+	// Protecoes & Eventos recentes
+	{
+		uint32_t up = prot_uptime_ticks()/1000;
+		int gecm=0, gok=0, gnok=0;
+		struct cardserver_data *pcs = cfg.cardserver;
+		while (pcs) {
+			gecm += pcs->ecmaccepted + pcs->ecmdenied;
+			gok += pcs->ecmok;
+			gnok += pcs->ecmdenied;
+			pcs = pcs->next;
+		}
+		sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Protecoes &amp; Eventos</h3>"
+			"<table class=maintable><tr><th>Metric</th><th>Value</th></tr>"
+			"<tr><td>Uptime do processo</td><td>%02dd %02d:%02d:%02d</td></tr>"
+			"<tr><td>ECMs totais</td><td>%d (OK: %d | NOK: %d)</td></tr>"
+			"<tr><td>Regras CWPK aprendidas</td><td>%d</td></tr></table>"
+			"<div style='margin-top:8px;max-height:220px;overflow-y:auto;font-size:12px;'>",
+			up/(3600*24), (up/3600)%24, (up/60)%60, up%60,
+			gecm, gok, gnok, dcw_filter_learned_count());
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		int evn = 0;
+		uint32_t age = 0;
+		char *ev = prot_event_get(0, &age);
+		if (!ev) tcp_writestr(&tcpbuf, sock, "<span style='color:#8899aa'>Sem eventos ainda (filtros em AUTO - ativam sozinhos quando necessario).</span>");
+		while (ev && evn<8) {
+			sprintf( http_buf, "<div style='padding:2px 0;border-bottom:1px solid #333'>%s <span style='color:#8899aa;font-size:11px'>(%us atras)</span></div>", ev, age/1000);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			evn++;
+			ev = prot_event_get(evn, &age);
+		}
+		tcp_writestr(&tcpbuf, sock, "</div></div>");
+	}
 
 	// Debug Log (no fim, antes do footer)
 	char dbgbuf[MAX_DBGLINE_LEN];
@@ -9610,25 +9649,36 @@ void http_send_packages(int sock, http_request *req)
 			lastsat = pkg_table[i].sat;
 			sprintf( http_buf, "<h3 class=stitle>%s</h3>", lastsat);
 			tcp_writestr(&tcpbuf, sock, http_buf);
-			tcp_writestr(&tcpbuf, sock, "<table class=maintable width=100%><tr><th width=160px>Package</th><th width=120px>CAID:Ident</th><th>Nota</th><th width=110px>Perfil</th><th width=90px>Ecm OK</th><th>Readers</th></tr>");
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable width=100%><tr><th width=160px>Package</th><th width=120px>CAID:Ident</th><th>Nota</th><th width=110px>Perfil</th><th width=90px>Ecm OK</th><th width=170px>Filtros</th><th>Readers</th></tr>");
 		}
 		if (alt==1) alt=2; else alt=1;
 
 		struct cardserver_data *cs = pkg_findcs(pkg_table[i].caid, pkg_table[i].ident);
 		char profcell[160];
 		char okcell[80];
+		char filtcell[320];
 		if (cs) {
 			sprintf( profcell, "<a href='/profile?id=%d'>%s</a> (%d)", cs->id, cs->name, cs->newcamd.port);
 			if (cs->ecmaccepted) sprintf( okcell, "%d%%", (cs->ecmok*100)/cs->ecmaccepted);
 			else sprintf( okcell, "--");
+			char b[256] = "";
+			if (cs->option.dcw.icam) strcat(b, " <span class='badge-blue'>ICAM</span>");
+			if (cs->option.dcwfilter.enable) {
+				if (cs->option.dcwfilter.mode==2) strcat(b, cs->option.dcwfilter.auto_active?" <span class='badge-green'>CWPK ATIVO</span>":" <span class='badge-gray'>CWPK AUTO</span>");
+				else if (cs->option.dcwfilter.mode==1) strcat(b, " <span class='badge-green'>CWPK DROP</span>");
+				else strcat(b, " <span class='badge-gray'>CWPK LOGONLY</span>");
+				if (cs->option.dcwfilter.learn) strcat(b, " <span class='badge-blue'>LEARN</span>");
+			}
+			if (cs->option.ecmfilter.enable) strcat(b, cs->option.ecmfilter.mode?" <span class='badge-green'>ECM DROP</span>":" <span class='badge-gray'>ECM LOGONLY</span>");
+			sprintf( filtcell, "%s", b[0]?b:" <span class='badge-gray'>sem filtros</span>");
 		}
-		else { sprintf( profcell, "<span style='color:#8899aa'>sem perfil</span>"); sprintf( okcell, "--"); }
+		else { sprintf( profcell, "<span style='color:#8899aa'>sem perfil</span>"); sprintf( okcell, "--"); sprintf( filtcell, " <span class='badge-gray'>--</span>"); }
 
 		char rdcell[512];
 		pkg_count_readers(pkg_table[i].caid, pkg_table[i].ident, rdcell, sizeof(rdcell));
 
-		sprintf( http_buf, "<tr class=alt%d><td>%s</td><td><b>%04X:</b> %06X</td><td style='font-size:11px;color:#8899aa'>%s</td><td style='font-size:12px;'>%s</td><td>%s</td><td style='font-size:12px;'>%s</td></tr>",
-			alt, pkg_table[i].name, pkg_table[i].caid, pkg_table[i].ident, pkg_table[i].note, profcell, okcell, rdcell);
+		sprintf( http_buf, "<tr class=alt%d><td>%s</td><td><b>%04X:</b> %06X</td><td style='font-size:11px;color:#8899aa'>%s</td><td style='font-size:12px;'>%s</td><td>%s</td><td style='font-size:11px;'>%s</td><td style='font-size:12px;'>%s</td></tr>",
+			alt, pkg_table[i].name, pkg_table[i].caid, pkg_table[i].ident, pkg_table[i].note, profcell, okcell, filtcell, rdcell);
 		tcp_writestr(&tcpbuf, sock, http_buf);
 	}
 	tcp_writestr(&tcpbuf, sock, "</table>");
