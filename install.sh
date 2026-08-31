@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================
-# MultiCS r1000 v1.25 by Sharillas - INSTALADOR (VPS Debian/Ubuntu)
+# MultiCS r1000 v1.26 by Sharillas - INSTALADOR (VPS Debian/Ubuntu)
 #
 # NAO PRECISA DE GIT - este script copia so o binario e as
 # configs de exemplo para a VPS.
 #
 # USO (na VPS):
-#   1. envia o pacote:  scp multics-r1000-v1.25.tar.gz root@IP:~
-#   2. na VPS:          tar xzf multics-r1000-v1.25.tar.gz
+#   1. envia o pacote:  scp multics-r1000-v1.26.tar.gz root@IP:~
+#   2. na VPS:          tar xzf multics-r1000-v1.26.tar.gz
 #   3.                  cd multics-r1000
 #   4.                  sudo bash install.sh
 #
@@ -76,7 +76,7 @@ systemctl restart multics 2>/dev/null
 cat <<GUIDE
 
 =============================================================
-  INSTALACAO CONCLUIDA - MultiCS r1000 v1.25
+  INSTALACAO CONCLUIDA - MultiCS r1000 v1.26
 =============================================================
 
 O QUE E ISTO
@@ -87,19 +87,26 @@ O QUE E ISTO
 ONDE ESTA TUDO
   Binarios:          $DIR/multics.x64 e multics.x32
   Configs (editas):  /var/etc/  (fica tudo aqui)
-    multics.cfg      - config principal (portas, users da GUI, falban...)
-    profiles.cfg     - PERFIS: os "pacotes" que das aos clientes
-                       (cada perfil = um CAID: MEO 1814, NOS 1802, etc.)
-    Nlines.cfg       - as linhas N:/C:/L: que te dao (os teus readers)
-    cccam.cfg        - usuarios CCcam (F:) que TU crias para dar sharing
-    Mgcamd.cfg       - usuarios MGcamd que tu crias
-    users.cfg        - usuarios newcamd que tu crias
-    CCcam.channelinfo- nomes dos canais (GUI e logs)
-    CCcam.providers  - nomes dos idents/providers (GUI e logs)
-    CCcam.lite       - lista de canais permitidos (se ativares)
-    Softcam.cfg      - chaves BISS/constcw do emulador
-    ip2country.csv   - pais por IP (bandeiras na GUI)
-    blocked_ips.cfg  - IPs banidos (failban/anticascade/GUI)
+    multics.cfg        - config principal (portas, users da GUI, falban,
+                         anticascade). Pode conter TUDO num so ficheiro.
+    perfis.cfg         - PERFIS: os "pacotes" que das aos clientes
+                         (cada perfil = um CAID: MEO 1814, NOS 1802, etc.)
+                         + users newcamd de cada perfil
+    servidores.cfg     - READERS: linhas N: C: L: + cache + cacheex
+                         (a fonte dos cards)
+    clientes_cccam.cfg - F-lines (clientes CCcam que TU crias)
+    clientes_mgcamd.cfg- users MGcamd que TU crias
+    clientes_cs378x.cfg- users cs378x que TU crias
+    clientes_camd35.cfg- users camd35 (UDP) que TU crias
+    clientes_cache.cfg - users de cache (CSP) que TU crias
+    CCcam.channelinfo  - nomes dos canais (GUI e logs)
+    CCcam.providers    - nomes dos idents/providers (GUI e logs)
+    CCcam.lite         - lista de canais permitidos (se ativares)
+    Softcam.cfg        - chaves BISS/constcw do emulador
+    ip2country.csv     - pais por IP (bandeiras na GUI)
+    blocked_ips.cfg    - IPs banidos (failban/anticascade/GUI)
+  (multics.cfg inclui os restantes via INCLUDE - quem preferir
+   pode manter TUDO no multics.cfg e apagar os INCLUDEs)
 
 COMO FUNCIONA (resumo)
   1. Os TEUS clientes ligam-se a ti: CCcam (porta 16000), newcamd,
@@ -123,9 +130,9 @@ GUI (GESTAO WEB)
 
 PRIMEIROS PASSOS
   1. Edita multics.cfg -> muda HTTP USER e HTTP PASS.
-  2. Poe as tuas linhas de readers em Nlines.cfg
+  2. Poe as tuas linhas de readers em servidores.cfg
      (N: ip porta user pass 01 02 03 04 05 06 07 08 09 10 11 12 13 14).
-  3. Cria os teus clientes (cccam.cfg: F: user pass, etc.).
+  3. Cria os teus clientes (clientes_cccam.cfg: F: user pass, etc.).
   4. systemctl restart multics e ve a GUI.
   5. Se um pacote nao abrir: ver o log (tail -f) - a mensagem diz
      se foi "Wrong provider" (ident em falta) ou NOK do reader.
