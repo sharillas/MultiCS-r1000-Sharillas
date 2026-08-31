@@ -2645,7 +2645,7 @@ char *caid_pkg_name( unsigned short caid )
 	return NULL;
 }
 
-void getservercells(struct server_data *srv, char cell[8][4096] )
+void getservercells(struct server_data *srv, char cell[8][8192] )
 {
 	char temp[2048];
 	unsigned int ticks = GetTickCount();
@@ -2840,7 +2840,7 @@ void http_send_servers(int sock, http_request *req)
 	char http_buf[5000];
 	struct tcp_buffer_data tcpbuf;
 
-	char cell[8][4096];
+	char cell[8][8192];
 	struct server_data *srv;
 	int i;
 
@@ -3045,7 +3045,7 @@ void http_send_servers(int sock, http_request *req)
 	// ===== ECM DEDUP (1 pedido unico por ECM em voo) =====
 	// renderizado no page E no div (autorefresh AJAX) para nao desaparecer
 	if ( (get_action==0)||(get_action==ACTION_DIV) ) {
-		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >ECM Dedup</h3><div class=stat-value>");
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >ECM Dedup (todos os readers)</h3><div class=stat-value>");
 		if ((g_ecm_unique+g_ecm_dedup)>0) {
 			sprintf( http_buf, "Pedidos unicos ao reader: <b>%d</b> | Repetidos evitados (dedup): <b>%d</b> (%d%%%%)<br>", g_ecm_unique, g_ecm_dedup, (g_ecm_unique+g_ecm_dedup)?((g_ecm_dedup*100)/(g_ecm_unique+g_ecm_dedup)):0);
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
