@@ -9993,7 +9993,7 @@ static const char *editor_extra_files[] = {
 	"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.providers","CCcam.lite",
 	"servidores.cfg","clientes_cccam.cfg","clientes_mgcamd.cfg",
 	"clientes_cs378x.cfg","clientes_camd35.cfg","clientes_cache.cfg",
-	"Softcam.cfg","blocked_ips.cfg","ip2country.csv","multics.css", NULL };
+	"Softcam.cfg","blocked_ips.cfg", NULL };
 
 // o nome (basename) ja esta registado na lista do parse?
 static int editor_in_cfgfiles(const char *name)
@@ -10156,9 +10156,11 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 		int e = 0;
 	while (editor_extra_files[e]) {
 		if (!editor_in_cfgfiles(editor_extra_files[e])) {
+			char xp[512];
+			resolve_cfg_path(editor_extra_files[e], xp, sizeof(xp));
 			int x = i + e;
-			if (x==index) sprintf( http_buf, "<option value=\"/configurations?file=%d\" selected>%s (pasta da config)</option>",x, editor_extra_files[e]);
-			else sprintf( http_buf, "<option value=\"/configurations?file=%d\">%s (pasta da config)</option>",x, editor_extra_files[e]);
+			if (x==index) sprintf( http_buf, "<option value=\"/configurations?file=%d\" selected>%s</option>",x, xp);
+			else sprintf( http_buf, "<option value=\"/configurations?file=%d\">%s</option>",x, xp);
 			dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 		}
 		e++;
@@ -10282,7 +10284,7 @@ void http_send_configurations(int sock, http_request *req)
 			"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.providers","CCcam.lite",
 			"servidores.cfg","clientes_cccam.cfg","clientes_mgcamd.cfg",
 			"clientes_cs378x.cfg","clientes_camd35.cfg","clientes_cache.cfg",
-			"Softcam.cfg","blocked_ips.cfg","ip2country.csv","multics.css", NULL };
+			"Softcam.cfg","blocked_ips.cfg", NULL };
 		char *fnameparam = isset_get( req, "file");
 		int okname = 0;
 		if (fnameparam) {
@@ -10558,8 +10560,6 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.lite'>CCcam.lite</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='Softcam.cfg'>Softcam.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='blocked_ips.cfg'>blocked_ips.cfg</option>");
-	tcp_writestr(&tcpbuf, sock, "<option value='ip2country.csv'>ip2country.csv</option>");
-	tcp_writestr(&tcpbuf, sock, "<option value='multics.css'>multics.css</option>");
 	tcp_writestr(&tcpbuf, sock, "</select>&nbsp; <input type='file' name='uploadfile'>&nbsp;<input type='submit' value='Upload'></form>");
 	tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;'>envia o teu ficheiro para o caminho real da config (onde o parse o le). Faz backup automatico do anterior. A config e recarregada apos o upload. Um ficheiro unico com todas as seccoes (servers, perfis, clientes) carrega-se como multics.cfg.</span></div>");
 
