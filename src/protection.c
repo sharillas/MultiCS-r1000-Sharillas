@@ -138,8 +138,20 @@ int dcw_filter_check(struct cardserver_data *cs, uint8_t dcw[16])
 		if (hit) {
 			char dump[64];
 			array2hex(dcw, dump, 16);
+			int mode = cs->option.dcwfilter.mode;
+			if (mode==2) {
+				// AUTO: desligado por defeito; ativa no 1o hit de cartao marcado
+				if (!cs->option.dcwfilter.auto_active) {
+					cs->option.dcwfilter.auto_active = 1;
+					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: AUTO ATIVADO no perfil '%s' - detetada CW de cartao marcado (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
+				}
+				else {
+					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: perfil '%s' CW bloqueada (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
+				}
+				return 1;
+			}
 			mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: perfil '%s' CW bloqueada (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
-			return cs->option.dcwfilter.mode ? 1 : 0;
+			return mode ? 1 : 0;
 		}
 	}
 	return 0;

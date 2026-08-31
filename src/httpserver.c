@@ -5224,7 +5224,7 @@ void http_send_profile(int sock, http_request *req)
 			IS_DISABLED(cs->flags)?" | DISABLED":"",
 			cs->option.dcw.icam?" | ICAM: ON":"",
 			cs->option.ecmfilter.enable? (cs->option.ecmfilter.mode?" | ECM FILTER: DROP":" | ECM FILTER: LOGONLY"):"",
-			cs->option.dcwfilter.enable? (cs->option.dcwfilter.mode?" | DCW FILTER: DROP":" | DCW FILTER: LOGONLY"):"",
+			cs->option.dcwfilter.enable? (cs->option.dcwfilter.mode==2?(cs->option.dcwfilter.auto_active?" | DCW FILTER: AUTO (ATIVO)":" | DCW FILTER: AUTO"):(cs->option.dcwfilter.mode?" | DCW FILTER: DROP":" | DCW FILTER: LOGONLY")):"",
 			cs->option.ratelimit.sidtime||cs->option.ratelimit.maxecm?" | RATELIMIT: ON":"");
 		http_send_text(sock, dbg);
 		return;
@@ -5321,7 +5321,7 @@ void http_send_profile(int sock, http_request *req)
 	sprintf( http_buf,"<tr><td>ENABLE HEALTH</td><td>%s</td></tr>", yesno(cs->option.health.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>DCW ICAM</td><td>%s</td></tr>", yesno(cs->option.dcw.icam) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ECM FILTER</td><td>%s (%d regras)</td></tr>", cs->option.ecmfilter.enable?(cs->option.ecmfilter.mode?"DROP":"LOGONLY"):"OFF", cs->option.ecmfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf,"<tr><td>DCW FILTER</td><td>%s (%d regras)</td></tr>", cs->option.dcwfilter.enable?(cs->option.dcwfilter.mode?"DROP":"LOGONLY"):"OFF", cs->option.dcwfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>DCW FILTER</td><td>%s (%d regras)</td></tr>", cs->option.dcwfilter.enable?(cs->option.dcwfilter.mode==2?(cs->option.dcwfilter.auto_active?"AUTO (ATIVO)":"AUTO"):(cs->option.dcwfilter.mode?"DROP":"LOGONLY")):"OFF", cs->option.dcwfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ECMRATELIMIT</td><td>sid:%dms max:%d/s</td></tr>", cs->option.ratelimit.sidtime, cs->option.ratelimit.maxecm ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE FALLBACK</td><td>%s</td></tr>", yesno(cs->option.fallback.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE TIMING</td><td>%s</td></tr>", yesno(cs->option.timing.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
