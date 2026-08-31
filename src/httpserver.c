@@ -2791,20 +2791,39 @@ void getservercells(struct server_data *srv, char cell[8][8192] )
 	strcpy( cell[6], " "); // default
 	if (srv->connection.status>0) {
 		if (srv->type==TYPE_CCCAM)
-			sprintf( temp,"<b>Total Cards = %d</b> ( Hop1 = %d, Hop2 = %d )<font style=\"font-size: 9;\">", srv_cardcount(srv,-1), srv_cardcount(srv,1), srv_cardcount(srv,2) );
+			sprintf( temp,"<b>Total Cards = %d</b> ( Hop1 = %d, Hop2 = %d )<br>", srv_cardcount(srv,-1), srv_cardcount(srv,1), srv_cardcount(srv,2) );
 		else
-			sprintf( temp,"<b>Total Cards = %d</b><font style=\"font-size: 9;\">", srv_cardcount(srv,-1) );
+			sprintf( temp,"<b>Total Cards = %d</b><br>", srv_cardcount(srv,-1) );
 		strcpy( cell[6], temp );
-		int icard = 0;
+		// RESUMO COMPACTO por CAID (v1.26): a linha nunca estoura, mesmo com
+		// dezenas de cards. So os CAIDs dos nossos perfis (ate 12) + contagem
+		// dos restantes. Detalhe completo fica na pagina /server?id=.
+		int caids[64]; int counts[64]; int ncaid = 0;
 		struct cs_card_data *card = srv->card;
 		while (card) {
-			if (card->uphops<=1) {
-				card_groups_html( card, cell[6], sizeof(cell[6]) );
-				icard++;
+			int k, found = -1;
+			for (k=0; k<ncaid; k++) if (caids[k]==card->caid) { found = k; break; }
+			if (found<0) {
+				if (ncaid<64) { caids[ncaid] = card->caid; counts[ncaid] = 1; ncaid++; }
 			}
+			else counts[found]++;
 			card = card->next;
 		}
-		strcat( cell[6],"</font>\0");
+		int k;
+		int shown = 0, others = 0;
+		char tmp2[96];
+		for (k=0; k<ncaid; k++) {
+			if ( caid_in_profiles(caids[k]) && (shown<12) ) {
+				sprintf( tmp2, "<span style='white-space:nowrap'>%04X:<b>%d</b></span> ", caids[k], counts[k]);
+				if ( (strlen(cell[6])+strlen(tmp2)) < (sizeof(cell[6])-96) ) { strcat( cell[6], tmp2 ); shown++; }
+			}
+			else others += counts[k];
+		}
+		if (others) {
+			sprintf( tmp2, "<span style='color:#8899aa;font-size:10px'>(+%d fora dos perfis)</span>", others);
+			if ( (strlen(cell[6])+strlen(tmp2)) < (sizeof(cell[6])-96) ) strcat( cell[6], tmp2 );
+		}
+		strcat( cell[6], "<br>" );
 	}
 	else {
 		if (srv->statmsg) {
