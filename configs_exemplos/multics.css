@@ -214,3 +214,8 @@ body.light-mode ::-webkit-scrollbar-thumb:hover { background:#8a9094; }
 body.light-mode .icobtn { background:#d6d9dc; color:#1d2023; border-color:#a8acaf; }
 body.light-mode .icobtn:hover { background:#eef1f3; border-color:#9da2a6; }
 body.light-mode .smsdot { background:#9aa0a4; }
+
+/* botao INF (info completa do server) */
+.icobtn.inf { border-color:#3c5a7a; color:#78d9ec; }
+.icobtn.inf:hover { background:rgba(120,217,236,0.12); }
+body.light-mode .icobtn.inf { border-color:#2e6b8c; color:#1d5a7a; }
