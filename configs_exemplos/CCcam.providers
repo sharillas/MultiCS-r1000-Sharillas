@@ -11,8 +11,8 @@
 098D:000000|Sky Deutschland (NDS Videoguard V15) [19.2E]
 0500:030B00|TNT SAT (Viaccess - classicos V5/V6) [19.2E]
 2600:000000|BISS (constant CW)
-0500:043800|Redlight Mega Elite HD [V]
-0500:050F00|Redlight Mega Elite HD [V]
+0500:043800|Redlight Mega Elite HD [V] (Adultos 13E)Redlight Mega Elite HD [V]
+0500:050F00|Redlight Mega Elite HD [V] (Adultos 13E)Redlight Mega Elite HD [V]
 0500:061500|SCT [V]
 0647:000000|Redlight Mega Elite HD [I]
 1884:000000|Canal+ Polónia (Nagra Cayman) [13E]
@@ -99,10 +99,20 @@
 0100:00006A|Canal Digitaal NL (Mediaguard Seca3) [19.2E]
 1817:000000|Canal Digitaal NL (Nagra Merlin) [19.2E]
 098C:000002|Austriasat/Canal+ Austria (NDS Videoguard) [19.2E]
-0500:051E00|SCT/Redlight/Adultos (Viaccess fixo) [13E]
+0500:051E00|SCT/Redlight/Adultos (Viaccess fixo) [13E]SCT/Redlight/Adultos (Viaccess fixo) [13E]
 0500:042830|Bis TV (Viaccess) [13E]
 186A:003411|HD+ HD04 (ident real) [19.2E]
 1811:003315|Canal+ France (tematicos tunelados) [19.2E]
 1811:003317|Canal+ France (Cine+/aluguer) [19.2E]
 09C4:000000|Sky DE (NDS V13 - DESATIVADO) [19.2E]
 0100:005211|MEO (Seca historico - DESATIVADO) [30W]
+0500:FFF8F0|Redlight/Elite (ident de cartao) [Adultos]
+0500:FFF830|Dorcel (ident de cartao) [Adultos]
+0500:041700|Dorcel (Astra - cartao adulto)
+0500:041710|Dorcel (Astra - cartao adulto)
+0500:032500|Canal+ France (CSAT V5 legacy - inativo)
+0500:042200|Canal+ France (CSAT legacy - inativo)
+0500:042210|Canal+ France (CSAT legacy - inativo)
+0500:042700|FRANSAT (5W - fora do projeto)
+0500:042740|FRANSAT (5W - fora do projeto)
+0500:024300|CanalSat (legacy - inativo)
