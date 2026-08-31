@@ -1,16 +1,18 @@
 # ============================================================
-# CCcam Channel Info by @Sharillas
-# 2026-08-23/11:31:23
-# Consolidado de: KingOfSat feeds ATIVOS (30W,13E,19.2E,28.2E,23.5E,0.8W,4.8E,1.9E,3.1E,5W,7E,9E,10E,16E,21.5E,26E,31.5E,33E,36E,39E,42E,45E,46E,52E,7W,8W,12.5W,14W,15W,22W,27.5W,34.5W,37.5W,40.5W,43.1W,45W,47.5W,55.5W,58W,61W,63W,70W) + listas comunitarias
-# Formato: CAID:PROVID:SID "NOME"
-# Ficheiro agrupado por CAID (cabecalhos por seccao)
-# Feed inativo (Occasional/data/inactive) e excluido automaticamente
-# FFFF:000000:SID "FTA" = canal aberto (skip rapido, sem decode)
+# CCcam.channelinfo - NOMES DOS CANAIS (GUI e logs)
+# ============================================================
+# So nomes - NAO controla o que abre (isso e no profiles.cfg).
+# Formato por linha:  CAID:PROVID:SID "NOME DO CANAL"
+#
+# Exemplos:
+#    1814:005211:0065 "RTP 1 HD"
+#    1803:000000:07d4 "Polsat"
+#
+# Este ficheiro e GERADO automaticamente pela GUI (Update Channel
+# Info - KingOfSat). Se editares a mao, a proxima atualizacao
+# apaga as tuas mudancas.
 # ============================================================
 
-############################
-#  SECA Mediaguard CAID: 0100 | Thor 0.8W, Hotbird 13E, Eutelsat 16E, Astra 19.2E, Badr 26E, Hispasat 30W, Hellas Sat 39E, SES 40.5W, Turksat 42E, Intelsat 55.5W, Intelsat 58W, Eutelsat 9E
-############################
 0100:000000:0003 "Nick Jr"
 0100:000000:0009 "Nickelodeon"
 0100:000000:000C "Comedy Central HD"

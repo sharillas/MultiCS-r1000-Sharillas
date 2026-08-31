@@ -1,8 +1,21 @@
 # ============================================================
-# CCcam.providers - NOMES DE PROVIDERS (mostrados na GUI)
-# Consolidado dos 10 ficheiros Providers SRVID (2026-08-12/14)
-# Formato: CAID:PROVID|NOME
+# CCcam.providers - NOMES DOS PROVIDERS/IDENTS (GUI e logs)
 # ============================================================
+# So nomes - este ficheiro NAO da acesso a nada. Serve para a GUI
+# e o log mostrarem o nome do pacote em vez do numero.
+#
+# FORMATO 1:  CAID:PROVID|NOME
+# FORMATO 2:  CAPROVID_8HEX "NOME"
+#
+# Exemplos:
+#    1814:005211|MEO ID (ident reportado pelos cartoes MEO atuais)
+#    0500:050800|SRG SSR (Viaccess antigo)
+#
+# Para acrescentar um ident novo: adiciona uma linha no formato
+# CAID:PROVID|NOME (CAID e PROVID em hex). Depois "Reload Main
+# Config" na GUI (ou restart) para aplicar.
+# ============================================================
+
 1814:000000|MEO ID (Nagra Merlin - wildcard/emulacao, todas as boxes)
 1813:000000|Canal+ Polónia (nc+ N3 tunnelled - emulacao)
 1810:000000|Movistar+ (Nagra - iPlus HD) [19.2E]
