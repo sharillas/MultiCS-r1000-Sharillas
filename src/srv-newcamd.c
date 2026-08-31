@@ -318,6 +318,8 @@ void cs_senddcw_cli(struct cs_client_data *cli)
 	}
 
 	ECM_DATA *ecm = cli->ecm.request;
+	// SILENT NOK: adiar o NOK para antes do timeout da box (evita reconexoes e storm de retries)
+	if ( (ecm->dcwstatus!=STAT_DCW_SUCCESS) && ecm->cs && ecm->cs->option.dcw.silentnok && ((GetTickCount()-cli->ecm.recvtime) < SILENT_NOK_DELAY) ) return;
 	//FREEZE
 	int enablefreeze;
 	if ( (cli->lastecm.caid==ecm->caid)&&(cli->lastecm.prov==ecm->provid)&&(cli->lastecm.sid==ecm->sid) ) {
@@ -493,6 +495,7 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 									buf[1] = 0; buf[2] = 0;
 									cs_message_send( cli->handle, &clicd, buf, 3, cli->sessionkey);
 								}
+								else cs_store_ecmclient(cs, ecm, cli, clicd.msgid); // NOK adiado: manter pedido para entrega pelo recv thread
 								mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," <|> decode failed to client '%s' ch %04x:%06x:%04x, already failed%s\n",cli->user, clicd.caid,clicd.provid,clicd.sid, cs->option.dcw.silentnok?" [SILENT]":"");
 							}
 							else {
@@ -708,6 +711,23 @@ void *cs_recvmsg_thread(void *param)
 	// Main Loop
 	struct epoll_event evlist[MAX_EPOLL_EVENTS]; // epoll recv events
 	while (!prg.restart) {
+		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
+		{
+			struct cardserver_data *cssrv = cfg.cardserver;
+			uint32_t now = GetTickCount();
+			while (cssrv) {
+				struct cs_client_data *cscli = cssrv->newcamd.client;
+				while (cscli) {
+					if ( !IS_DISABLED(cscli->flags) && (cscli->connection.status>0) && cscli->ecm.busy && cscli->ecm.request ) {
+						ECM_DATA *e = cscli->ecm.request;
+						if ( e->cs && e->cs->option.dcw.silentnok && (e->dcwstatus==STAT_DCW_FAILED) && ((now-cscli->ecm.recvtime) >= SILENT_NOK_DELAY) )
+							cs_senddcw_cli(cscli);
+					}
+					cscli = cscli->next;
+				}
+				cssrv = cssrv->next;
+			}
+		}
 		int ready = epoll_wait( prg.epoll.newcamd, evlist, MAX_EPOLL_EVENTS, 1004);
 		if (ready == -1) {
 			if ( (errno==EINTR)||(errno==EAGAIN) ) {
@@ -751,6 +771,23 @@ void *cs_recvmsg_thread(void *param)
 #endif
 
 	while (!prg.restart) {
+		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
+		{
+			struct cardserver_data *cssrv = cfg.cardserver;
+			uint32_t now = GetTickCount();
+			while (cssrv) {
+				struct cs_client_data *cscli = cssrv->newcamd.client;
+				while (cscli) {
+					if ( !IS_DISABLED(cscli->flags) && (cscli->connection.status>0) && cscli->ecm.busy && cscli->ecm.request ) {
+						ECM_DATA *e = cscli->ecm.request;
+						if ( e->cs && e->cs->option.dcw.silentnok && (e->dcwstatus==STAT_DCW_FAILED) && ((now-cscli->ecm.recvtime) >= SILENT_NOK_DELAY) )
+							cs_senddcw_cli(cscli);
+					}
+					cscli = cscli->next;
+				}
+				cssrv = cssrv->next;
+			}
+		}
 		pfdcount = 0;
 		// PIPE
 		pfd[pfdcount].fd = prg.pipe.newcamd[0];
