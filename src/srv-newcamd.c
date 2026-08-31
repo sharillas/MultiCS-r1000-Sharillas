@@ -357,8 +357,11 @@ void cs_senddcw_cli(struct cs_client_data *cli)
 		buf[0] = ecm->ecm[0];
 		buf[1] = 0;
 		buf[2] = 0;
-		if ( !cs_message_send(  cli->handle, &clicd, buf, 3, cli->sessionkey) ) cs_disconnect_cli( cli );
-		else mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," |> decode failed to client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime);
+		if ( (ecm->cs==NULL) || !ecm->cs->option.dcw.silentnok ) {
+			if ( !cs_message_send(  cli->handle, &clicd, buf, 3, cli->sessionkey) ) cs_disconnect_cli( cli );
+			else mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," |> decode failed to client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime);
+		}
+		else mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," |> decode failed to client '%s' ch %04x:%06x:%04x (%dms) [SILENT]\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime);
 	}
 	cli->ecm.busy=0;
 	cli->ecm.status = STAT_DCW_SENT;
@@ -486,9 +489,11 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 						ecm->lastrecvtime = ticks;
 						if (ecm->dcwstatus==STAT_DCW_FAILED) {
 							if (ecm->period > cs->option.dcw.retry) {
-								buf[1] = 0; buf[2] = 0;
-								cs_message_send( cli->handle, &clicd, buf, 3, cli->sessionkey);
-								mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," <|> decode failed to client '%s' ch %04x:%06x:%04x, already failed\n",cli->user, clicd.caid,clicd.provid,clicd.sid);
+								if (!cs->option.dcw.silentnok) {
+									buf[1] = 0; buf[2] = 0;
+									cs_message_send( cli->handle, &clicd, buf, 3, cli->sessionkey);
+								}
+								mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," <|> decode failed to client '%s' ch %04x:%06x:%04x, already failed%s\n",cli->user, clicd.caid,clicd.provid,clicd.sid, cs->option.dcw.silentnok?" [SILENT]":"");
 							}
 							else {
 								ecm->period++; // RETRY

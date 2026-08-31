@@ -135,7 +135,9 @@ void ecm_faileddcw( ECM_DATA *ecm )
 	ecm->checktime = 0;
 	ecm->waitserver = 0;
 	sid_newecm(ecm);
-	clients_check_sendcw(ecm); // send decode failed to clients
+	clients_check_sendcw(ecm); // send decode failed to clients (SILENT NOK e aplicado por protocolo)
+	if (ecm->cs && ecm->cs->option.dcw.silentnok)
+		mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,ecm->cs->id)," < Decode_Failed (SILENT NOK) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
 #ifdef TESTCHANNEL
 	int testchannel = ( (ecm->caid==cfg.testchn.caid) && (ecm->provid==cfg.testchn.provid) && (ecm->sid==cfg.testchn.sid) );
 	if (testchannel) {
