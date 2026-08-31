@@ -2603,7 +2603,7 @@ char *caid_pkg_name( unsigned short caid )
 	return NULL;
 }
 
-void getservercells(struct server_data *srv, char cell[8][2048] )
+void getservercells(struct server_data *srv, char cell[8][4096] )
 {
 	char temp[2048];
 	unsigned int ticks = GetTickCount();
@@ -2748,22 +2748,25 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 		}
 	}
 
-	strcat( cell[6], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
+	// botoes em linha propria (guard de tamanho em todos os strcat)
+	#define CELL6ADD(s) if ( (strlen(cell[6])+strlen(s)) < (sizeof(cell[6])-16) ) strcat( cell[6], s )
+	CELL6ADD("<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(srv->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
 		if (srv->flags&FLAG_DISABLE) {
 			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/server?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",srv->id);
-			strcat( cell[6], temp );
+			CELL6ADD(temp);
 		}
 		else {
 			sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/server?id=%d&action=disable',this);setTimeout('updateDiv()',600)\">OFF</span>",srv->id);
-			strcat( cell[6], temp );
+			CELL6ADD(temp);
 		}
 	}
 	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/server?id=%d&action=dbginfo')\">DBG</span>",srv->id,srv->id);
-	strcat( cell[6], temp );
+	CELL6ADD(temp);
 	sprintf( temp," <span class='icobtn inf' title='Info completa do server (todos os cards e detalhes)' onclick=\"location.href='/server?id=%d'\">INF</span>",srv->id);
-	strcat( cell[6], temp );
-	strcat( cell[6], "</span>");
+	CELL6ADD(temp);
+	CELL6ADD("</span>");
+	#undef CELL6ADD
 }
 
 void alltotal_servers( int *all, int *cccam, int *newcamd, int *radegast )
@@ -2807,7 +2810,7 @@ void http_send_servers(int sock, http_request *req)
 	char http_buf[5000];
 	struct tcp_buffer_data tcpbuf;
 
-	char cell[8][2048];
+	char cell[8][4096];
 	struct server_data *srv;
 	int i;
 
