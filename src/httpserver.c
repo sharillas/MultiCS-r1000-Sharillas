@@ -2718,11 +2718,6 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 		struct cs_card_data *card = srv->card;
 		while (card) {
 			if (card->uphops<=1) {
-				if (icard>12) {
-					sprintf( temp,"<br><a href='/server?id=%d'>+ %d cards ... (ver todos)</a>", srv->id, srv_cardcount(srv,-1)-icard);
-					if ( (strlen(cell[6])+strlen(temp)) < (sizeof(cell[6])-8) ) strcat( cell[6], temp );
-					break;
-				}
 				char *provname = providerID(card->caid,card->prov[0]);
 				char *pkgname = caid_pkg_name(card->caid);
 				char no_profile[64] = "";
@@ -2730,7 +2725,7 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 				if (provname) sprintf( temp,"<br><b>%04x:</b> %06x <font color=#CC3300>%s</font>%s",card->caid,card->prov[0], provname, no_profile);
 				else if (pkgname) sprintf( temp,"<br><b>%04x:</b> %06x <font style=\"font-size: 8px;\" color=#8899aa>%s</font>%s",card->caid,card->prov[0], pkgname, no_profile);
 				else sprintf( temp,"<br><b>%04x:</b> %06x%s",card->caid,card->prov[0], no_profile);
-				strcat( cell[6], temp );
+				if ( (strlen(cell[6])+strlen(temp)) < (sizeof(cell[6])-16) ) strcat( cell[6], temp );
 				for(i=1; i<card->nbprov; i++) {
 					char *provname = providerID(card->caid,card->prov[i]);
 					if (provname) sprintf( temp,", %06x <font color=#CC3300>%s</font>", card->prov[i], provname); else sprintf( temp,", %06x", card->prov[i]);
@@ -2765,6 +2760,8 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 		}
 	}
 	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/server?id=%d&action=dbginfo')\">DBG</span>",srv->id,srv->id);
+	strcat( cell[6], temp );
+	sprintf( temp," <span class='icobtn inf' title='Info completa do server (todos os cards e detalhes)' onclick=\"location.href='/server?id=%d'\">INF</span>",srv->id);
 	strcat( cell[6], temp );
 	strcat( cell[6], "</span>");
 }
