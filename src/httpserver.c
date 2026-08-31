@@ -3043,7 +3043,8 @@ void http_send_servers(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "</table>");
 
 	// ===== ECM DEDUP (1 pedido unico por ECM em voo) =====
-	if (get_action==0) {
+	// renderizado no page E no div (autorefresh AJAX) para nao desaparecer
+	if ( (get_action==0)||(get_action==ACTION_DIV) ) {
 		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >ECM Dedup</h3><div class=stat-value>");
 		if ((g_ecm_unique+g_ecm_dedup)>0) {
 			sprintf( http_buf, "Pedidos unicos ao reader: <b>%d</b> | Repetidos evitados (dedup): <b>%d</b> (%d%%%%)<br>", g_ecm_unique, g_ecm_dedup, (g_ecm_unique+g_ecm_dedup)?((g_ecm_dedup*100)/(g_ecm_unique+g_ecm_dedup)):0);
