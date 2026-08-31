@@ -355,13 +355,22 @@ def main():
 
     hdr = [
         '# ============================================================',
+        '# CCcam.channelinfo - NOMES DOS CANAIS (GUI e logs)',
+        '# ============================================================',
+        '# So nomes - NAO controla o que abre (isso e no profiles.cfg).',
+        '# Formato por linha:  CAID:PROVID:SID "NOME DO CANAL"',
+        '# Exemplos:',
+        '#    1814:005211:0065 "RTP 1 HD"',
+        '#    1803:000000:07d4 "Polsat"',
+        '# FFFF:000000:SID "FTA" = canal aberto (skip rapido, sem decode)',
+        '# ============================================================',
         '# CCcam Channel Info by @Sharillas',
         '# %s' % time.strftime('%Y-%m-%d/%H:%M:%S'),
         '# Consolidado de: KingOfSat feeds ATIVOS (%s) + listas comunitarias' % args.positions,
-        '# Formato: CAID:PROVID:SID "NOME"',
         '# Ficheiro agrupado por CAID (cabecalhos por seccao)',
         '# Feed inativo (Occasional/data/inactive) e excluido automaticamente',
-        '# FFFF:000000:SID "FTA" = canal aberto (skip rapido, sem decode)',
+        '# ESTE FICHEIRO E GERADO pela GUI (Update Channel Info).',
+        '# Edicoes manuais sao apagadas na proxima atualizacao.',
         '# ============================================================',
     ]
     # agrupar por CAID com cabecalhos (ignora caids invalidos < 0x0100)
