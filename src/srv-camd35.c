@@ -89,6 +89,8 @@ void camd35_senddcw_cli(struct camd35_server_data *camd35, struct camd35_client_
 	}
 
 	ECM_DATA *ecm = cli->ecm.request;
+	// SILENT NOK: adiar o NOK para antes do timeout da box (evita reconexoes e storm de retries)
+	if ( (ecm->dcwstatus!=STAT_DCW_SUCCESS) && ecm->cs && ecm->cs->option.dcw.silentnok && ((ticks-cli->ecm.recvtime) < SILENT_NOK_DELAY) ) return;
 	//FREEZE
 	int samechannel = (cli->lastecm.caid==ecm->caid)&&(cli->lastecm.prov==ecm->provid)&&(cli->lastecm.sid==ecm->sid);
 	int enablefreeze=0;
@@ -390,10 +392,13 @@ void camd35_recvmsg( struct camd35_server_data *camd35 )
 				ecm->lastrecvtime = ticks;
 				if (ecm->dcwstatus==STAT_DCW_FAILED) {
 					if (ecm->period > cs->option.dcw.retry) {
-						buf[4] = 0x44;
-						buf[5] = 0;
-						camd35_sendto( camd35->handle, cli->ip, cli->port, &cli->encryptkey, cli->ucrc, buf+4, 20);
-						mlogf(LOGINFO,getdbgflagpro(DBG_CAMD35,0,cli->id, cs->id)," <!> decode failed to camd35 client '%s' ch %04x:%06x:%04x:%08x, already failed\n",cli->user, caid, provid, sid, ecm->hash);
+						if (!cs->option.dcw.silentnok) {
+							buf[4] = 0x44;
+							buf[5] = 0;
+							camd35_sendto( camd35->handle, cli->ip, cli->port, &cli->encryptkey, cli->ucrc, buf+4, 20);
+						}
+						else camd35_store_ecmclient(ecm, cli); // NOK adiado: manter pedido para entrega pelo recv thread
+						mlogf(LOGINFO,getdbgflagpro(DBG_CAMD35,0,cli->id, cs->id)," <!> decode failed to camd35 client '%s' ch %04x:%06x:%04x:%08x, already failed%s\n",cli->user, caid, provid, sid, ecm->hash, cs->option.dcw.silentnok?" [SILENT]":"");
 					}
 					else {
 						ecm->period++; // RETRY
@@ -477,6 +482,23 @@ void camd35_recvmsg( struct camd35_server_data *camd35 )
 void *camd35_recvmsg_thread(void *param)
 {
 	while (1) {
+		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
+		{
+			struct camd35_server_data *srv = cfg.camd35.server;
+			uint32_t now = GetTickCount();
+			while (srv) {
+				struct camd35_client_data *ccli = srv->client;
+				while (ccli) {
+					if ( !IS_DISABLED(ccli->flags) && ccli->ecm.busy && ccli->ecm.request ) {
+						ECM_DATA *e = ccli->ecm.request;
+						if ( e->cs && e->cs->option.dcw.silentnok && (e->dcwstatus==STAT_DCW_FAILED) && ((now-ccli->ecm.recvtime) >= SILENT_NOK_DELAY) )
+							camd35_senddcw_cli(srv, ccli);
+					}
+					ccli = ccli->next;
+				}
+				srv = srv->next;
+			}
+		}
 		struct pollfd pfd[MAX_CSPORTS];
 		int pfdcount = 0;
 
