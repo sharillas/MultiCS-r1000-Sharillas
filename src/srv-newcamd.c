@@ -324,7 +324,7 @@ void cs_senddcw_cli(struct cs_client_data *cli)
 	int enablefreeze;
 	if ( (cli->lastecm.caid==ecm->caid)&&(cli->lastecm.prov==ecm->provid)&&(cli->lastecm.sid==ecm->sid) ) {
 		if ( (cli->lastecm.status=1)&&(cli->lastdcwtime+200<GetTickCount()) ) enablefreeze = 1;
-	} else cli->zap++;
+	} else { cli->zap++; if (cfg.anticascade.maxzap && anticascade_zap(cli->ip)) { mlogf(LOGWARNING,getdbgflag(DBG_ERROR,0,0)," ANTICASCADE: desconectando cliente por zapping excessivo\n"); cli->flags |= FLAG_DISCONNECT; return; } }
 
 	cli->lastecm.caid = ecm->caid;
 	cli->lastecm.prov = ecm->provid;
@@ -630,7 +630,10 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 						ecm_setdcw( ecm, &buf[3], DCW_SOURCE_CSCLIENT, (ecm->cs->id<<16)|cli->id );
 					}
 					else {	//TODO: check same dcw between cards
-						if ( memcmp(&ecm->cw, &buf[3],16) ) mlogf(LOGWARNING,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," !!! different dcw from newcamd client '%s'\n", cli->user);
+						if ( memcmp(&ecm->cw, &buf[3],16) ) {
+							mlogf(LOGWARNING,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," !!! different dcw from newcamd client '%s'\n", cli->user);
+							failban_bad(cli->ip, TYPE_NEWCAMD, "wrong cw from newcamd client");
+						}
 					}
 
 					pthread_mutex_unlock(&prg.lockecm); //###

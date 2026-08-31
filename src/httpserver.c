@@ -5214,14 +5214,18 @@ void http_send_profile(int sock, http_request *req)
 		return;
 	}
 	if (get_action==8) {
-		char dbg[1024];
+		char dbg[1536];
 		int btotal, bconnected, bactive;
 		cs_clients( cs, &btotal, &bconnected, &bactive );
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> (id %d) | CAID: %04x | Port: %d | Clients: %d (%d ligados)<br>ECM checks: DCW=%s | DCW timeout: %dms | Max servers: %d | Cache: %s%s</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> (id %d) | CAID: %04x | Port: %d | Clients: %d (%d ligados)<br>ECM checks: DCW=%s | DCW timeout: %dms | Max servers: %d | Cache: %s%s%s%s%s%s</div>",
 			cs->name, cs->id, cs->card.caid, cs->newcamd.port, btotal, bconnected,
 			cs->option.dcw.check?"YES":"NO", cs->option.dcw.timeout, cs->option.server.max,
 			cs->option.fallowcache?"ON":"OFF",
-			IS_DISABLED(cs->flags)?" | DISABLED":"");
+			IS_DISABLED(cs->flags)?" | DISABLED":"",
+			cs->option.dcw.icam?" | ICAM: ON":"",
+			cs->option.ecmfilter.enable? (cs->option.ecmfilter.mode?" | ECM FILTER: DROP":" | ECM FILTER: LOGONLY"):"",
+			cs->option.dcwfilter.enable? (cs->option.dcwfilter.mode?" | DCW FILTER: DROP":" | DCW FILTER: LOGONLY"):"",
+			cs->option.ratelimit.sidtime||cs->option.ratelimit.maxecm?" | RATELIMIT: ON":"");
 		http_send_text(sock, dbg);
 		return;
 	}
@@ -5315,6 +5319,10 @@ void http_send_profile(int sock, http_request *req)
 	sprintf( http_buf,"<tr><td>ENABLE CWC</td><td>%s (sens:%d dropold:%s keep:%dm onbad:%s)</td></tr>", yesno(cs->option.cwc.enable), cs->option.cwc.sensitive, yesno(cs->option.cwc.dropold), cs->option.cwc.keepcycletime, yesno(cs->option.cwc.dropbad) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE NAGRA</td><td>%s (chk:%s prov:%s cycle:%s onbad:%s sens:%d)</td></tr>", yesno(cs->option.nagra.enable), yesno(cs->option.nagra.chk), yesno(cs->option.nagra.prov), yesno(cs->option.nagra.cycle), yesno(cs->option.nagra.onbad), cs->option.nagra.sensitive ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE HEALTH</td><td>%s</td></tr>", yesno(cs->option.health.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>DCW ICAM</td><td>%s</td></tr>", yesno(cs->option.dcw.icam) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ECM FILTER</td><td>%s (%d regras)</td></tr>", cs->option.ecmfilter.enable?(cs->option.ecmfilter.mode?"DROP":"LOGONLY"):"OFF", cs->option.ecmfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>DCW FILTER</td><td>%s (%d regras)</td></tr>", cs->option.dcwfilter.enable?(cs->option.dcwfilter.mode?"DROP":"LOGONLY"):"OFF", cs->option.dcwfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf,"<tr><td>ECMRATELIMIT</td><td>sid:%dms max:%d/s</td></tr>", cs->option.ratelimit.sidtime, cs->option.ratelimit.maxecm ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE FALLBACK</td><td>%s</td></tr>", yesno(cs->option.fallback.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE TIMING</td><td>%s</td></tr>", yesno(cs->option.timing.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<tr><td>ENABLE EMULATOR BISS</td><td>%s</td></tr>", yesno(cs->option.fenableemu) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
