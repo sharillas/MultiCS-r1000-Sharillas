@@ -418,7 +418,9 @@ void cs_srv_recvmsg(struct server_data *srv)
 					}
 					//else mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," <- Error keepalive from server (%s:%d)\n",srv->host->name,srv->port);
 				}
-				else mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," unknown message type '%02x' CAID:%04X PROVID:%06X from server (%s:%d)\n",buf[0],srvcd.caid,srvcd.provid,srv->host->name,srv->port);
+				else if (buf[0]==0x02) // MSG_ECHO: keepalive do protocolo (alguns servidores enviam periodicamente)
+				mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," <- echo/keepalive from server (%s:%d)\n",srv->host->name,srv->port);
+			else mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," unknown message type '%02x' CAID:%04X PROVID:%06X from server (%s:%d)\n",buf[0],srvcd.caid,srvcd.provid,srv->host->name,srv->port);
 				break;
 		} // Switch-End
 		srv->keepalive.time = ticks;
