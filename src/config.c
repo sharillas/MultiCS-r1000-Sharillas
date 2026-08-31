@@ -1968,6 +1968,14 @@ sid accept:
 					if (defaultcs.option.dcw.retry<0) defaultcs.option.dcw.retry=0;
 					else if (defaultcs.option.dcw.retry>5) defaultcs.option.dcw.retry=5;
 				}
+				else if (!strcmp(str,"SILENT_NOK")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.dcw.silentnok = parse_boolean();
+				}
 				else if (!strcmp(str,"CYCLE_CHECK")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3913,6 +3921,14 @@ link_mgcamd_user:
 				cardserver->option.dcw.retry = atoi(str);
 				if (cardserver->option.dcw.retry<0) cardserver->option.dcw.retry=0;
 				else if (cardserver->option.dcw.retry>5) cardserver->option.dcw.retry=5;
+			}
+			else if (!strcmp(str,"SILENT_NOK")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.dcw.silentnok = parse_boolean();
 			}
 			else if (!strcmp(str,"CYCLE_CHECK")) {
 				parse_spaces();
