@@ -1,4 +1,4 @@
-# MultiCS r1000 v1.25 - by Sharillas
+# MultiCS r1000 v1.26 - by Sharillas
 
 Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruÃ­do e muito expandido: GUI web moderna, Softcam BISS/CW, proteÃ§Ãµes contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs**, login guard anti brute-force, NOK cache, validaÃ§Ã£o de uploads sem crash, **SILENT NOK adiado** (v1.24), e o pacote anti-â€œcartÃµes marcadosâ€ (v1.25): **ECM FILTER rule engine**, **DCW FILTER CWPK** com modo AUTO, **FAILBAN**, **ANTICASCADE**, **ECMRATELIMIT** e **DCW ICAM** (Sky DE 098D / MEO / NOS).
 
@@ -22,9 +22,9 @@ Os binÃ¡rios sÃ£o **estÃ¡ticos musl** â€” correm em Debian, Ubuntu, C
 
 ```bash
 # 1. descarrega o pacote da release (exemplo v1.25)
-wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.25/multics-r1000-v1.25.tar.gz
+wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.25/multics-r1000-v1.26.tar.gz
 # 2. extrai e instala
-tar xzf multics-r1000-v1.25.tar.gz
+tar xzf multics-r1000-v1.26.tar.gz
 cd multics-r1000
 sudo bash install.sh            # ou: sudo bash install.sh /meu/caminho
 ```
@@ -59,36 +59,35 @@ Depois abre `http://SEU_IP:5500` â†’ login (default `admin`/`admin`) â†�
 
 | Ficheiro | O que faz |
 |---|---|
-| `multics.cfg` | **Mestre**: portas, credenciais, cache, telnet, HTTP e INCLUDEs. Pode conter tudo num sÃ³ ficheiro. |
-| `profiles.cfg` | **Perfis de saÃ­da** (portas virtuais): CAID, PROVIDERS, DCW checks, SKIPCWC, CWC, NAGRA, HEALTH, FALLBACK, TIMING, LITE, EMULATOR BISSâ€¦ |
-| `1-Clients.cfg` | **F-lines** (clientes CCcam) |
-| `Nlines.cfg` | **N-lines** (readers newcamd) |
-| `users.cfg` | Utilizadores globais (INCLUDE **antes** dos profiles) |
-| `Mgcamd.cfg` | Utilizadores MGcamd |
-| `Camd35.cfg` | Utilizadores camd35 (UDP) + cs378x (TCP) |
-| `Cache.cfg` | Peers de cache (CSP) |
-| `CacheEX.cfg` | Readers CacheEX (`C: ... { cacheex_mode=3 }`) |
-| `Softcam.cfg` | Chaves CONSTCW (BISS/Tandberg) â€” gerido pelo Softcam |
+| `multics.cfg` | **Mestre**: portas, credenciais, cache, telnet, HTTP, FAILBAN, ANTICASCADE e INCLUDEs. **Pode conter tudo num só ficheiro** (manter tudo no mestre continua a funcionar). |
+| `perfis.cfg` | **Perfis de saída** (portas virtuais): CAID, PROVIDERS, DCW checks, SKIPCWC, CWC, NAGRA, HEALTH, FALLBACK, TIMING, LITE, EMULATOR BISS, ICAM, filtros ECM/DCW… + **users newcamd de cada perfil** (`USER:` dentro da secção; `USER:` antes do 1º perfil = global) |
+| `servidores.cfg` | **Readers/servidores** (fonte de cards): linhas `N:` (newcamd), `C:` (cccam), `L:` (radegast), `CACHE:` (peers CSP), `C: ... { cacheex_mode=3 }` |
+| `clientes_cccam.cfg` | **F-lines** (clientes CCcam) |
+| `clientes_mgcamd.cfg` | Utilizadores MGcamd |
+| `clientes_cs378x.cfg` | Utilizadores cs378x (TCP) |
+| `clientes_camd35.cfg` | Utilizadores camd35 (UDP) |
+| `clientes_cache.cfg` | Utilizadores de cache (CSP) que se ligam a ti |
+| `Softcam.cfg` | Chaves CONSTCW (BISS/Tandberg) — gerido pelo Softcam |
 | `blocked_ips.cfg` | IPs bloqueados (gerido na GUI) |
 | `CCcam.channelinfo` | Nomes de canais para a GUI (gerado pelo Update Channel Info) |
 | `CCcam.providers` | Nomes de providers para a GUI |
 | `CCcam.lite` | BUILD LITE: canais activos (CAID:PROVID:SID) |
-| `ip2country.csv` | Base IP â†’ paÃ­s (bandeiras na GUI) |
+| `ip2country.csv` | Base IP → país (bandeiras na GUI) |
 | `multics.css` | Tema externo (dark/light) |
 
-**Todos os ficheiros tÃªm exemplos comentados completos** em `configs_exemplos/` (cada opÃ§Ã£o explicada em PT). Guia de configuraÃ§Ã£o detalhado: **[docs/CONFIGS.md](docs/CONFIGS.md)**
+**Estrutura v1.26 (PT)**: os antigos `profiles.cfg`, `Nlines.cfg`, `users.cfg`, `Mgcamd.cfg`, `Camd35.cfg`, `Cache.cfg`, `CacheEX.cfg`, `1-Clients.cfg` foram reorganizados nos ficheiros acima. Os nomes antigos continuam aceites no editor/upload da GUI (compatibilidade).**Todos os ficheiros tÃªm exemplos comentados completos** em `configs_exemplos/` (cada opÃ§Ã£o explicada em PT). Guia de configuraÃ§Ã£o detalhado: **[docs/CONFIGS.md](docs/CONFIGS.md)**
 
 Fluxo mÃ­nimo para funcionar:
 
-1. Define o teu CAID no perfil (`profiles.cfg`): `[Meu Perfil]` + `PORT: 15000` + `CAID: XXXX`
-2. Adiciona readers: `N:` (newcamd) ou `C:` (cccam) â€” no multics.cfg ou Nlines.cfg
+1. Define o teu CAID no perfil (`perfis.cfg`): `[Meu Perfil]` + `PORT: 15000` + `CAID: XXXX`
+2. Adiciona readers: `N:` (newcamd) ou `C:` (cccam) â€” no multics.cfg ou servidores.cfg
 3. Adiciona clientes: `F:` (CCcam), `USER:`/N-lines (newcamd) nos perfis
 4. Aplica na hora pela GUI (**Configs â†’ Edit** ou **Upload**) â€” sem restart
 5. VÃª os clientes na GUI: Newcamd / CCcam / Mgcamdâ€¦
 
 ---
 
-## Features desta build (v1.25)
+## Features desta build (v1.26)
 
 ### Novo na v1.25 â€” pacote anti-"cartÃµes marcados" (anÃ¡lise do MultiCS r120)
 - **DCW FILTER (CWPK)**: blacklist de CWs de cartÃµes marcados com 35 valores conhecidos; modos `AUTO` (recomendado: desligado por defeito, **ativa-se sozinho no 1Âº hit** e passa a bloquear â€” sem ninguÃ©m ver o log), `LOGONLY` (sÃ³ log) e `DROP`; regras `EXACT` (atÃ© 8 CWs por regra), `MASK` (wildcard) e `ALLEQUAL` (fake CW)
