@@ -472,6 +472,8 @@ void mg_senddcw_cli(struct mg_client_data *cli)
 	uint32_t ticks = GetTickCount();
 	ECM_DATA *ecm = cli->ecm.request;
 	if (!ecm) return;
+	// SILENT NOK: adiar o NOK para antes do timeout da box (evita reconexoes e storm de retries)
+	if ( (ecm->dcwstatus!=STAT_DCW_SUCCESS) && ecm->cs && ecm->cs->option.dcw.silentnok && ((ticks-cli->ecm.recvtime) < SILENT_NOK_DELAY) ) return;
 	struct cs_custom_data clicd; // Custom data
 	//FREEZE
 	int enablefreeze;
@@ -764,10 +766,13 @@ void mg_cli_recvmsg(struct mg_client_data *cli)
 					ecm->lastrecvtime = ticks;
 					if (ecm->dcwstatus==STAT_DCW_FAILED) {
 						if (ecm->period > cs->option.dcw.retry) {
-							// send decode failed
-							buf[1] = 0; buf[2] = 0;
-							cs_message_send(cli->handle, &clicd, buf, 3, cli->sessionkey);
-							mlogf(LOGINFO,getdbgflagpro(DBG_MGCAMD,0,cli->id,cs->id)," <|> decode failed to mgcamd client '%s' ch %04x:%06x:%04x, already failed\n", cli->user,clicd.caid,clicd.provid,clicd.sid);
+							if (!cs->option.dcw.silentnok) {
+								// send decode failed
+								buf[1] = 0; buf[2] = 0;
+								cs_message_send(cli->handle, &clicd, buf, 3, cli->sessionkey);
+							}
+							else mg_store_ecmclient(ecm, cli, clicd.msgid); // NOK adiado: manter pedido para entrega pelo recv thread
+							mlogf(LOGINFO,getdbgflagpro(DBG_MGCAMD,0,cli->id,cs->id)," <|> decode failed to mgcamd client '%s' ch %04x:%06x:%04x, already failed%s\n", cli->user,clicd.caid,clicd.provid,clicd.sid, cs->option.dcw.silentnok?" [SILENT]":"");
 						}
 						else {
 							ecm->period++; // RETRY
@@ -1030,6 +1035,23 @@ void *mg_recvmsg_thread(void *param)
 	if ( epoll_ctl(prg.epoll.mgcamd, EPOLL_CTL_ADD, prg.pipe.mgcamd[0], &ev) == -1 ) mlogf(LOGERROR,0,"epoll_ctl error mgcamd rcvmsg -1");
 
 	while(1) {
+		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
+		{
+			struct mgcamdserver_data *srv = cfg.mgcamd.server;
+			uint32_t now = GetTickCount();
+			while (srv) {
+				struct mg_client_data *ccli = srv->client;
+				while (ccli) {
+					if ( !IS_DISABLED(ccli->flags) && (ccli->connection.status>0) && ccli->ecm.busy && ccli->ecm.request ) {
+						ECM_DATA *e = ccli->ecm.request;
+						if ( e->cs && e->cs->option.dcw.silentnok && (e->dcwstatus==STAT_DCW_FAILED) && ((now-ccli->ecm.recvtime) >= SILENT_NOK_DELAY) )
+							mg_senddcw_cli(ccli);
+					}
+					ccli = ccli->next;
+				}
+				srv = srv->next;
+			}
+		}
 		int ready = epoll_wait( prg.epoll.mgcamd, evlist, MAX_EPOLL_EVENTS, 1003);
 		if (ready == -1) {
 			if ( (errno==EINTR)||(errno==EAGAIN) ) {
@@ -1073,6 +1095,23 @@ void *mg_recvmsg_thread(void *param)
 #endif
 
 	while (1) {
+		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
+		{
+			struct mgcamdserver_data *srv = cfg.mgcamd.server;
+			uint32_t now = GetTickCount();
+			while (srv) {
+				struct mg_client_data *ccli = srv->client;
+				while (ccli) {
+					if ( !IS_DISABLED(ccli->flags) && (ccli->connection.status>0) && ccli->ecm.busy && ccli->ecm.request ) {
+						ECM_DATA *e = ccli->ecm.request;
+						if ( e->cs && e->cs->option.dcw.silentnok && (e->dcwstatus==STAT_DCW_FAILED) && ((now-ccli->ecm.recvtime) >= SILENT_NOK_DELAY) )
+							mg_senddcw_cli(ccli);
+					}
+					ccli = ccli->next;
+				}
+				srv = srv->next;
+			}
+		}
 		pfdcount = 0;
 		// PIPE
 		pfd[pfdcount].fd = prg.pipe.mgcamd[0];

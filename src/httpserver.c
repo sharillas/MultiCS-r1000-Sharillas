@@ -3773,7 +3773,10 @@ void http_send_cache_peer(int sock, http_request *req)
 	int get_id = atoi(str_id);
 	//
 	struct cachepeer_data *peer = getpeerbyid( get_id );
-	if (!peer) return;
+	if (!peer) {
+		http_send_redirect(sock, "/cache");
+		return;
+	}
 	// Action
 	char *str_action = isset_get( req, "action");
 	int get_action = 0;
@@ -3846,8 +3849,8 @@ void http_send_cache_peer(int sock, http_request *req)
 	struct tcp_buffer_data tcpbuf;
 
 	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (!get_action) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, " Cache Peer"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -4018,7 +4021,7 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][4096])
 	#define C9ADD(s) if ( (strlen(cell[9])+strlen(s)) < (sizeof(cell[9])-16) ) strcat( cell[9], s )
 	C9ADD("<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if (cs->flags&FLAG_DISABLE) {
-		sprintf( temp," <span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=on',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span>",cs->id);
+		sprintf( temp," <span class='icobtn on' title='Ativar' onclick=\"imgrequest('/profile?id=%d&action=enable',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span>",cs->id);
 		C9ADD(temp);
 	}
 	else {
@@ -4213,8 +4216,8 @@ void http_send_profiles(int sock, http_request *req)
 
 	tcp_init(&tcpbuf);
 
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (get_action==ACTION_PAGE) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, "Profiles"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -4693,8 +4696,8 @@ void http_send_newcamd(int sock, http_request *req) // page, div, row
 	}
 
 	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (get_action==ACTION_PAGE) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, "Newcamd"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -5175,7 +5178,11 @@ void http_send_profile(int sock, http_request *req)
 	char *str_id = isset_get( req, "id");
 	if (str_id)	get_id = atoi(str_id);
 	struct cardserver_data *cs = getcsbyid(get_id);
-	if (!cs) return;
+	if (!cs) {
+		// perfil comentado no profiles.cfg (ou inexistente): vai para a lista, onde o ON existe
+		http_send_redirect(sock, "/profiles");
+		return;
+	}
 	// Action
 	char *str_action = isset_get( req, "action");
 	int get_action = 0;
@@ -6246,8 +6253,9 @@ void http_send_cs378x(int sock, http_request *req)
 	}
 	//
 	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (get_action==ACTION_PAGE) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, "cs378x"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -6511,8 +6519,9 @@ void http_send_cs378x_client(int sock, http_request *req)
 
 	//
 	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (get_action==ACTION_PAGE) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, "Cs378x Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -6933,8 +6942,9 @@ void http_send_camd35(int sock, http_request *req)
 	}
 	//
 	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (get_action==ACTION_PAGE) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, "Cs358x/Camd35"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -7243,8 +7253,9 @@ void http_send_camd35_client(int sock, http_request *req)
 
 	//
 	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (get_action==ACTION_PAGE) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, "Cs358x/Camd35 Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -8870,8 +8881,9 @@ void http_send_mgcamd(int sock, http_request *req)
 	}
 
 	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (get_action==ACTION_PAGE) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, "MGcamd"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -9140,8 +9152,9 @@ void http_send_mgcamd_client(int sock, http_request *req)
 
 	//
 	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
 	if (get_action==ACTION_PAGE) {
-		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+
 		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
 		sprintf( http_buf, html_title, cfg.http.title, "Mgcamd Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -9621,7 +9634,7 @@ void http_send_config(int sock, http_request *req)
 {
 	char *type = isset_get( req, "type");
 
-	if ( !strcmp(type,"delay") ) {
+	if ( type && !strcmp(type,"delay") ) {
 		char *str = isset_get( req, "thread");
 		if (str) {
 			cfg.delay.thread = atoi( str );
