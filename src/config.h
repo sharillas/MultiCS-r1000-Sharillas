@@ -666,8 +666,10 @@ struct cardserver_data
 #endif
 #endif
 			int retry; // number of retries to decode ecm
-			uint8_t silentnok; // SILENT NOK: nao responder NOK ao cliente (a box espera o timeout dela)
+			uint8_t silentnok; // SILENT NOK: adiar a resposta NOK ao cliente (box espera sem reconectar)
 		} dcw;
+
+#define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
 
 		uint8_t checkecm; // viaccess ecm
 		uint8_t checkecmlength; // length header
