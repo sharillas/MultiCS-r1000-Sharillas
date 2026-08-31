@@ -7393,10 +7393,13 @@ void reread_config( struct config_data *cfg )
 	void *pointer; // temp use
 	struct config_data newcfg;
 
-	// Remove files data from current config
-	free_chinfo(cfg);
-	free_ip2country(cfg);
-	free_providers(cfg);
+	// FIX (v1.26): as listas antigas (chninfo/ip2country/providers) sao
+	// DESANEXADAS do cfg no swap e FICAM POR LIBERTAR de proposito: ha
+	// threads (HTTP workers/ecm) que podem estar a meio de um getchname()/
+	// providerID() com o ponteiro antigo; libertar aqui causava SIGSEGV
+	// em cada reload da config. O custo e memoria (uma copia das listas
+	// por reload - ~1MB com 8197 canais) - aceitavel; o processo reinicia
+	// limpa. (antes: free_chinfo/free_ip2country/free_providers AQUI = bug)
 
 	init_config(&newcfg);
 	newcfg.host = cfg->host;
@@ -7414,9 +7417,18 @@ void reread_config( struct config_data *cfg )
 	strcpy(cfg->ip2country_file,newcfg.ip2country_file);
 	strcpy(cfg->constcw_file,newcfg.constcw_file);
 	strcpy(cfg->blockedip_file,newcfg.blockedip_file);
+	// SWAP das listas de dados (as antigas vao para oldcfg e sao libertadas no fim)
+	struct config_data oldcfg;
+	memset( &oldcfg, 0, sizeof(oldcfg) );
+	oldcfg.chninfo = cfg->chninfo;
+	oldcfg.ip2country = cfg->ip2country;
+	oldcfg.providers = cfg->providers;
 	cfg->ip2country = newcfg.ip2country;
 	cfg->chninfo = newcfg.chninfo;
 	cfg->providers = newcfg.providers;
+	newcfg.chninfo = NULL;
+	newcfg.ip2country = NULL;
+	newcfg.providers = NULL;
 
 	memcpy( cfg->blockcountry, newcfg.blockcountry, sizeof(cfg->blockcountry) );
 	memcpy( &cfg->delay, &newcfg.delay, sizeof(cfg->delay) );
@@ -7519,6 +7531,10 @@ void reread_config( struct config_data *cfg )
 	///////////////////////////////////////////////////////////////////////////
 
 	sleep( 1 );
+
+	// listas antigas: NAO libertar (ver comentario no swap em cima).
+	// oldcfg.chninfo/ip2country/providers ficam orfaos de proposito.
+	// free_chinfo( &oldcfg ); free_ip2country( &oldcfg ); free_providers( &oldcfg );
 
 	// http Server
 	if (newcfg.http.handle>0) close(newcfg.http.handle);
