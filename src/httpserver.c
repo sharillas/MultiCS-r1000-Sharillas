@@ -2748,7 +2748,7 @@ void getservercells(struct server_data *srv, char cell[8][2048] )
 		}
 	}
 
-	strcat( cell[6], "<span style='float:right;'>");
+	strcat( cell[6], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(srv->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
 		if (srv->flags&FLAG_DISABLE) {
 			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/server?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",srv->id);
