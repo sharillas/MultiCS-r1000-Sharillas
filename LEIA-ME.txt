@@ -1,4 +1,4 @@
-MultiCS r1000 v1.24 - by Sharillas@2026
+MultiCS r1000 v1.25 - by Sharillas@2026
 ==========================================
 
 Pacote de release (última build estável)
@@ -10,13 +10,17 @@ CONTÉM:
   bin/tools_update_*.py  ferramentas (Update Channel Info + Update SoftCam.Key
                          + Update Ip2Country diário)
   configs/               multics.cfg, profiles.cfg, CSS, ip2country.csv, etc.
-  install.sh             instalador (configs para /var/etc, binários para /opt/multics,
-                         serviço systemd como root, chmod 666 nas configs)
+  install.sh             instalador (SEM GIT: copia só binários + configs para
+                         a VPS, cria serviço systemd, e no fim mostra um GUIA
+                         completo do projeto para quem instala)
 
-INSTALAÇÃO NA VPS (Debian/Ubuntu, como root):
-  cd /tmp && tar xzf multics-r1000-v1.24.tar.gz && cd multics-r1000
+INSTALAÇÃO NA VPS (Debian/Ubuntu, como root - SEM git clone):
+  cd /tmp && tar xzf multics-r1000-v1.25.tar.gz && cd multics-r1000
   bash install.sh /opt/multics
   systemctl start multics
+
+  (o install.sh no fim explica ONDE ESTÃO os ficheiros de config,
+   COMO funciona o projeto e os PRIMEIROS PASSOS - para leigos)
 
 WEB UI:  http://IP:5500   (user: admin / pass: admin - mudar no multics.cfg)
          Depois do login vai para /dashboard
@@ -24,38 +28,43 @@ WEB UI:  http://IP:5500   (user: admin / pass: admin - mudar no multics.cfg)
 Portas: HTTP 5500, Telnet 5600, CCcam 16000, CCcam3 16001, MGcamd 21000,
         camd35 7502, cs378x 8600, cache 5599, perfis newcamd 15000+
 
-PRINCIPAIS CARACTERÍSTICAS (v1.24):
-  - GUI completa (dark/light, responsiva em telemóvel): Dashboard, Servers,
-    Cache, CacheEX, Newcamd, Mgcamd, CCcam, Cs358x/Camd35, Profiles,
-    Packages, Softcam, Configs
-  - Packages: dashboard por satélite (30W/13E/19.2E) - package, CAID:Ident,
-    perfil, Ecm OK, readers
-  - Test Channel: canal de teste configurável pela GUI (sessão ou multics.cfg)
-  - Servers: coluna Cards com ident a 6 dígitos + nomes (MEO ID, NOS ID,
-    Canal+ Polónia...), cores de estado, stats de ECM Dedup
-  - DEDUP de ECMs: 1 pedido único ao reader por ECM em voo
-  - NOK cache por reader+canal (~8s): menos tráfego NOK em zappings
+PRINCIPAIS CARACTERÍSTICAS (v1.25):
+
+NOVO v1.25 (pacote anti-"cartões marcados" - análise do MultiCS r120):
+  - DCW FILTER (CWPK): blacklist de CWs de cartões marcados (35 valores);
+    modo AUTO = desligado por defeito, ativa-se SOZINHO no 1º hit e passa
+    a bloquear (sem ninguém ver o log); modos LOGONLY e DROP manuais;
+    regras EXACT/MASK/ALLEQUAL
+  - ECM FILTER (rule engine): PREFIX / LEN multi / BYTE <pos> INMASK <mask64>
+    (a validação iCAM é config: BYTE 21 INMASK 1300010012)
+  - FAILBAN: ban automático de IPs por eventos maus, por protocolo
+  - ANTICASCADE: anti-reshare por zapping excessivo
+  - ECMRATELIMIT: proteção do cartão físico (SIDTIME/MAXECM)
+  - DCW ICAM: transformação iCAM da CW (Sky DE 098D / MEO / NOS) com
+    perfil [SkyDE-098D] de exemplo comentado
+  - Estado de tudo visível na GUI (página do perfil + botão DBG)
+
+NOVO v1.24:
+  - SILENT NOK adiado (2.5s): responde antes do timeout da box do cliente -
+    elimina reconexões e storms de retries (todos os protocolos)
+
+JÁ EXISTIA (v1.23 e anteriores):
+  - GUI completa (dark/light, responsiva): Dashboard, Servers, Cache,
+    CacheEX, Newcamd, Mgcamd, CCcam, Cs358x/Camd35, Profiles, Packages,
+    Softcam, Configs
+  - Packages: dashboard por satélite (30W/13E/19.2E)
+  - Test Channel configurável pela GUI
+  - Servers: coluna Cards com ident a 6 dígitos + nomes, cores, ECM Dedup
+  - DEDUP de ECMs + NOK cache por reader+canal
   - Proteções: SKIPCWC, CWC, NAGRA protection, DCW MINTIME/CYCLE_CHECK,
     anti-fake XOR 0xF0 + nano e0, BUILD LITE
-  - Login guard anti brute-force: 5 falhas -> bloqueio 30s por IP
-    (configurável em HTTP LOGIN MAXFAIL/LOCKTIME)
-  - Sessões persistentes + botão "Terminar todas as sessões" + invalidação
-    automática ao mudar a password; cookie HttpOnly + SameSite=Lax
-  - Upload Configs com validação (comenta linhas com erro, defaults,
-    rollback .bak) - nunca crasha
-  - Editor AJAX de todos os ficheiros com feedback "Guardado"
-  - Softcam: upload SoftCam.Key, Update SoftCam.Key remoto, Reload Keys
-  - Update Channel Info (KingOfSat) pela GUI
-  - ip2country diário (base iplocate) com bandeiras na GUI -
-    tools/update_ip2country.py (sugestão: cron diário)
-  - Log em ficheiro com rotação (-f no serviço) + crash-report com core dumps
-  - Identificações CAID oficiais dos 3 satélites (30W/13E/19.2E) em
-    profiles/providers/channelinfo
-  - Assinaturas de protocolo na info server (Newcamd v6.06, Mgcamd v1.46, ...)
-  - Download Log na página Debug (500 entradas)
-  - Fixes anteriores: SKIPCWC, CWC, NAGRA, Health, Fallback, Timing,
-    Emulator BISS, SIG_HANDLER, CSCACHE, restart fiável, dcwtimeout,
-    retry recvtime, spin dashboard, nocheck por reader
+  - Login guard anti brute-force + sessões persistentes + cookie seguro
+  - Upload Configs com validação (comenta erros, rollback) - nunca crasha
+  - Editor AJAX de todos os ficheiros
+  - Softcam: upload/update/reload; Update Channel Info (KingOfSat)
+  - ip2country diário com bandeiras na GUI
+  - Log em ficheiro com rotação + crash-report com core dumps
+  - Identificações CAID oficiais dos 3 satélites (30W/13E/19.2E)
 
 Documentação: README.md, docs/CONFIGS.md, docs/IMPLEMENTACAO.md,
 configs_exemplos/ (todos os ficheiros com opções comentadas em PT)
