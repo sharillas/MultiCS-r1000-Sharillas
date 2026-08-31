@@ -736,7 +736,8 @@ struct cardserver_data
 		// DCW FILTER: blacklist de CWs (CWPK/cartoes marcados/fake)
 		struct {
 			int enable;
-			int mode;    // 0=LOGONLY 1=DROP
+			int mode;    // 0=LOGONLY 1=DROP 2=AUTO (auto-ativa no 1o hit)
+			int auto_active; // AUTO: ja ativado (estado runtime)
 			int nrules;
 			struct {
 				uint8_t type;    // 1=EXACT 2=MASK 3=ALLEQUAL

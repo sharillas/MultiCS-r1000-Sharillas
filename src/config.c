@@ -4205,7 +4205,9 @@ link_mgcamd_user:
 						} else iparser++;
 						parse_name(str);
 						uppercase(str);
-						cardserver->option.dcwfilter.mode = strcmp(str,"LOGONLY")?1:0;
+						if (!strcmp(str,"LOGONLY")) cardserver->option.dcwfilter.mode = 0;
+						else if (!strcmp(str,"DROP")) cardserver->option.dcwfilter.mode = 1;
+						else if (!strcmp(str,"AUTO")) cardserver->option.dcwfilter.mode = 2;
 					}
 					continue;
 				}
