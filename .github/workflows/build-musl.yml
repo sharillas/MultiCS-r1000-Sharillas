@@ -3,7 +3,8 @@ name: build-musl
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
@@ -11,30 +12,88 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup zig 0.15.2
+      - name: Instalar Zig 0.15.2
         run: |
+          mkdir -p /opt/zig
           curl -sL -o zig.tar.xz https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
-          tar -xf zig.tar.xz
-          echo "$PWD/zig-x86_64-linux-0.15.2" >> $GITHUB_PATH
+          tar xf zig.tar.xz -C /opt/zig --strip-components=1
+          echo "/opt/zig" >> "$GITHUB_PATH"
 
-      - name: Build x64 (musl)
-        working-directory: src
+      - name: Build (x86_64 musl)
+        run: sh build.sh
+
+      - name: Smoke-test (arranque + GUI + parse limpo)
         run: |
           set -e
-          OPTS="-DCHECK_NEXTDCW -DSID_FILTER -DNEWCACHE -DCCCAM_CLI -DRADEGAST_CLI -DCAMD35_CLI -DCS378X_CLI -DHTTP_SRV -DTELNET -DMGCAMD_SRV -DCCCAM_SRV -DCAMD35_SRV -DCS378X_SRV -DSRV_CSCACHE -DEXPIREDATE -DDCWSWAP -DCACHEEX -DIPLIST -DTESTCHANNEL -DTHREAD_DCW -DEPOLL_NEWCAMD -DEPOLL_CCCAM -DEPOLL_MGCAMD -DEPOLL_ECM -DPEERLIST -DECMLIST -DEPOLL_FREECCCAM -DSIG_HANDLER -DCLI_CSCACHE -DSRV_CSCACHE"
-          mkdir -p ../build-actions/obj
-          for s in sha1.c des.c md5.c aes.c dcw.c convert.c tools.c debug.c parser.c ipdata.c threads.c sockets.c msg-newcamd.c msg-cccam.c msg-radegast.c config.c ecmdata.c httpserver.c telnet.c main.c; do
-            zig cc -target x86_64-linux-musl -O3 -fpack-struct -I. -std=gnu90 $OPTS -c $s -o ../build-actions/obj/${s%.c}.o
-          done
-          zig cc -target x86_64-linux-musl ../build-actions/obj/*.o -o ../build-actions/multics.x64 -pthread -s
+          mkdir -p /tmp/smoke/run
+          cd /tmp/smoke/run
+          cat > multics.cfg <<EOF
+LOGFILE: /tmp/smoke/run/multics.log
+LOGMAXSIZE: 1024
+HTTP PORT: 5591
+HTTP USER: admin
+HTTP PASS: admin
+HTTP TITLE: "smoke"
+HTTP EDITOR: OFF
+HTTP RESTART: NO
+CCCAM PORT: 16991
+TELNET PORT: 5691
+MGCAMD PORT: 21991
+CAMD35 PORT: 7591
+CS378X PORT: 8691
+CACHE PORT: 0
+FILE CHANNELINFO: "/tmp/smoke/run/CCcam.channelinfo"
+FILE PROVIDERINFO: "/tmp/smoke/run/CCcam.providers"
+FILE IP2COUNTRY: "/tmp/smoke/run/ip2country.csv"
+BLOCKEDIP FILE: "/tmp/smoke/run/blocked_ips.cfg"
+CONSTCW FILE: "/tmp/smoke/run/Softcam.cfg"
+EOF
+          touch CCcam.channelinfo CCcam.providers ip2country.csv blocked_ips.cfg Softcam.cfg
+          cat > profiles.cfg <<EOF
+[DEFAULT]
+DEFAULT DCW TIMEOUT: 3000
 
-      - name: Smoke test (banner)
-        run: |
-          build-actions/multics.x64 -h | head -3 || true
-          ls -la build-actions/
+[Teste]
+PORT: 15991
+CAID: 1814
+PROVIDERS: 000000
+USER: teste senha { expire=2027-01-01 }
+EOF
+          cat > servidores.cfg <<EOF
+#N: 127.0.0.1 34000 user pass 01 02 03 04 05 06 07 08 09 10 11 12 13 14
+EOF
+          cat > clientes_cccam.cfg <<EOF
+F: smoketest senha123
+EOF
+          INCLUDE="INCLUDE \"/tmp/smoke/run/profiles.cfg\"
+INCLUDE \"/tmp/smoke/run/servidores.cfg\"
+INCLUDE \"/tmp/smoke/run/clientes_cccam.cfg\""
+          printf '\n%s\n' "$INCLUDE" >> multics.cfg
+          timeout 8 "$GITHUB_WORKSPACE/build/multics.x64" -C multics.cfg &
+          BINPID=$!
+          sleep 5
+          # GUI responde?
+          curl -s -o /dev/null -w "%{http_code}" -c /tmp/ck -b /tmp/ck \
+            -d 'user=admin&pass=admin' http://127.0.0.1:5591/login || true
+          echo ""
+          curl -s -o /dev/null -w "dashboard: %{http_code}\n" -c /tmp/ck -b /tmp/ck http://127.0.0.1:5591/dashboard || true
+          # parse limpo? (falha se houver ERROS de config / Skip F line / invalid port)
+          if grep -aE 'config\([0-9]+,[0-9]+\):|Skip F line|invalid port value|Error reading' multics.log; then
+            echo "SMOKE-TEST FAIL: erros no parse"
+            cat multics.log
+            exit 1
+          fi
+          # F-line reconhecida?
+          grep -a 'CCcam server' multics.log | head -3
+          grep -ac 'smoketest' multics.log | grep -q '[1-9]' || { echo "SMOKE-TEST FAIL: F-line nao carregada"; cat multics.log; exit 1; }
+          # portas a escutar?
+          ss -ltn | grep -q ':5591' || { echo "SMOKE-TEST FAIL: GUI sem porta"; exit 1; }
+          ss -ltn | grep -q ':16991' || { echo "SMOKE-TEST FAIL: CCcam sem porta"; exit 1; }
+          ss -ltn | grep -q ':5691' || { echo "SMOKE-TEST FAIL: Telnet sem porta"; exit 1; }
+          echo "SMOKE-TEST OK"
+          kill $BINPID 2>/dev/null || true
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: multics.x64
-          path: build-actions/multics.x64
+          name: multics-x64
+          path: build/multics.x64

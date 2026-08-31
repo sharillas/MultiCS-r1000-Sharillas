@@ -632,7 +632,7 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 					else {	//TODO: check same dcw between cards
 						if ( memcmp(&ecm->cw, &buf[3],16) ) {
 							mlogf(LOGWARNING,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," !!! different dcw from newcamd client '%s'\n", cli->user);
-							failban_bad(cli->ip, TYPE_NEWCAMD, "wrong cw from newcamd client");
+							failban_bad(cli->ip, TYPE_NEWCAMD, "wrong cw from newcamd client", &buf[3]);
 						}
 					}
 

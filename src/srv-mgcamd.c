@@ -912,7 +912,7 @@ void mg_cli_recvmsg(struct mg_client_data *cli)
 				else {	//TODO: check same dcw between cards
 					if ( memcmp(&ecm->cw, &buf[3],16) ) {
 						mlogf(LOGWARNING,getdbgflagpro(DBG_MGCAMD,0,cli->id,ecm->cs->id)," !!! different dcw from mgcamd client '%s'\n", cli->user);
-						failban_bad(cli->ip, TYPE_MGCAMD, "wrong cw from mgcamd client");
+						failban_bad(cli->ip, TYPE_MGCAMD, "wrong cw from mgcamd client", &buf[3]);
 					}
 				}
 				pthread_mutex_unlock(&prg.lockecm); //###

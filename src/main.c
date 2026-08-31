@@ -429,9 +429,13 @@ int cs_check_ecmlen(struct cardserver_data *cs, int len)
 void dcw_icam_apply(uint8_t cw[16]);
 char *ecm_filter_check(struct cardserver_data *cs, uint8_t *ecmdata, uint16_t ecmlen);
 int dcw_filter_check(struct cardserver_data *cs, uint8_t dcw[16]);
-void failban_bad(uint32_t ip, int proto, char *reason);
+void failban_bad(uint32_t ip, int proto, char *reason, uint8_t *badcw);
 int anticascade_zap(uint32_t ip);
 char *ratelimit_check(struct cardserver_data *cs, uint16_t sid);
+void prot_event_add(const char *fmt, ...);
+char *prot_event_get(int n, uint32_t *age_ms);
+uint32_t prot_uptime_ticks(void);
+int dcw_filter_learned_count(void);
 
 char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, uint16_t sid, uint16_t chid, uint16_t ecmlen, uint8_t *ecmdata, uint8_t *cw1cycle )
 {
