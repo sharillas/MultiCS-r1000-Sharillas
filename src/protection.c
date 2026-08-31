@@ -107,6 +107,94 @@ char *ecm_filter_check(struct cardserver_data *cs, uint8_t *ecmdata, uint16_t ec
 }
 
 // ---------------------------------------------------------------------------
+// CWPK LEARNING: regras aprendidas em runtime (CW de cartao marcado)
+// ---------------------------------------------------------------------------
+#define LEARN_MAX 16
+#define LEARN_SAMPLES 5
+static struct {
+	uint8_t cw[16];
+	int hits;
+	uint32_t firstseen;
+} learned[LEARN_MAX];
+static int nlearned = 0;
+
+static void learn_cw(uint8_t cw[16], uint32_t ip)
+{
+	int i;
+	for (i=0; i<nlearned; i++) {
+		if (!memcmp(learned[i].cw, cw, 16)) { learned[i].hits++; return; }
+	}
+	if (nlearned>=LEARN_MAX) {
+		// FIFO: descarta a mais antiga
+		memmove(&learned[0], &learned[1], sizeof(learned[0])*(LEARN_MAX-1));
+		nlearned--;
+	}
+	memcpy(learned[nlearned].cw, cw, 16);
+	learned[nlearned].hits = 1;
+	learned[nlearned].firstseen = GetTickCount();
+	nlearned++;
+	char dump[64];
+	array2hex(cw, dump, 16);
+	mlogf(LOGWARNING,0," CWPK LEARNING: nova regra aprendida (CW de cartao marcado, IP %s) => %s\n", (char*)ip2string(ip), dump);
+	prot_event_add("CWPK LEARNING: nova regra aprendida => %s", dump);
+}
+
+// regras aprendidas ativas? (consulta rapida para o filtro)
+int dcw_filter_learned_count()
+{
+	return nlearned;
+}
+
+int dcw_filter_learned_check(uint8_t dcw[16])
+{
+	int i;
+	for (i=0; i<nlearned; i++) {
+		if (!memcmp(learned[i].cw, dcw, 16)) return 1;
+	}
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// EVENTOS RECENTES (dashboard): anel de mensagens das protecoes
+// ---------------------------------------------------------------------------
+#define PROT_EVENTS 16
+static struct {
+	uint32_t time;
+	char msg[160];
+} prot_events[PROT_EVENTS];
+static int prot_ev_idx = 0;
+static uint32_t prot_start_ticks = 0;
+
+void prot_event_add(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(prot_events[prot_ev_idx].msg, sizeof(prot_events[prot_ev_idx].msg), fmt, ap);
+	va_end(ap);
+	if (n<0) prot_events[prot_ev_idx].msg[0] = 0;
+	prot_events[prot_ev_idx].time = GetTickCount();
+	prot_ev_idx = (prot_ev_idx+1)%PROT_EVENTS;
+}
+
+// devolve o texto de um evento (0=mais recente); NULL se nao existir
+char *prot_event_get(int n, uint32_t *age_ms)
+{
+	int total = 0;
+	int i;
+	for (i=0; i<PROT_EVENTS; i++) if (prot_events[i].time) total++;
+	if (n>=total) return NULL;
+	int idx = (prot_ev_idx - 1 - n + PROT_EVENTS*2) % PROT_EVENTS;
+	if (age_ms) *age_ms = GetTickCount() - prot_events[idx].time;
+	return prot_events[idx].msg;
+}
+
+uint32_t prot_uptime_ticks()
+{
+	if (!prot_start_ticks) prot_start_ticks = GetTickCount();
+	return GetTickCount() - prot_start_ticks;
+}
+
+// ---------------------------------------------------------------------------
 // DCW FILTER: blacklist CWPK (EXACT/MASK/ALLEQUAL)
 // retorna 1 se bloqueada (DROP), 0 se aceite (LOGONLY apenas loga)
 // ---------------------------------------------------------------------------
@@ -144,6 +232,7 @@ int dcw_filter_check(struct cardserver_data *cs, uint8_t dcw[16])
 				if (!cs->option.dcwfilter.auto_active) {
 					cs->option.dcwfilter.auto_active = 1;
 					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: AUTO ATIVADO no perfil '%s' - detetada CW de cartao marcado (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
+					prot_event_add("dcwfilter: AUTO ATIVADO no perfil '%s' => %s", cs->name, dump);
 				}
 				else {
 					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: perfil '%s' CW bloqueada (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
@@ -152,6 +241,15 @@ int dcw_filter_check(struct cardserver_data *cs, uint8_t dcw[16])
 			}
 			mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: perfil '%s' CW bloqueada (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
 			return mode ? 1 : 0;
+		}
+	}
+	// CWPK LEARNING: regras aprendidas em runtime (bloqueiam sempre, se ativo)
+	if (cs->option.dcwfilter.learn && nlearned>0) {
+		if (dcw_filter_learned_check(dcw)) {
+			char dump[64];
+			array2hex(dcw, dump, 16);
+			mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: perfil '%s' CW bloqueada (regra APRENDIDA) => %s\n", cs->name, dump);
+			return 1;
 		}
 	}
 	return 0;
@@ -166,6 +264,9 @@ struct fb_entry {
 	uint32_t time;   // inicio da janela
 	int count;
 	int banned;
+	// LEARNING CWPK: amostras das CWs mas recebidas deste IP
+	uint8_t cws[8][16];
+	int cw_idx;
 };
 
 static struct fb_entry fb_list[FB_MAX];
@@ -181,14 +282,13 @@ static struct fb_entry *fb_find(uint32_t ip)
 		if (fb_list[i].time<ot) { ot = fb_list[i].time; oldest = i; }
 	}
 	// reutilizar a entrada mais antiga
+	memset(&fb_list[oldest], 0, sizeof(fb_list[oldest]));
 	fb_list[oldest].ip = ip;
 	fb_list[oldest].time = GetTickCount();
-	fb_list[oldest].count = 0;
-	fb_list[oldest].banned = 0;
 	return &fb_list[oldest];
 }
 
-void failban_bad(uint32_t ip, int proto, char *reason)
+void failban_bad(uint32_t ip, int proto, char *reason, uint8_t *badcw)
 {
 	if (!cfg.failban.enable || !ip) return;
 	int max;
@@ -205,11 +305,27 @@ void failban_bad(uint32_t ip, int proto, char *reason)
 	pthread_mutex_lock(&fb_mutex);
 	struct fb_entry *e = fb_find(ip);
 	if (e->banned) { pthread_mutex_unlock(&fb_mutex); return; }
+	// CWPK LEARNING: guardar amostra da CW ma e contar repeticoes
+	if (badcw) {
+		memcpy(e->cws[e->cw_idx], badcw, 16);
+		e->cw_idx = (e->cw_idx+1)%8;
+		int same = 0, i;
+		for (i=0; i<8; i++) {
+			if (!memcmp(e->cws[i], badcw, 16)) same++;
+		}
+		if (same>=LEARN_SAMPLES) {
+			learn_cw(badcw, ip);
+			// reset das amostras para nao reaprender o mesmo padrao em loop
+			memset(e->cws, 0, sizeof(e->cws));
+			e->cw_idx = 0;
+		}
+	}
 	e->count++;
 	if (e->count>=max) {
 		e->banned = 1;
 		if (!ipblock_check(ip)) ipblock_add(ip);
 		mlogf(LOGWARNING,0," FAILBAN: IP %s banido (%ds) apos %d eventos (%s)\n", (char*)ip2string(ip), cfg.failban.bantime, e->count, reason);
+		prot_event_add("FAILBAN: IP %s banido (%s)", (char*)ip2string(ip), reason);
 	}
 	pthread_mutex_unlock(&fb_mutex);
 }
@@ -243,6 +359,7 @@ int anticascade_zap(uint32_t ip)
 		if (!ipblock_check(ip)) {
 			ipblock_add(ip);
 			mlogf(LOGWARNING,0," ANTICASCADE: IP %s banido (%ds) - %d zaps em %ds\n", (char*)ip2string(ip), cfg.anticascade.bantime, ac_list[slot].count, cfg.anticascade.window);
+			prot_event_add("ANTICASCADE: IP %s banido (%d zaps)", (char*)ip2string(ip), ac_list[slot].count);
 		}
 		return 1;
 	}

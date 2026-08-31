@@ -737,6 +737,7 @@ struct cardserver_data
 		struct {
 			int enable;
 			int mode;    // 0=LOGONLY 1=DROP 2=AUTO (auto-ativa no 1o hit)
+			int learn;   // CWPK LEARNING: aplicar regras aprendidas em runtime
 			int auto_active; // AUTO: ja ativado (estado runtime)
 			int nrules;
 			struct {

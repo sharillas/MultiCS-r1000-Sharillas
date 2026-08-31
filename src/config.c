@@ -4209,6 +4209,14 @@ link_mgcamd_user:
 						else if (!strcmp(str,"DROP")) cardserver->option.dcwfilter.mode = 1;
 						else if (!strcmp(str,"AUTO")) cardserver->option.dcwfilter.mode = 2;
 					}
+					else if (!strcmp(str,"LEARN")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							continue;
+						} else iparser++;
+						cardserver->option.dcwfilter.learn = parse_boolean();
+					}
 					continue;
 				}
 				iparser++;
