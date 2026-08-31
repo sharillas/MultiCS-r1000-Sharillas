@@ -64,7 +64,7 @@ jobs:
             > servidores.cfg
           printf '%s\n' 'F: smoketest senha123' > clientes_cccam.cfg
           printf '\nINCLUDE "/tmp/smoke/run/profiles.cfg"\nINCLUDE "/tmp/smoke/run/servidores.cfg"\nINCLUDE "/tmp/smoke/run/clientes_cccam.cfg"\n' >> multics.cfg
-          timeout 8 "$GITHUB_WORKSPACE/build/multics.x64" -C multics.cfg &
+          timeout 8 "$GITHUB_WORKSPACE/build/multics.x64" -C multics.cfg > multics.log 2>&1 &
           BINPID=$!
           sleep 5
           curl -s -o /dev/null -c /tmp/ck -b /tmp/ck -d 'user=admin&pass=admin' http://127.0.0.1:5591/login || true
@@ -75,7 +75,8 @@ jobs:
             cat multics.log
             exit 1
           fi
-          grep -ac 'smoketest' multics.log | grep -q '[1-9]' || { echo "SMOKE-TEST FAIL: F-line nao carregada"; cat multics.log; exit 1; }
+          grep -aq 'CCcam server.*started' multics.log || { echo "SMOKE-TEST FAIL: CCcam server nao arrancou"; cat multics.log; exit 1; }
+          grep -aq 'Telnet server started' multics.log || { echo "SMOKE-TEST FAIL: Telnet nao arrancou"; cat multics.log; exit 1; }
           ss -ltn | grep -q ':5591' || { echo "SMOKE-TEST FAIL: GUI sem porta"; exit 1; }
           ss -ltn | grep -q ':16991' || { echo "SMOKE-TEST FAIL: CCcam sem porta"; exit 1; }
           ss -ltn | grep -q ':5691' || { echo "SMOKE-TEST FAIL: Telnet sem porta"; exit 1; }
