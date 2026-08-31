@@ -78,6 +78,31 @@ ENABLE CACHE: YES
 - Um perfil por CAID (ex: 098D Sky DE, 0500 Viaccess, 0100 Seca…).
 - Se um reader responde CWs de vários CAIDs, cria um perfil por CAID e partilha o reader entre eles.
 
+### Filtro rigoroso por ident (anti fake/NOK)
+
+- `DEFAULT ACCEPT NULL PROVIDER: NO` — pedidos com provider vazio (`000000`)
+  **só passam** se o perfil listar `000000` explicitamente em `PROVIDERS`.
+  Qualquer outro ident fora da lista é rejeitado de imediato ("Wrong provider").
+- Lista em `PROVIDERS` **todos os idents ativos** do pacote, ex:
+
+```cfg
+[MEO]
+PORT: 15002
+CAID: 1814
+PROVIDERS: 000000, 005211, 005221, 000007   # wildcard + idents reais
+
+[NOS]
+PORT: 15003
+CAID: 1802
+PROVIDERS: 000000, 004801                   # 004901 (ZON antigo) ficou fora
+```
+
+- Os idents oficiais apurados para os 3 satélites estão em `CCcam.providers`
+  (nomes com a proveniência de cada ident) — usa-os como referência.
+- **Se uma box pedir um ident novo**: aparece `Wrong provider` no Debug Log
+  (com o CAID:PROVID do pedido) → acrescenta esse ident à lista `PROVIDERS`
+  do perfil e grava pela GUI (**Configs → Edit**) — sem restart.
+
 ---
 
 ## 3. Readers (servidores de leitura)
