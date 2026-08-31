@@ -805,11 +805,13 @@ void cc_senddcw_cli(struct cc_client_data *cli)
 		}
 		else {
 			if (enablefreeze) cli->freeze++;
-			if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
-				cc_disconnect_cli( cli );
-				return;
+			if ( (ecm->cs==NULL) || !ecm->cs->option.dcw.silentnok ) {
+				if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
+					cc_disconnect_cli( cli );
+					return;
+				}
 			}
-			mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
+			mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam client '%s' ch %04x:%06x:%04x (%dms)%s\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime, (ecm->cs&&ecm->cs->option.dcw.silentnok)?" [SILENT]":"");
 		}
 		//
 		cli->lastecm.dcwsrctype = DCW_SOURCE_NONE;
@@ -956,12 +958,14 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 				ecm->lastrecvtime = ticks;
 				if (ecm->dcwstatus==STAT_DCW_FAILED) {
 					if (ecm->period > cs->option.dcw.retry) {
-						if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
-							pthread_mutex_unlock(&prg.lockecm);
-							cc_disconnect_cli( cli );
-							break;
+						if (!cs->option.dcw.silentnok) {
+							if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
+								pthread_mutex_unlock(&prg.lockecm);
+								cc_disconnect_cli( cli );
+								break;
+							}
 						}
-						mlogf(LOGINFO,getdbgflag(DBG_CCCAM,cli->parent->id,cli->id)," <|> decode failed to CCcam client '%s' ch %04x:%06x:%04x:%08x, already failed\n",cli->user, caid, provid, sid, ecm->hash);
+						mlogf(LOGINFO,getdbgflag(DBG_CCCAM,cli->parent->id,cli->id)," <|> decode failed to CCcam client '%s' ch %04x:%06x:%04x:%08x, already failed%s\n",cli->user, caid, provid, sid, ecm->hash, cs->option.dcw.silentnok?" [SILENT]":"");
 					}
 					else {
 						ecm->period++; // RETRY
