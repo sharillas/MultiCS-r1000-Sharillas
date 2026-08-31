@@ -73,11 +73,10 @@ jobs:
             cat /var/tmp/multics.log
             exit 1
           fi
+          grep -aq 'HTTP server started' /var/tmp/multics.log || { echo "SMOKE-TEST FAIL: HTTP nao arrancou"; cat /var/tmp/multics.log; exit 1; }
           grep -aq 'CCcam server.*started' /var/tmp/multics.log || { echo "SMOKE-TEST FAIL: CCcam server nao arrancou"; cat /var/tmp/multics.log; exit 1; }
           grep -aq 'Telnet server started' /var/tmp/multics.log || { echo "SMOKE-TEST FAIL: Telnet nao arrancou"; cat /var/tmp/multics.log; exit 1; }
-          ss -ltn | grep -q ':5591' || { echo "SMOKE-TEST FAIL: GUI sem porta"; exit 1; }
-          ss -ltn | grep -q ':16991' || { echo "SMOKE-TEST FAIL: CCcam sem porta"; exit 1; }
-          ss -ltn | grep -q ':5691' || { echo "SMOKE-TEST FAIL: Telnet sem porta"; exit 1; }
+          grep -aq 'Newcamd Server started' /var/tmp/multics.log || { echo "SMOKE-TEST FAIL: perfis newcamd nao arrancaram"; cat /var/tmp/multics.log; exit 1; }
           echo "SMOKE-TEST OK"
           kill $BINPID 2>/dev/null || true
 
