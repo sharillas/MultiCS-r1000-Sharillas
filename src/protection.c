@@ -291,6 +291,10 @@ static struct fb_entry *fb_find(uint32_t ip)
 void failban_bad(uint32_t ip, int proto, char *reason, uint8_t *badcw)
 {
 	if (!cfg.failban.enable || !ip) return;
+	int i;
+	for (i=0; i<cfg.failban.nexclude; i++) {
+		if (inet_addr(cfg.failban.exclude[i]) == ip) return;
+	}
 	int max;
 	switch (proto) {
 		case TYPE_CCCAM:    max = cfg.failban.max_cccam; break;
@@ -344,7 +348,11 @@ static struct ac_entry ac_list[AC_MAX];
 int anticascade_zap(uint32_t ip)
 {
 	if (!cfg.anticascade.maxzap || !ip) return 0;
-	int i, slot = -1;
+	int i;
+	for (i=0; i<cfg.anticascade.nexclude; i++) {
+		if (inet_addr(cfg.anticascade.exclude[i]) == ip) return 0;
+	}
+	int slot = -1;
 	uint32_t now = GetTickCount();
 	for (i=0; i<AC_MAX; i++) {
 		if (ac_list[i].ip==ip) { slot = i; break; }

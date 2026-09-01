@@ -1711,6 +1711,23 @@ sid accept:
 			else if (!strcmp(str,"CAMD35")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_camd35 = atoi(str); }
 			else if (!strcmp(str,"CS378X")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_cs378x = atoi(str); }
 			else if (!strcmp(str,"CACHE")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_cache = atoi(str); }
+			else if (!strcmp(str,"EXCLUDE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				while (cfg->failban.nexclude<32) {
+					parse_name(str);
+					if (!str[0]) break;
+					strncpy(cfg->failban.exclude[cfg->failban.nexclude], str, 15);
+					cfg->failban.exclude[cfg->failban.nexclude][15] = 0;
+					cfg->failban.nexclude++;
+					parse_spaces();
+					if (*iparser==',') { iparser++; parse_spaces(); continue; }
+					break;
+				}
+			}
 		}
 
 		// ANTICASCADE: deteccao de reshare por zapping excessivo
@@ -1749,6 +1766,23 @@ sid accept:
 				cfg->anticascade.bantime = atoi(str);
 				if (cfg->anticascade.bantime<60) cfg->anticascade.bantime=60;
 				else if (cfg->anticascade.bantime>86400) cfg->anticascade.bantime=86400;
+			}
+			else if (!strcmp(str,"EXCLUDE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				while (cfg->anticascade.nexclude<32) {
+					parse_name(str);
+					if (!str[0]) break;
+					strncpy(cfg->anticascade.exclude[cfg->anticascade.nexclude], str, 15);
+					cfg->anticascade.exclude[cfg->anticascade.nexclude][15] = 0;
+					cfg->anticascade.nexclude++;
+					parse_spaces();
+					if (*iparser==',') { iparser++; parse_spaces(); continue; }
+					break;
+				}
 			}
 		}
 
