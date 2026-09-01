@@ -667,7 +667,7 @@ struct cardserver_data
 #endif
 			int retry; // number of retries to decode ecm
 			uint8_t silentnok; // SILENT NOK: adiar a resposta NOK ao cliente (box espera sem reconectar)
-			uint8_t icam;      // DCW ICAM: transformacao icam da CW (NDS/Nagra 09xx/1802/1814)
+			uint8_t cak7;      // DCW CAK7: transformacao CAK7 Merlin da CW (NDS/Nagra 09xx/1802/1814)
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
