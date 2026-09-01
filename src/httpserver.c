@@ -4240,7 +4240,7 @@ void http_send_profiles(int sock, http_request *req)
 		struct cardserver_data *cs = getcsbyid( get_id );
 
 		tcp_init(&tcpbuf);
-		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
+		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
 		tcp_writestr(&tcpbuf, sock, "<multics>");
 		struct cardserver_data *srv;
 		if (cs) srv = cs; else srv = cfg.cardserver;
@@ -4716,7 +4716,7 @@ void http_send_newcamd(int sock, http_request *req) // page, div, row
 ////
 	if (get_action==ACTION_XML) {
 		tcp_init(&tcpbuf);
-		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
+		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
 
 		tcp_writestr(&tcpbuf, sock, "<multics>");
 
@@ -5859,7 +5859,7 @@ void http_send_cccam(int sock, http_request *req)
 		struct cccam_server_data *cccam = NULL;
 		if (str_id) cccam = getcccamserverbyid( atoi(str_id) );
 		tcp_init(&tcpbuf);
-		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
+		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
 
 		tcp_writestr(&tcpbuf, sock, "<multics>");
 
@@ -5902,7 +5902,7 @@ void http_send_cccam(int sock, http_request *req)
 		struct cccam_server_data *cccam = NULL;
 		if (str_id) cccam = getcccamserverbyid( atoi(str_id) );
 		tcp_init(&tcpbuf);
-		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\nContent-Type: application/json\r\n\r\n");
+		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\nContent-Type: application/json\r\n\r\n");
 
 		tcp_writestr(&tcpbuf, sock, "[");
 
@@ -8275,7 +8275,7 @@ void http_send_cccam_client(int sock, http_request *req)
 
 	if (get_action==ACTION_XML) {
 		tcp_init(&tcpbuf);
-		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
+		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
 		tcp_writestr(&tcpbuf, sock, "<client>");
 		uint32_t ticks = GetTickCount();
 		sprintf(http_buf, "<id>%d</id>", cli->id); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -8909,7 +8909,7 @@ void http_send_mgcamd(int sock, http_request *req)
 		struct mgcamdserver_data *mgcamd = NULL;
 		if (str_id) mgcamd = getmgcamdserverbyid( atoi(str_id) );
 		tcp_init(&tcpbuf);
-		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
+		tcp_writestr(&tcpbuf, sock, "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\nContent-Type: application/xml\r\n\r\n");
 
 		tcp_writestr(&tcpbuf, sock, "<multics>");
 
@@ -11061,6 +11061,7 @@ int start_thread_http()
 	create_thread(&http_tid, http_thread, NULL);
 	return 0;
 }
+
 
 
 
