@@ -247,9 +247,9 @@ void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		return;
 	}
 
-	// ICAM: transformacao da CW (permutacao + checksum) antes de qualquer validacao
-	if (cs->option.dcw.icam) {
-		dcw_icam_apply(dcw);
+	// CAK7: transformacao da CW (permutacao + checksum) antes de qualquer validacao
+	if (cs->option.dcw.cak7) {
+		dcw_cak7_apply(dcw);
 	}
 
 	// DCW FILTER: blacklist CWPK (cartoes marcados / fakes)
@@ -556,9 +556,9 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		return;
 	}
 
-	// ICAM: transformacao da CW (permutacao + checksum) antes de qualquer validacao
-	if (cs->option.dcw.icam) {
-		dcw_icam_apply(dcw);
+	// CAK7: transformacao da CW (permutacao + checksum) antes de qualquer validacao
+	if (cs->option.dcw.cak7) {
+		dcw_cak7_apply(dcw);
 	}
 
 	// DCW FILTER: blacklist CWPK (cartoes marcados / fakes)

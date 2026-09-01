@@ -4183,13 +4183,13 @@ link_mgcamd_user:
 			}
 #endif
 #endif
-			else if (!strcmp(str,"ICAM")) {
+			else if (!strcmp(str,"CAK7")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
 					continue;
 				} else iparser++;
-				cardserver->option.dcw.icam = parse_boolean();
+				cardserver->option.dcw.cak7 = parse_boolean();
 			}
 			else if (!strcmp(str,"FILTER")) {
 				// DCW FILTER: YES | DCW FILTER MODE: DROP/LOGONLY | DCW FILTER RULES: n
