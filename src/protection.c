@@ -1,12 +1,12 @@
 ///////////////////////////////////////////////////////////////////////////////
 // protection.c - ECM FILTER (rule engine), DCW FILTER (CWPK), FAILBAN,
-//                ANTICASCADE, ECMRATELIMIT e ICAM (transformacao da CW)
+//                ANTICASCADE, ECMRATELIMIT e CAK7 (transformacao da CW)
 //                MultiCS r1000 - by Sharillas@2026
 // Analise baseada no reverse engineering do MultiCS r120 (Duback).
 ///////////////////////////////////////////////////////////////////////////////
 
 // ---------------------------------------------------------------------------
-// ICAM: permutacao de bits [0..7] -> [1,7,5,2,6,4,0,3] nos bytes [0],[4],[8],[12]
+// CAK7 Merlin: permutacao de bits [0..7] -> [1,7,5,2,6,4,0,3] nos bytes [0],[4],[8],[12]
 // da CW + correcao do checksum de cada quad (byte 3 = soma dos outros 3).
 // Tabela extraida do r120 (.rodata@0xe8a60) e verificada bijectiva.
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ static void icam_init()
 	icam_ready = 1;
 }
 
-void dcw_icam_apply(uint8_t cw[16])
+void dcw_cak7_apply(uint8_t cw[16])
 {
 	icam_init();
 	int q;

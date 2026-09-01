@@ -151,7 +151,10 @@ void camd35_srv_recvmsg(struct server_data *srv)
 			}
 			else {	//TODO: check same dcw between cards
 				srv->ecmerrdcw ++;
-				if ( memcmp( ecm->cw, buf+24, 16) ) mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," !!! different dcw from camd35 server (%s:%d)\n",srv->host->name,srv->port);
+				if ( memcmp( ecm->cw, buf+24, 16) ) {
+					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," !!! different dcw from camd35 server (%s:%d)\n",srv->host->name,srv->port);
+					srv->ecmerrdcw++;
+				}
 			}
 #ifdef SID_FILTER
 			// ADD IN SID LIST

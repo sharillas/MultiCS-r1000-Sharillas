@@ -426,7 +426,7 @@ int cs_check_ecmlen(struct cardserver_data *cs, int len)
 }
 
 // protection.c (incluido mais abaixo) - prototipos para o aceite do ECM
-void dcw_icam_apply(uint8_t cw[16]);
+void dcw_cak7_apply(uint8_t cw[16]);
 char *ecm_filter_check(struct cardserver_data *cs, uint8_t *ecmdata, uint16_t ecmlen);
 int dcw_filter_check(struct cardserver_data *cs, uint8_t dcw[16]);
 void failban_bad(uint32_t ip, int proto, char *reason, uint8_t *badcw);
@@ -564,7 +564,7 @@ void forward_cs378x(ECM_DATA *ecm);
 #include "nagra.c" // NAGRA protection (18xx/19xx)
 #include "lite.c"  // BUILD LITE: filtro de canais CCcam.lite
 #include "ipblock.c" // Lista de IPs bloqueados (Iptables)
-#include "protection.c" // ECM/DCW filters, FAILBAN, ANTICASCADE, RATELIMIT, ICAM
+#include "protection.c" // ECM/DCW filters, FAILBAN, ANTICASCADE, RATELIMIT, CAK7
 
 ///////////////////////////////////////////////////////////////////////////////
 

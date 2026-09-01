@@ -303,7 +303,10 @@ void cs_srv_recvmsg(struct server_data *srv)
 					}
 					else {	//TODO: check same dcw between cards
 						srv->ecmerrdcw ++;
-						if ( memcmp(ecm->cw, buf+3, 16) ) mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," !!! different dcw from server (%s:%d)\n",srv->host->name,srv->port);
+						if ( memcmp(ecm->cw, buf+3, 16) ) {
+							mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," !!! different dcw from server (%s:%d)\n",srv->host->name,srv->port);
+							srv->ecmerrdcw++; // CW divergente da aceite: reader a produzir CW errada (cartao marcado / CAK7 mal) -> penaliza no health
+						}
 					}
 #ifdef SID_FILTER
 					// ADD IN SID LIST
