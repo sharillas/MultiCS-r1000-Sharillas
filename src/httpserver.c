@@ -2819,8 +2819,11 @@ void getservercells(struct server_data *srv, char cell[8][8192] )
 			sprintf( temp,"<b>Total Cards = %d</b><br>", srv_cardcount(srv,-1) );
 		strcpy( cell[6], temp );
 		// DETALHE por card dentro de uma div com scroll (nunca estoura a tabela)
-		if ( (strlen(cell[6])+64) < (sizeof(cell[6])-64) )
-			strcat( cell[6], "<div style='max-height:160px;overflow-y:auto;white-space:nowrap;'>" );
+		int divopened = 0;
+		if ( (strlen(cell[6])+96) < (sizeof(cell[6])-96) ) {
+			strcat( cell[6], "<div style='max-height:160px;max-width:350px;overflow-y:auto;overflow-x:hidden;white-space:nowrap;'>" );
+			divopened = 1;
+		}
 		struct cs_card_data *card = srv->card;
 		while (card) {
 			char cardbuf[2048] = "";
@@ -2832,7 +2835,7 @@ void getservercells(struct server_data *srv, char cell[8][8192] )
 			}
 			card = card->next;
 		}
-		if ( (strlen(cell[6])+16) < (sizeof(cell[6])-16) ) strcat( cell[6], "</div>" );
+		if (divopened) strcat( cell[6], "</div>" );
 	}
 	else {
 		if (srv->statmsg) {
@@ -3054,7 +3057,7 @@ void http_send_servers(int sock, http_request *req)
 	sprintf( http_buf," <input type=button class=%s onclick=\"parent.location='/servers?type=%s&amp;list=disconnected'\" value='Disconnected (%d)'>",class,str_type,total-connected);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	// Table
-	sprintf( http_buf, "<br><table class=maintable width=100%%>\n<tr><th width=20px>Uptime</th><th width=200px>Host</th><th width=100px>Server</th><th width=100px>Connected</th><th width=150px>Ecm OK</th><th width=50px>EcmTime</th><th>Cards</th></tr>\n");
+	sprintf( http_buf, "<br><div style='overflow-x:auto;max-width:100%%'><table class=maintable width=100%%>\n<tr><th width=20px>Uptime</th><th width=200px>Host</th><th width=100px>Server</th><th width=100px>Connected</th><th width=150px>Ecm OK</th><th width=50px>EcmTime</th><th width=360px>Cards</th></tr>\n");
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	srv = cfg.server;
 	int alt = 0;
@@ -3110,7 +3113,7 @@ void http_send_servers(int sock, http_request *req)
 			srv = srv->next;
 		}
 	}
-	tcp_writestr(&tcpbuf, sock, "</table>");
+	tcp_writestr(&tcpbuf, sock, "</table></div>");
 
 	// ===== ECM DEDUP (1 pedido unico por ECM em voo) =====
 	// renderizado no page E no div (autorefresh AJAX) para nao desaparecer
