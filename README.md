@@ -1,6 +1,6 @@
 # MultiCS r1000 v1.26 - by Sharillas
 
-Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruÃ­do e muito expandido: GUI web moderna, Softcam BISS/CW, proteÃ§Ãµes contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs**, login guard anti brute-force, NOK cache, validaÃ§Ã£o de uploads sem crash, **SILENT NOK adiado** (v1.24), e o pacote anti-â€œcartÃµes marcadosâ€ (v1.25): **ECM FILTER rule engine**, **DCW FILTER CWPK** com modo AUTO, **FAILBAN**, **ANTICASCADE**, **ECMRATELIMIT** e **DCW ICAM** (Sky DE 098D / MEO / NOS).
+Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruÃ­do e muito expandido: GUI web moderna, Softcam BISS/CW, proteÃ§Ãµes contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs**, login guard anti brute-force, NOK cache, validaÃ§Ã£o de uploads sem crash, **SILENT NOK adiado** (v1.24), e o pacote anti-â€œcartÃµes marcadosâ€ (v1.25): **ECM FILTER rule engine**, **DCW FILTER CWPK** com modo AUTO, **FAILBAN**, **ANTICASCADE**, **ECMRATELIMIT** e **DCW CAK7** (Sky DE 098D / MEO / NOS).
 
 > **VersÃ£o:** v1.25 | **LicenÃ§a:** Sharillas@2026
 
@@ -95,7 +95,7 @@ Fluxo mÃ­nimo para funcionar:
 - **FAILBAN**: ban automÃ¡tico de IPs com eventos maus por protocolo (CCCAM/NEWCAMD/MGCAMD/CAMD35/CS378X/CACHE) com `BANTIME`
 - **ANTICASCADE**: deteÃ§Ã£o de reshare por zapping excessivo (`MAXZAP`/`WINDOW`/`BANTIME`)
 - **ECMRATELIMIT**: proteÃ§Ã£o do cartÃ£o fÃ­sico (`SIDTIME` entre ECMs do mesmo canal, `MAXECM` por segundo)
-- **DCW ICAM**: transformaÃ§Ã£o iCAM da CW (permutaÃ§Ã£o de bits + checksum dos quads â€” algoritmo extraÃ­do por reverse engineering do r120) para Sky DE 098D / MEO / NOS; perfil `[SkyDE-098D]` de exemplo
+- **DCW CAK7 (CAK7 Merlin)**: transformaÃ§Ã£o iCAM da CW (permutaÃ§Ã£o de bits + checksum dos quads â€” algoritmo extraÃ­do por reverse engineering do r120) para Sky DE 098D / MEO / NOS; perfil `[SkyDE-098D]` de exemplo
 - Estado de tudo visÃ­vel na GUI (pÃ¡gina do perfil + DBG)
 
 ### Novo na v1.24 â€” SILENT NOK
