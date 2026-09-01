@@ -1,106 +1,48 @@
 # ============================================================
-# CCcam.providers - NOMES DOS PROVIDERS/IDENTS (GUI e logs)
+# CCcam.providers - NOMES DOS PROVIDERS/IDENTS ( WebGUI e logs)
 # ============================================================
-# So nomes - este ficheiro NAO da acesso a nada. Serve para a GUI
-# e o log mostrarem o nome do pacote em vez do numero.
-#
+# Só nomes - este ficheiro NÃO da acesso a nada. Serve somente para info á WebGUI e o log mostrarem o nome do pacote em vez do numero.
+# -----------------------------------------------------------------------
 # FORMATO 1:  CAID:PROVID|NOME
 # FORMATO 2:  CAPROVID_8HEX "NOME"
-#
 # Exemplos:
 #    1814:005211|MEO ID (ident reportado pelos cartoes MEO atuais)
 #    0500:050800|SRG SSR (Viaccess antigo)
-#
+# ------------------------------------------------------------------------
 # Para acrescentar um ident novo: adiciona uma linha no formato
-# CAID:PROVID|NOME (CAID e PROVID em hex). Depois "Reload Main
-# Config" na GUI (ou restart) para aplicar.
+# CAID:PROVID|NOME (CAID e PROVID em hex). Depois "Reload Main Config" na WebGUI (ou restart) para aplicar.
 # ============================================================
 
-1814:000000|MEO ID (Nagra Merlin - wildcard/emulacao, todas as boxes)
-1813:000000|Canal+ Polónia (nc+ N3 tunnelled - emulacao)
-1810:000000|Movistar+ (Nagra - iPlus HD) [19.2E]
-1810:004101|Digital+ / Movistar+
-0100:003311|Canal+ France (Seca - DESATIVADO) [19.2E]
-098D:000000|Sky Deutschland (NDS Videoguard V15) [19.2E]
-0500:030B00|TNT SAT (Viaccess - classicos V5/V6) [19.2E]
-2600:000000|BISS (constant CW)
-0500:043800|Redlight Mega Elite HD [V] (Adultos 13E)
-0500:050F00|Redlight Mega Elite HD [V] (Adultos 13E)
-0500:061500|SCT [V]
-0647:000000|Redlight Mega Elite HD [I]
-1884:000000|Canal+ Polónia (Nagra Cayman) [13E]
-0100:000068|Canal+ Polska (Cameleon Seca) [13E]
-1803:000000|Polsat Box (Nagra 3 - cartoes antigos Rom142) [13E]
-0B01:000000|NC+ (Conax) [13E]
-1861:000000|Cyfrowy Polsat [N3/1861]
-0500:032A00|Orange Polska [V3]
-186C:000000|Polsat Box (Nagra Merlin) [13E]
-183D:000000|Tivùsat (Nagra Tiger - cartoes azuis/brancos) [13E]
-183E:000000|Tivùsat (Nagra Tiger - cartoes dourados) [13E]
-1856:000000|Tivùsat (Nagra Merlin 4K) [13E]
-09BD:000000|Vivacom [NDS]
-09CD:000000|SKY IT [NDS]
-0500:000000|ELITE HD 10+/SCT
-1807:000000|ELITE HD 10+/SCT
-0100:000000|CANAL+
-0B02:000000|CANAL+
-1870:000000|Polsat Box (Nagra secundario) [13E]
-06ED:000000|Polsat Box
-0911:000000|ESP HD
-091F:000000|ESP HD
-069F:000000|ESP HD
-0604:000000|ESP HD
-0699:000000|ESP HD
-5604:000000|ESP HD
-0919:000000|TivuSat/Sky IT
-093B:000000|TivuSat/Sky IT
-4AFC:000000|SSR/SRG
-1819:000000|Nagra
-181D:000000|TV Vlaanderen (Nagra Merlin) [19.2E]
-0614:000000|Provider 0614:000000
-0B00:000000|Conax
-0624:000000|Austriasat/Canal+ Austria (Irdeto 2) [19.2E]
-0653:000000|Provider 0653:000000
-1818:000000|TNT SAT (Nagra - cartoes TNTSAT 7) [19.2E]
-0641:000000|Nagra
-0500:042820|Viaccess
-0500:051900|Canal Digitaal NL (Viaccess Orca) [19.2E]
-0500:033A00|Viaccess
-1819:00006D|Nagra
-0100:00006D|Seca
-0500:050600|Viaccess
-1813:000068|Canal+ Polónia (nc+ N3 tunnelled - ident real)
-0500:061200|Viaccess
-0500:051A40|Viaccess
-0500:051910|Viaccess
-0500:051A00|Viaccess
-0500:051A10|Viaccess
-0500:051200|Viaccess
-0500:051A20|Viaccess
-0500:061400|Viaccess
-0500:071000|Viaccess
-4B24:000000|Provider 4B24:000000
-4B63:000000|Provider 4B63:000000
-0500:050800|SRG SSR (Viaccess antigo) [13E]
-0500:060200|SRG SSR (Viaccess Orca V6/V7) [13E]
-0500:070200|Viaccess
-181D:00006E|Nagra
-1818:00006C|Provider 1818:00006C
-0100:00006C|TV Vlaanderen (Mediaguard Seca3) [19.2E]
-06E1:000000|Provider 06E1:000000
-1EC0:000000|Provider 1EC0:000000
-1878:000000|Provider 1878:000000
-0659:000000|Provider 0659:000000
+#============================================================
+#            SATELITE » HISPASAT - 30W            
+#============================================================
+1814:000000|MEO (ID - Nagra Merlin) [30W]
+1814:005211|MEO (Wildcard - Channel Push) [30W]
+1814:000007|MEO ( Nagra Merlin - Primary) [30W]
+1814:005221|MEO ( ID Seca->Nagra) [30W]
+0100:005211|MEO (OLD SECA ID - DESATIVADO) [30W]  # Remover do Parse e da info
+0100:005221|MEO (OLD SECA ID - RDV, DESATIVADO) [30W]  # Remover do Parse e da info
+1802:000000|NOS (Wildcard - Channel Push) [30W]
+1802:004801|NOS (Nagra 3/CAK7  - Primary) [30W]
+1802:004901|NOS ( OLD ID - ZON) [30W]
+186F:000000|NOS (Nagra Merlin 4K - BLOQUEADO) [30W]  # Mater só a info
 
-1814:005211|MEO ID (ident reportado pelos cartoes MEO atuais)
-1814:000007|MEO ID_SAT (ident secundario da rede Nagra)
-1814:005221|MEO ID (ident da migracao Seca->Nagra)
-1802:000000|NOS ID (Nagra 3/Rom142 - ident emulacao)
-1802:004801|NOS ID (ident real primario)
-1802:004901|NOS ID (ident historico/ZON)
-186F:000000|NOS (Nagra Merlin 4K - pairing, BLOQUEADO) [30W]
-0100:005221|MEO (Seca - boxes RDV antigas, DESATIVADO)
+#============================================================
+#            SATELITE » ASTRA - 19.2E            
+#============================================================
+1813:000000|Canal+ Polónia ( nc+ N3 tunnelled ) [19.2E]
+1813:000068|Canal+ Polónia ( nc+ N3 Wildcard ID )
+1810:000000|Movistar+ ( Nagra - iPlus HD ) [19.2E]
 1810:004001|Movistar+ (Seca tunnelled) [19.2E]
+1810:004101|Digital+ / Movistar+ [19.2E]
+5604:000000|ESP HD (Movistar+) Nagra/Irdeto [19.2E]
+098D:000000|Sky DE ( NDS Videoguard V15 ) [19.2E]
+0500:030B00|TNT SAT ( Viaccess - Classic V5/V6 ) [19.2E]
+1818:000000|TNT SAT ( Nagra - TNTSAT 7 - Cards ) [19.2E]
+0500:051900|Canal Digitaal NL ( Viaccess Orca ) [19.2E]
+181D:000000|TV Vlaanderen ( Nagra Merlin ) [19.2E]
+0624:000000|Austriasat/Canal+ ( Irdeto 2 ) [19.2E]
+0100:00006C|TV Vlaanderen (Mediaguard Seca3) [19.2E]
 1811:003311|Canal+ France (Nagra Merlin) [19.2E]
 0500:032830|Canal+ France (Viaccess Orca V5/V6) [19.2E]
 098C:000000|Sky Deutschland (NDS Videoguard V14) [19.2E]
@@ -112,20 +54,107 @@
 0100:00006A|Canal Digitaal NL (Mediaguard Seca3) [19.2E]
 1817:000000|Canal Digitaal NL (Nagra Merlin) [19.2E]
 098C:000002|Austriasat/Canal+ Austria (NDS Videoguard) [19.2E]
-0500:051E00|SCT/Redlight/Adultos (Viaccess fixo) [13E]
-0500:042830|Bis TV (Viaccess) [13E]
 186A:003411|HD+ HD04 (ident real) [19.2E]
-1811:003315|Canal+ France (tematicos tunelados) [19.2E]
+1811:003315|Canal+ France (Temas - Tuneled) [19.2E]
 1811:003317|Canal+ France (Cine+/aluguer) [19.2E]
 09C4:000000|Sky DE (NDS V13 - DESATIVADO) [19.2E]
-0100:005211|MEO (Seca historico - DESATIVADO) [30W]
-0500:FFF8F0|Redlight/Elite (ident de cartao) [Redlight]
-0500:FFF830|Dorcel (ident de cartao) [Dorcel]
-0500:041700|Dorcel (Astra - cartao adulto)
-0500:041710|Dorcel (Astra - cartao adulto)
-0500:032500|Canal+ France (CSAT V5 legacy - inativo)
-0500:042200|Canal+ France (CSAT legacy - inativo)
-0500:042210|Canal+ France (CSAT legacy - inativo)
-0500:042700|FRANSAT (5W - fora do projeto)
-0500:042740|FRANSAT (5W - fora do projeto)
-0500:024300|CanalSat (legacy - inativo)
+# ---------- BULGARIA / EUROPE ----------
+09BD:000000|Vivacom [NDS]  1KR [19.2E]
+# ---------- SCT / ELITE HD (VIACCESS) ----------
+0500:000000|ELITE HD 10+/SCT  [19.2E]
+0500:061500|SCT [V] | (19.2E)
+1807:000000|ELITE HD 10+/SCT [19.2E]
+# ---------- CANAL+ (FRANCE / POLAND) ----------
+0100:000000|CANAL+ ( France/Poland ) [19.2E]
+0B02:000000|CANAL+ ( France/Poland ) [19.2E]
+# ---------- SPANISH HD (MOVISTAR / ORANGE) ----------
+0911:000000|ESP HD ( Movistar/Orange ) [19.2E]
+091F:000000|ESP HD ( Movistar/Orange ) [19.2E]
+069F:000000|ESP HD ( Movistar/Orange ) [19.2E]
+0604:000000|ESP HD ( Movistar/Orange ) [19.2E]
+0699:000000|ESP HD ( Movistar/Orange ) [19.2E]
+# ---------- ADULT (REDLIGHT / DORCEL) ----------
+0500:FFF8F0|Redlight/Elite (Card Ident) [19.2E]
+0500:FFF830|Dorcel (Card Ident) [19.2E]
+0500:041700|Dorcel (Adult) [19.2E]
+0500:041710|Dorcel (ID Adult) [19.2E]
+# ---------- CANAL+ FRANCE (ASTRA 19.2E) ----------
+0500:042820|Canal+ France (CSAT) Viaccess 4.0 [19.2E]
+0500:033A00|Canal+ France (CSAT Base) Viaccess 4.0 [19.2E]
+0500:051A40|Canal+ France (Premium) Viaccess 4.0 [19.2E]
+0500:051910|Canal+ France (Cinema) Viaccess 4.0 [19.2E]
+0500:051A00|Canal+ France (Base) Viaccess 4.0 [19.2E]
+0500:051A10|Canal+ France (Sport) Viaccess 4.0 [19.2E]
+0500:051200|Canal+ France (Legacy - Parcial) Viaccess 3.0 [19.2E]
+0500:051A20|Canal+ France (4K/UHD) Viaccess 4.0 [19.2E]
+# ---------- FRANSAT (TNT FRANCE - ASTRA 19.2E) ----------
+0500:050600|FRANSAT (TNT France) Viaccess 4.0 [19.2E]
+0641:000000|TV Vlaanderen ( Irdeto - Bélgica ) [19.2E]
+# ---------- ADULTOS (REDLIGHT/ELITE) ----------
+0647:000000|Redlight/Mega Elite HD ( Irdeto - SCT )  [19.2E]
+
+#============================================================
+#            SATELITE » SOFTCAM.KEY - EMULATOR            
+#============================================================
+2600:000000|BISS (constant CW) [13E]
+
+#============================================================
+#            SATELITE » HOTBIRD - 13E            
+#============================================================
+0500:043800|Redlight Mega Elite HD (Adultos) [13E]
+0500:050F00|Redlight Mega Elite HD (Adultos) [13E]
+1884:000000|Canal+ Polónia (Nagra Cayman) [13E]
+0100:000068|Canal+ Polska (Cameleon Seca) [13E]
+1803:000000|Polsat Box (Nagra 3 - OLD CARDS) [13E]
+0B01:000000|NC+ (Conax) [13E]
+1861:000000|Cyfrowy Polsat [N3/1861]
+0500:032A00|Orange Polska [V3]
+186C:000000|Polsat Box (Nagra Merlin) [13E]
+183D:000000|Tivùsat ( Nagra Tiger - Withe/Blue Card ) [13E]
+183E:000000|Tivùsat ( Nagra Tiger - Gold Card ) [13E]
+1856:000000|Tivùsat ( Nagra Merlin 4K ) [13E]
+0500:050800|SRG SSR ( Viaccess OLD) [13E]
+0500:060200|SRG SSR ( Viaccess Orca V6/V7) [13E]
+0500:051E00|SCT/Redlight ( Viaccess ) [13E]
+0500:042830|Bis TV (Viaccess) [13E]
+1870:000000|Polsat Box (Nagra Second ID) [13E]
+# ---------- BULGARIA / EUROPE ----------
+09CD:000000|SKY IT [NDS] [13E]
+# ---------- POLSAT (POLAND) ----------
+06ED:000000|Polsat Box [13E]
+# ---------- ITALY (TIVUSAT / SKY IT) ----------
+0919:000000|TivuSat/Sky IT [13E]
+093B:000000|TivuSat/Sky IT  [13E]
+# ---------- SWITZERLAND (SSR/SRG) ----------
+4AFC:000000|SSR/SRG ( Swisscom ) [13E]
+
+# ============================================================
+#            NAGRAVISION - 1819:000000 (GENÉRICO - CABO/IPTV )
+# ============================================================
+1819:000000| Cabo/IPTV - Nagra3.0 ( Ziggo-Holanda | Virgin Media - UK | UPC Cablecom - Suíça\Áustria\Polónia | NOS - Portugal | Telenet - Bélgica | RCS&RDS - Roménia )
+
+#==================================================================
+#  PROVIDERS - A Serem excluidos do Parse ou da INFO ( INATIVOS OU FORA DOS SATELITES EM USO )
+#==================================================================
+181D:00006E|SKY Deutschland (antigo) | Astra 19.2E | Nagravision # Remover do Parse e da info
+1818:00006C|SKY Italia (antigo) | Hotbird 13E | Nagravision # Remover do Parse e da info
+0614:000000|Canal+ NL (antigo) | Astra 19.2E | Irdeto # Remover do Parse e da info
+06E1:000000|Ziggo (Cabo) | CABO/IPTV | Irdeto | Não é satélite # Remover do Parse e da info
+0653:000000|Canal Digital | Thor 0.8W / Astra 4.8E | Conax/Irdeto | Nordic # Remover do Parse e da info
+4B24:000000|TNT Sat (antigo) | Astra 19.2E | Viaccess# Remover do Parse e da info
+4B63:000000|Canal+ France (antigo) | Astra 19.2E | Viaccess# Remover do Parse e da info
+1EC0:000000|ORF (antigo) | Astra 19.2E | Cryptoworks # Remover do Parse e da info
+1878:000000|SKY UK (antigo) | Astra 28.2E | Nagravision # Remover do Parse e da info
+0659:000000|Digiturk | Eutelsat 7E / Türksat 42E | Irdeto | Ativo parcial
+0500:032500|Canal+ France CSAT V5 | Astra 19.2E | Viaccess 3.0 # Remover do Parse e da info
+0500:042200|Canal+ France CSAT | Astra 19.2E | Viaccess 3.0 # Remover do Parse e da info
+0500:042210|Canal+ France CSAT | Astra 19.2E | Viaccess 3.0 # Remover do Parse e da info
+0500:024300|CanalSat (legacy) | Astra 19.2E | Viaccess 2.x # Remover do Parse e da info
+0500:061400|TV5MONDE / CFI (África) | Eutelsat 16A / Astra 4.8E | Viaccess 4.0
+0500:071000|Canal+ Afrique | Eutelsat 16A / SES-5 5E | Viaccess 4.0
+0500:070200|Canal+ Afrique (Legacy) | Eutelsat 16A | Viaccess 3.0
+0B00:000000|Conax | Thor (0.8W) / Intelsat # Remover do Parse e da info
+0500:061200|Viaccess | Eutelsat (16E - fora do projeto) # Remover do Parse e da info
+0500:042700|FRANSAT (5W - fora do projeto) # Remover do Parse e da info
+0500:042740|FRANSAT (5W - fora do projeto) # Remover do Parse e da info
+0100:003311|Canal+ France (Seca - DESATIVADO) [19.2E] # Remover dos providers e nem dar a info

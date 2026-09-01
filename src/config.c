@@ -5911,10 +5911,17 @@ int read_providers( struct config_data *cfg )
 					parse_spaces();
 					char *end = iparser;
 					while ( (*end!='\n')&&(*end!='\r')&&(*end!=0) ) end++;
-					if (end>iparser) {
-						*end = 0;
-						name = iparser;
+					*end = 0;
+					// comentario '#': cortar do nome; se marcado
+					// "# Remover do Parse" a entrada nao entra
+					char *cmt = strchr(iparser, '#');
+					if (cmt) {
+						*cmt = 0;
+						if (strstr(cmt+1, "Remover")) caprovid = 0;
 					}
+					char *tr = iparser + strlen(iparser);
+					while ( (tr>iparser) && ((*(tr-1)==' ')||(*(tr-1)=='\t')) ) { tr--; *tr = 0; }
+					if (strlen(iparser)) name = iparser;
 				}
 			}
 			if (caprovid && name && name[0]) {

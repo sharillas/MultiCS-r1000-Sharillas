@@ -1,4 +1,4 @@
-#include "common.h"
+﻿#include "common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -2577,44 +2577,67 @@ static int card_has_profile(uint16_t caid)
 	return 0;
 }
 
-// renderiza os providers de um card AGRUPADOS pelos perfis do projeto
-// (uma linha por pacote: "CAID: idents... [Perfil]") - providers fora
-// dos perfis ficam de fora (filtro rigoroso)
+// renderiza os providers de um card: idents dos perfis + [Perfil] e os
+// idents fora dos perfis (o caller envolve numa div com scroll para nunca
+// desformatar a tabela)
 static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 {
-	int any = 0;
+	int i, k, shown = 0;
 	struct cardserver_data *cs = cfg.cardserver;
 	while (cs) {
 		if (cs->card.caid != card->caid) { cs = cs->next; continue; }
-		char provs[512] = "";
-		int first = 1, n = 0, i;
+		char provs[768] = "";
+		int first = 1, cnt = 0;
 		for (i=0; i<card->nbprov; i++) {
-			int in = 0, k;
+			int in = 0;
 			for (k=0; k<cs->card.nbprov; k++)
 				if (cs->card.prov[k].id==card->prov[i]) { in = 1; break; }
 			if (!in) continue;
 			char *pn = providerID(card->caid, card->prov[i]);
-			char t2[160];
-			if (pn) snprintf(t2, sizeof(t2), "%s%06x <font color=#CC3300>%s</font>", first?"":" , ", card->prov[i], pn);
-			else snprintf(t2, sizeof(t2), "%s%06x", first?"":" , ", card->prov[i]);
-			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; n++; }
+			char t2[220];
+			if (pn) snprintf(t2, sizeof(t2), "%s%06x <font color=#CC3300>%s</font>", first?"":"<br>", card->prov[i], pn);
+			else snprintf(t2, sizeof(t2), "%s%06x", first?"":"<br>", card->prov[i]);
+			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; cnt++; }
 		}
-		if (n) {
-			char line[900];
-			snprintf(line, sizeof(line), "<br><b>%04x:</b> %s <font style=\"font-size:8px;color:#8899aa\">[%s]</font>", card->caid, provs, cs->name);
-			if ( (strlen(out)+strlen(line)) < (outsz-16) ) strcat(out, line);
-			any = 1;
+		if (cnt) {
+			char line[1024];
+			snprintf(line, sizeof(line), "<b>%04x [%s]:</b><br>%s", card->caid, cs->name, provs);
+			if ( (strlen(out)+strlen(line)) < (outsz-24) ) strcat(out, line);
+			shown += cnt;
 		}
 		cs = cs->next;
 	}
-	if (!any) {
-		char line[300];
-		char *pn = providerID(card->caid, card->prov[0]);
-		char *pkg = caid_pkg_name(card->caid);
-		if (pn) snprintf(line, sizeof(line), "<br><b>%04x:</b> %06x <font color=#CC3300>%s</font> <font style=\"font-size:8px;color:#8899aa\">(sem perfil)</font>", card->caid, card->prov[0], pn);
-		else if (pkg) snprintf(line, sizeof(line), "<br><b>%04x:</b> %06x <font style=\"font-size:8px;color:#8899aa\">%s (sem perfil)</font>", card->caid, card->prov[0], pkg);
-		else snprintf(line, sizeof(line), "<br><b>%04x:</b> %06x <font style=\"font-size:8px;color:#8899aa\">(sem perfil)</font>", card->caid, card->prov[0]);
-		if ( (strlen(out)+strlen(line)) < (outsz-16) ) strcat(out, line);
+	{
+		char provs[768] = "";
+		int first = 1, cnt2 = 0;
+		for (i=0; i<card->nbprov; i++) {
+			int in = 0;
+			struct cardserver_data *cs2 = cfg.cardserver;
+			while (cs2) {
+				if (cs2->card.caid==card->caid)
+					for (k=0; k<cs2->card.nbprov; k++)
+						if (cs2->card.prov[k].id==card->prov[i]) { in = 1; break; }
+				if (in) break;
+				cs2 = cs2->next;
+			}
+			if (in) continue;
+			char *pn = providerID(card->caid, card->prov[i]);
+			char t2[220];
+			if (pn) snprintf(t2, sizeof(t2), "%s%06x <font color=#8899aa>%s</font>", first?"":"<br>", card->prov[i], pn);
+			else snprintf(t2, sizeof(t2), "%s%06x", first?"":"<br>", card->prov[i]);
+			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; cnt2++; }
+		}
+		if (cnt2) {
+			char line[1024];
+			snprintf(line, sizeof(line), "<font style='font-size:9px;color:#8899aa'>fora dos perfis:</font><br>%s", provs);
+			if ( (strlen(out)+strlen(line)) < (outsz-24) ) strcat(out, line);
+		}
+		if (!shown && !cnt2) {
+			char line[300];
+			char *pkg = caid_pkg_name(card->caid);
+			snprintf(line, sizeof(line), "<b>%04x:</b> %s", card->caid, pkg?pkg:"");
+			strncat(out, line, outsz-16);
+		}
 	}
 }
 
@@ -2795,35 +2818,21 @@ void getservercells(struct server_data *srv, char cell[8][8192] )
 		else
 			sprintf( temp,"<b>Total Cards = %d</b><br>", srv_cardcount(srv,-1) );
 		strcpy( cell[6], temp );
-		// RESUMO COMPACTO por CAID (v1.26): a linha nunca estoura, mesmo com
-		// dezenas de cards. So os CAIDs dos nossos perfis (ate 12) + contagem
-		// dos restantes. Detalhe completo fica na pagina /server?id=.
-		int caids[64]; int counts[64]; int ncaid = 0;
+		// DETALHE por card dentro de uma div com scroll (nunca estoura a tabela)
+		if ( (strlen(cell[6])+64) < (sizeof(cell[6])-64) )
+			strcat( cell[6], "<div style='max-height:160px;overflow-y:auto;white-space:nowrap;'>" );
 		struct cs_card_data *card = srv->card;
 		while (card) {
-			int k, found = -1;
-			for (k=0; k<ncaid; k++) if (caids[k]==card->caid) { found = k; break; }
-			if (found<0) {
-				if (ncaid<64) { caids[ncaid] = card->caid; counts[ncaid] = 1; ncaid++; }
+			char cardbuf[2048] = "";
+			card_groups_html( card, cardbuf, sizeof(cardbuf) );
+			if (cardbuf[0]) {
+				char line[2200];
+				snprintf(line, sizeof(line), "%s<br>", cardbuf);
+				if ( (strlen(cell[6])+strlen(line)) < (sizeof(cell[6])-48) ) strcat( cell[6], line );
 			}
-			else counts[found]++;
 			card = card->next;
 		}
-		int k;
-		int shown = 0, others = 0;
-		char tmp2[96];
-		for (k=0; k<ncaid; k++) {
-			if ( caid_in_profiles(caids[k]) && (shown<12) ) {
-				sprintf( tmp2, "<span style='white-space:nowrap'>%04X:<b>%d</b></span> ", caids[k], counts[k]);
-				if ( (strlen(cell[6])+strlen(tmp2)) < (sizeof(cell[6])-96) ) { strcat( cell[6], tmp2 ); shown++; }
-			}
-			else others += counts[k];
-		}
-		if (others) {
-			sprintf( tmp2, "<span style='color:#8899aa;font-size:10px'>(+%d fora dos perfis)</span>", others);
-			if ( (strlen(cell[6])+strlen(tmp2)) < (sizeof(cell[6])-96) ) strcat( cell[6], tmp2 );
-		}
-		strcat( cell[6], "<br>" );
+		if ( (strlen(cell[6])+16) < (sizeof(cell[6])-16) ) strcat( cell[6], "</div>" );
 	}
 	else {
 		if (srv->statmsg) {
@@ -3369,16 +3378,16 @@ void http_send_server(int sock, http_request *req)
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
 					{
-						char cardbuf[2048] = "";
+						char cardbuf[4096] = "";
 						card_groups_html( card, cardbuf, sizeof(cardbuf) );
-						sprintf( http_buf,"<td class=alt%d>[%d]%s",alt,card->uphops,cardbuf);
+						sprintf( http_buf,"<td class=alt%d>[%d]<div style='max-height:110px;overflow-y:auto;white-space:nowrap;'>%s</div>",alt,card->uphops,cardbuf);
 						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 					}
 #else
 					{
-						char cardbuf[2048] = "";
+						char cardbuf[4096] = "";
 						card_groups_html( card, cardbuf, sizeof(cardbuf) );
-						sprintf( http_buf,"<td class=alt%d>%s",alt,cardbuf);
+						sprintf( http_buf,"<td class=alt%d><div style='max-height:110px;overflow-y:auto;white-space:nowrap;'>%s</div>",alt,cardbuf);
 						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 					}
 #endif
@@ -3399,9 +3408,9 @@ void http_send_server(int sock, http_request *req)
 				while(card) {
 					if (alt==1) alt=2; else alt=1;
 					{
-						char cardbuf[2048] = "";
+						char cardbuf[4096] = "";
 						card_groups_html( card, cardbuf, sizeof(cardbuf) );
-						sprintf( http_buf,"<td class=alt%d>%s",alt,cardbuf);
+						sprintf( http_buf,"<td class=alt%d><div style='max-height:110px;overflow-y:auto;white-space:nowrap;'>%s</div>",alt,cardbuf);
 						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 					}
 					sprintf( http_buf,"</td></tr>");
@@ -5743,8 +5752,9 @@ void getcccamcells(struct cc_client_data *cli, char cell[10][2048])
 		sprintf( cell[8],"Last Seen %02dd %02d:%02d:%02d", d/(3600*24),(d/3600)%24,(d/60)%60,d%60);
 	}
 	else if ( cli->lastecm.caid ) {
+		char *pvn = providerID(cli->lastecm.caid, cli->lastecm.prov);
 		if (cli->lastecm.status)  strcpy( cell[8],"<span class=success"); else strcpy( cell[8],"<span class=failed");
-		sprintf( temp," title='%04x:%06x:%04x'>ch %s (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
+		sprintf( temp," title='%04x:%06x:%04x'>Canal: %s%s%s - %04x:%06x (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), pvn?" - ":"", pvn?pvn:"", cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
 		strcat( cell[8], temp );
 		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
 			// From ???
@@ -11048,4 +11058,7 @@ int start_thread_http()
 	create_thread(&http_tid, http_thread, NULL);
 	return 0;
 }
+
+
+
 
