@@ -47,7 +47,7 @@ NOVO v1.25 (pacote anti-"cartões marcados" - análise do MultiCS r120):
   - FAILBAN: ban automático de IPs por eventos maus, por protocolo
   - ANTICASCADE: anti-reshare por zapping excessivo
   - ECMRATELIMIT: proteção do cartão físico (SIDTIME/MAXECM)
-  - DCW ICAM: transformação iCAM da CW (Sky DE 098D / MEO / NOS) com
+  - DCW CAK7 (CAK7 Merlin): transformação iCAM da CW (Sky DE 098D / MEO / NOS) com
     perfil [SkyDE-098D] de exemplo comentado
   - Estado de tudo visível na GUI (página do perfil + botão DBG)
 
