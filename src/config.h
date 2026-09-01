@@ -1703,6 +1703,8 @@ struct config_data
 		int max_cache;
 		uint32_t time; // janela de contagem (legado)
 		int count;
+		char exclude[32][16];
+		int nexclude;
 	} failban;
 
 	// ANTICASCADE: deteccao de reshare por zapping excessivo
@@ -1710,6 +1712,8 @@ struct config_data
 		int maxzap;
 		int window;  // segundos
 		int bantime; // segundos
+		char exclude[32][16];
+		int nexclude;
 	} anticascade;
 };
 
