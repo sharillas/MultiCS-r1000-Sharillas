@@ -784,7 +784,7 @@ char http_replyok[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nCache-Contr
 char http_html[] = "<HTML>\n";
 char http_html_[] = "</HTML>\n";
 
-char http_head[] = "<HEAD>\n";
+char http_head[] = "<HEAD>\n<meta http-equiv=\"Cache-Control\" content=\"no-cache, no-store, must-revalidate\">\n<meta http-equiv=\"Pragma\" content=\"no-cache\">\n<meta http-equiv=\"Expires\" content=\"0\">\n";
 char http_head_[] = "</HEAD>\n";
 
 char http_body[] = "<BODY>\n";
@@ -10067,7 +10067,13 @@ void http_send_editor(int sock, http_request *req, int index)
 			}
 		}
 		// footer (igual as outras pages)
-		tcp_writestr(&tcpbuf, sock, "<div class='home-footer'><span class='hf-ver'>MultiCS r1000 v"VERSION_STR" - All Rights Reserved - Sharillas@2026</span></div>");
+		{
+			time_t nowt = time(NULL);
+			struct tm *lt = localtime(&nowt);
+			char fbuf[256];
+			snprintf(fbuf, sizeof(fbuf), "<div class='home-footer'><span class='hf-ver'>MultiCS r1000 v"VERSION_STR" - All Rights Reserved - Sharillas@2026</span> <span class='hf-ver' style='font-size:10px;color:#8899aa'>| servidor: %02d:%02d:%02d</span></div>", lt->tm_hour, lt->tm_min, lt->tm_sec);
+			tcp_writestr(&tcpbuf, sock, fbuf);
+		}
 		tcp_writestr(&tcpbuf, sock, "</body></html>");
 		tcp_flush(&tcpbuf, sock);
 	}
