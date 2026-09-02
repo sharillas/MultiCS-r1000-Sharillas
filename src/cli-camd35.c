@@ -1,4 +1,4 @@
-///////////////////////////////////////////////////////////////////////////////
+﻿///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 void camd35_send_keepalive(struct server_data *srv)
@@ -118,7 +118,7 @@ void camd35_srv_recvmsg(struct server_data *srv)
 				mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] viaccess nano e0 detected ch %04x:%06x:%04x\n",ecm->caid, ecm->provid, ecm->sid);
 
 			if (!acceptDCW( buf+24, isnanoe0 ) ) {
-				srv->ecmerrdcw++;
+				srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount();
 				// Log abnormal case when dcw is rejected
 				mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from camd35 server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid,isnanoe0);
 				pthread_mutex_lock(&prg.lockecm); //###
@@ -153,7 +153,7 @@ void camd35_srv_recvmsg(struct server_data *srv)
 				srv->ecmerrdcw ++;
 				if ( memcmp( ecm->cw, buf+24, 16) ) {
 					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," !!! different dcw from camd35 server (%s:%d)\n",srv->host->name,srv->port);
-					srv->ecmerrdcw++;
+					srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount();
 				}
 			}
 #ifdef SID_FILTER
@@ -411,5 +411,6 @@ int camd35_connect_srv(struct server_data *srv, int fd)
 	}
 	return 1;
 }
+
 
 
