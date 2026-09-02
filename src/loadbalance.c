@@ -211,7 +211,15 @@ int srv_healthscore(struct cardserver_data *cs, struct server_data *srv)
 	if (sta>1000) sta = 1000;
 
 	// Erros: timeouts + bad dcw (20 erros = penalizacao maxima)
-	int err = (srv->ecmtimeout + srv->ecmerrdcw) * 50;
+	// decay: se nao ha conflitos ha >10min, a penalizacao cai para metade;
+	// >30min sem conflitos, desaparece (o colega pode ter corrigido as CWs)
+	int errdcw_eff = srv->ecmerrdcw;
+	if (srv->ecmerrdcw_time) {
+		uint32_t el = (GetTickCount() - srv->ecmerrdcw_time) / 1000;
+		if (el > 1800) errdcw_eff = 0;
+		else if (el > 600) errdcw_eff = errdcw_eff / 2;
+	}
+	int err = (srv->ecmtimeout + errdcw_eff) * 50;
 	if (err>1000) err = 1000;
 
 	int score = (suc*wsuc + lat*wlat + sta*wsta - err*werr)/100;

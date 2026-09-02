@@ -1,4 +1,4 @@
-///////////////////////////////////////////////////////////////////////////////
+﻿///////////////////////////////////////////////////////////////////////////////
 // TOOLS
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -305,7 +305,7 @@ void cs_srv_recvmsg(struct server_data *srv)
 						srv->ecmerrdcw ++;
 						if ( memcmp(ecm->cw, buf+3, 16) ) {
 							mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," !!! different dcw from server (%s:%d)\n",srv->host->name,srv->port);
-							srv->ecmerrdcw++; // CW divergente da aceite: reader a produzir CW errada (cartao marcado / CAK7 mal) -> penaliza no health
+							srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount(); // CW divergente da aceite: reader a produzir CW errada (cartao marcado / CAK7 mal) -> penaliza no health
 						}
 					}
 #ifdef SID_FILTER
@@ -474,4 +474,5 @@ void cs_check_keepalive(struct server_data *srv)
 		}
 	}
 }
+
 
