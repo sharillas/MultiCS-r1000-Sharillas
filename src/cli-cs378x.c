@@ -1,4 +1,4 @@
-///////////////////////////////////////////////////////////////////////////////
+﻿///////////////////////////////////////////////////////////////////////////////
 // TCP
 ///////////////////////////////////////////////////////////////////////////////
 //CMD00 - ECM (request)
@@ -148,7 +148,7 @@ void cs378x_srv_recvmsg(struct server_data *srv)
 			//
 			if (buf[5]!=0x10) {
 				mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from cs378x server (%s:%d), wrong length!!!\n",srv->host->name,srv->port);
-				srv->ecmerrdcw++;
+				srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount();
 				pthread_mutex_lock(&prg.lockecm); //###
 				if (srv->ecm.request) ecm_setsrvflag(srv->ecm.request, srv->id, ECM_SRV_REPLY_FAIL);
 				pthread_mutex_unlock(&prg.lockecm); //###
@@ -176,7 +176,7 @@ void cs378x_srv_recvmsg(struct server_data *srv)
 				mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] viaccess nano e0 detected ch %04x:%06x:%04x\n",ecm->caid, ecm->provid, ecm->sid);
 			if (!acceptDCW( buf+24, isnanoe0 ) ) {
 				mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from cs378x server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid, isnanoe0);
-				srv->ecmerrdcw++;
+				srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount();
 				pthread_mutex_lock(&prg.lockecm); //###
 				ecm_setsrvflagdcw( ecm, srv->id, ECM_SRV_REPLY_FAIL, buf+24 );
 				pthread_mutex_unlock(&prg.lockecm); //###
@@ -207,7 +207,7 @@ void cs378x_srv_recvmsg(struct server_data *srv)
 				srv->ecmerrdcw ++;
 				if ( memcmp( ecm->cw, buf+24, 16) ) {
 					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," !!! different dcw from cs378x server (%s:%d)\n",srv->host->name,srv->port);
-					srv->ecmerrdcw++;
+					srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount();
 				}
 			}
 #ifdef SID_FILTER
@@ -442,4 +442,5 @@ int cs378x_connect_srv(struct server_data *srv, int fd)
 	}
 	return 1;
 }
+
 
