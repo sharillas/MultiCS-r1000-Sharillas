@@ -2970,11 +2970,8 @@ void http_send_servers(int sock, http_request *req)
 		}			
 		// Send XML CELLS
 		getservercells(srv,cell);
-		// FIX v1.26: coluna Cards pode ser grande -> cap antes de escapar
-		// (o row XML e cosmetico; o div refresca completo a cada ciclo)
-		if (strlen(cell[6])>3000) cell[6][3000] = 0;
 		for(i=0; i<8; i++) xmlescape( cell[i] );
-		char buf[5000] = "";
+		char buf[22000] = "";
 		snprintf( buf, sizeof(buf), "<server>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3_c>%s</c3_c>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n</server>\n",cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6] );
 		http_send_xml( sock, req, buf, strlen(buf));
 		return;
@@ -4033,7 +4030,7 @@ void http_send_cache_peer(int sock, http_request *req)
 ///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////
-void getprofilecells(struct cardserver_data *cs, char cell[11][4096])
+void getprofilecells(struct cardserver_data *cs, char cell[11][8192])
 {
 	char temp[2048];
 	// CELL0 # Profile name
@@ -4279,10 +4276,8 @@ void http_send_profiles(int sock, http_request *req)
 		if (!cs) return;
 		// Send XML CELLS
 		getprofilecells(cs,cell);
-		// FIX v1.26: cap na coluna Caid:Providers (pode ser grande) antes de escapar
-		if (strlen(cell[9])>3000) cell[9][3000] = 0;
 		for(i=0; i<11; i++) xmlescape( cell[i] );
-		char buf[5000] = "";
+		char buf[22000] = "";
 		snprintf( buf, sizeof(buf), "<profile>\n<c0>%s</c0>\n<c1_c>%s</c1_c>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n<c8>%s</c8>\n<c9>%s</c9>\n</profile>\n",cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9] );
 		http_send_xml( sock, req, buf, strlen(buf));
 		return;
@@ -11067,6 +11062,7 @@ int start_thread_http()
 	create_thread(&http_tid, http_thread, NULL);
 	return 0;
 }
+
 
 
 
