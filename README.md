@@ -30,8 +30,8 @@ sudo bash install.sh            # ou: sudo bash install.sh /meu/caminho
 ```
 
 O instalador:
-- copia sÃ³ os **binÃ¡rios** e as **configs de exemplo** (nÃ£o precisa do repo completo)
-- cria o serviÃ§o systemd `multics` (inicio automÃ¡tico, restart em falha)
+- copia sÃ³ os **binÃ¡rios** e as **configs de exemplo** (não precisa do repo completo)
+- cria o serviÃ§o systemd `multics` (inicio automático, restart em falha)
 - abre as portas no ufw (se existir)
 - no fim mostra um **guia completo** (onde estÃ£o os ficheiros, como funciona, primeiros passos)
 
