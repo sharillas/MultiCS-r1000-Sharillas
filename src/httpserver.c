@@ -794,7 +794,7 @@ char html_title[] = "<title>%s - %s</title>\n";
 
 char http_link[] = "<meta http-equiv=\"Content-type\" content=\"text/html; charset=utf-8\"/>\n";
 
-char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1109\" type=\"text/css\" />\n";
+char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1128\" type=\"text/css\" />\n";
 
 char http_javascript[] = "<script src=\"/customjs.js\"></script>\n";
 
@@ -828,8 +828,8 @@ char *yesno( int a )
 
 char *onoff( int a )
 {
-	static char yes[] ="ON";
-	static char no[] ="OFF";
+	static char yes[] ="<span class='sw sw-on'>ON</span>";
+	static char no[] ="<span class='sw sw-off'>OFF</span>";
 	if (a) return yes; else return no;
 }
 
@@ -1454,6 +1454,31 @@ void http_send_index(int sock, http_request *req)
 	sprintf( http_buf,"<span class=stat-label>NodeID =</span> %02x%02x%02x%02x%02x%02x%02x%02x", cfg.nodeid[0], cfg.nodeid[1], cfg.nodeid[2], cfg.nodeid[3], cfg.nodeid[4], cfg.nodeid[5], cfg.nodeid[6], cfg.nodeid[7]);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "</div></div></div>");
+
+	// === tiles (Stats Tiles v1.28) ===
+	{
+		int rampct = 0;
+		if (memtotal) {
+			unsigned long used = (memavail && memavail<memtotal) ? (unsigned long)(memtotal-memavail) : (unsigned long)(memtotal-memfree);
+			rampct = (int)(used*100/memtotal);
+			if (rampct<0) rampct = 0; if (rampct>100) rampct = 100;
+		}
+		tcp_writestr(&tcpbuf, sock, "<div class='trow'>");
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Uptime</div><div class='big c-cyan'>%02dd %02dh</div><div class='sub'>desde o ultimo boot</div></div>", d/(3600*24), (d/3600)%24);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Servers</div><div class='big c-violet'>%d</div><div class='sub'>%d profiles configurados</div></div>", cfg.totalservers, cfg.totalprofiles);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Clients</div><div class='big c-blue'>%d</div><div class='sub'>conectados agora</div></div>", connected_all_clients());
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>ECM Totais</div><div class='big c-green'>%d</div><div class='sub'>%d activos neste ciclo</div></div>", totalecm, activeecm);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>RAM</div><div class='big c-amber'>%d%%</div><div class='sub'>%d / %d MB</div></div>", rampct, memtotal?((memtotal-memavail>0&&memavail)?(memtotal-memavail):(memtotal-memfree))/1024:0, memtotal/1024);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Softcam</div><div class='big c-red'>%d</div><div class='sub'>%d cache servers</div></div>", emu_keycount, cfg.cache.totalservers);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_writestr(&tcpbuf, sock, "</div>");
+	}
+
 
 	// Current Ecm Request
 	ECM_DATA *ecmreq = NULL;
@@ -2595,8 +2620,8 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 			if (!in) continue;
 			char *pn = providerID(card->caid, card->prov[i]);
 			char t2[220];
-			if (pn) snprintf(t2, sizeof(t2), "%s%06x <font color=#CC3300>%s</font>", first?"":"<br>", card->prov[i], pn);
-			else snprintf(t2, sizeof(t2), "%s%06x", first?"":"<br>", card->prov[i]);
+			if (pn) snprintf(t2, sizeof(t2), "%s<span class='cardchip chip-%04x'>%06x</span> <span class='prov'>%s</span>", first?"":" ", card->caid, card->prov[i], pn);
+			else snprintf(t2, sizeof(t2), "%s<span class='cardchip chip-%04x'>%06x</span>", first?"":" ", card->caid, card->prov[i]);
 			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; cnt++; }
 		}
 		if (cnt) {
@@ -2623,8 +2648,8 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 			if (in) continue;
 			char *pn = providerID(card->caid, card->prov[i]);
 			char t2[220];
-			if (pn) snprintf(t2, sizeof(t2), "%s%06x <font color=#8899aa>%s</font>", first?"":"<br>", card->prov[i], pn);
-			else snprintf(t2, sizeof(t2), "%s%06x", first?"":"<br>", card->prov[i]);
+			if (pn) snprintf(t2, sizeof(t2), "%s<span class='cardchip'>%06x</span> <span class='prov'>%s</span>", first?"":" ", card->prov[i], pn);
+			else snprintf(t2, sizeof(t2), "%s<span class='cardchip'>%06x</span>", first?"":" ", card->prov[i]);
 			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; cnt2++; }
 		}
 		if (cnt2) {
@@ -2991,7 +3016,7 @@ void http_send_servers(int sock, http_request *req)
 		// ACTIONS REQUEST
 		tcp_writestr(&tcpbuf, sock, "\nfunction imgrequest( url, el )\n{\n	var httpRequest;\n	try { httpRequest = new XMLHttpRequest(); }\n	catch (trymicrosoft) { try { httpRequest = new ActiveXObject('Msxml2.XMLHTTP'); } catch (oldermicrosoft) { try { httpRequest = new ActiveXObject('Microsoft.XMLHTTP'); } catch(failed) { httpRequest = false; } } }\n	if (!httpRequest) { alert('Your browser does not support Ajax.'); return false; }\n	if ( typeof(el)!='undefined' ) {\n		el.onclick = null;\n		el.style.opacity = '0.7';\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) if (httpRequest.status == 200) el.style.opacity = '0.3';\n		}\n	}\n	httpRequest.open('GET', url, true);\n	httpRequest.send(null);\n}\n");
 		// UPD ROW
-		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id )\n{\n	var row = document.getElementById(id);\n	if (!row) return;\n	var cc6 = row.cells.item(6);\n	if (cc6 && cc6.matches && cc6.matches(':hover')) return;\n	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n	row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n	row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n	row.cells.item(3).className = xmlDoc.getElementsByTagName('c3_c')[0].childNodes[0].nodeValue;\n	row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n	row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n	row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n	row.cells.item(6).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n}\n" );
+		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id )\n{\n	var row = document.getElementById(id);\n	if (!row) return;\n	var cc6 = row.cells.item(row.cells.length-1);\n	if (cc6 && cc6.matches && cc6.matches(':hover')) return;\n	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n	row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n	row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n	row.cells.item(3).className = xmlDoc.getElementsByTagName('c3_c')[0].childNodes[0].nodeValue;\n	row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n	row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n	if (row.cells.length>6) row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n	row.cells.item(row.cells.length-1).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n}\n" );
 		char url[256];
 		sprintf( url, "'/servers?id='+idx");
 		sprintf( http_buf, HTTP_UPDATE_ROW, url);
@@ -3054,7 +3079,7 @@ void http_send_servers(int sock, http_request *req)
 	sprintf( http_buf," <input type=button class=%s onclick=\"parent.location='/servers?type=%s&amp;list=disconnected'\" value='Disconnected (%d)'>",class,str_type,total-connected);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	// Table
-	sprintf( http_buf, "<br><div style='overflow-x:auto;max-width:100%%'><table class=maintable width=100%%>\n<tr><th width=20px>Uptime</th><th width=200px>Host</th><th width=100px>Server</th><th width=100px>Connected</th><th width=150px>Ecm OK</th><th width=50px>EcmTime</th><th width=360px>Cards</th></tr>\n");
+	sprintf( http_buf, "<br><div style='overflow-x:auto;max-width:100%%'><table class=maintable width=100%%>\n<tr><th width=20px>Uptime</th><th width=200px>Host</th><th width=100px>Server</th><th width=100px>Connected</th><th width=150px>Ecm OK</th><th width=360px>Cards</th></tr>\n");
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	srv = cfg.server;
 	int alt = 0;
@@ -3065,7 +3090,7 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td align=\"center\">%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6]);
+				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 			srv = srv->next;
@@ -3078,7 +3103,7 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td align=\"center\">%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6]);
+				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 			srv = srv->next;
@@ -3091,7 +3116,7 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td align=\"center\">%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6]);
+				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 			srv = srv->next;
@@ -3104,7 +3129,7 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td align=\"center\">%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6]);
+				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 			srv = srv->next;
