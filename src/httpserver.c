@@ -867,7 +867,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (cfg.server!=NULL) {
 			if (selected==PAGE_SERVERS) class = cSelected; else class = cNormal;
 		} else class = cDisabled;
-		sprintf( label, "Servers [<span class='badge-count'> %d </span>]", total_servers());
+		sprintf( label, "Servers <span class='badge-count'> %d </span>", total_servers());
 		sprintf( buf, class, "/servers", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Cache
@@ -875,14 +875,14 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (cfg.cache.server) {
 			if (selected==PAGE_CACHE) class = cSelected; else class = cNormal;
 		} else class = cDisabled;
-		sprintf( label, "Cache [<span class='badge-count'> %d </span>]", cfg.cache.totalservers);
+		sprintf( label, "Cache <span class='badge-count'> %d </span>", cfg.cache.totalservers);
 		sprintf( buf, class, "/cache", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #ifdef CACHEEX
 	// CacheEX
 	if ( !cfg.http.show.nocacheex ) {
 		if (selected==PAGE_CACHEEX) class = cSelected; else class = cNormal;
-		sprintf( label, "CacheEX [<span class='badge-count'> %d </span>]", total_cacheex_servers());
+		sprintf( label, "CacheEX <span class='badge-count'> %d </span>", total_cacheex_servers());
 		sprintf( buf, class, "/cacheex", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #endif
@@ -891,13 +891,13 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (cfg.cardserver!=NULL) {
 			if (selected==PAGE_NEWCAMD) class = cSelected; else class = cNormal;
 		} else class = cDisabled;
-		sprintf( label, "Newcamd [<span class='badge-count'> %d </span>]", total_cs_clients(TYPE_NEWCAMD));
+		sprintf( label, "Newcamd <span class='badge-count'> %d </span>", total_cs_clients(TYPE_NEWCAMD));
 		sprintf( buf, class, "/newcamd", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #ifdef MGCAMD_SRV
 	if ( !cfg.http.show.noservers && (cfg.mgcamd.server!=NULL) ) {
 		if (selected==PAGE_MGCAMD) class = cSelected; else class = cNormal;
-		sprintf( label, "Mgcamd [<span class='badge-count'> %d </span>]", total_mg_clients());
+		sprintf( label, "Mgcamd <span class='badge-count'> %d </span>", total_mg_clients());
 		sprintf( buf, class, "/mgcamd", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #endif
@@ -906,7 +906,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	// CCcam
 	if ( !cfg.http.show.nocccam && (cfg.cccam.server!=NULL) ) {
 		if (selected==PAGE_CCCAM) class = cSelected; else class = cNormal;
-		sprintf( label, "CCcam [<span class='badge-count'> %d </span>]", total_cc_clients());
+		sprintf( label, "CCcam <span class='badge-count'> %d </span>", total_cc_clients());
 		sprintf( buf, class, "/cccam", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #endif
@@ -920,9 +920,9 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	if (cfg.camd35.server!=NULL) {
 		if (selected==PAGE_CAMD35) class = cSelected; else class = cNormal;
 #ifdef CS378X_SRV
-		sprintf( label, "Cs358x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients()+total_cs378x_nb());
+		sprintf( label, "Cs358x/Camd35 <span class='badge-count'> %d </span>", total_c35_clients()+total_cs378x_nb());
 #else
-		sprintf( label, "Cs358x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients());
+		sprintf( label, "Cs358x/Camd35 <span class='badge-count'> %d </span>", total_c35_clients());
 #endif
 		sprintf( buf, class, "/camd35", label); tcp_writestr(tcpbuf, sock, buf);
 	}
@@ -933,7 +933,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (cfg.cardserver!=NULL) {
 			if (selected==PAGE_PROFILES) class = cSelected; else class = cNormal;
 		} else class = cDisabled;
-		sprintf( label, "Profiles [<span class='badge-count'> %d </span>]", cfg.totalprofiles);
+		sprintf( label, "Profiles <span class='badge-count'> %d </span>", cfg.totalprofiles);
 		sprintf( buf, class, "/profiles", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Packages (dashboard por satelite/pacote)
@@ -944,7 +944,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	// Softcam
 	{
 		if (selected==PAGE_EMULATOR) class = cSelected; else class = cNormal;
-		sprintf( label, "Softcam [<span class='badge-count'> %d </span>]", emu_keycount);
+		sprintf( label, "Softcam <span class='badge-count'> %d </span>", emu_keycount);
 		sprintf( buf, class, "/emulator", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Configurations (Iptables + Edit Config)
