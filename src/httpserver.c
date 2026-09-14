@@ -2620,8 +2620,8 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 			if (!in) continue;
 			char *pn = providerID(card->caid, card->prov[i]);
 			char t2[220];
-			if (pn) snprintf(t2, sizeof(t2), "%s<span class='cardchip chip-%04x'>%06x</span> <span class='prov'>%s</span>", first?"":" ", card->caid, card->prov[i], pn);
-			else snprintf(t2, sizeof(t2), "%s<span class='cardchip chip-%04x'>%06x</span>", first?"":" ", card->caid, card->prov[i]);
+			if (pn) snprintf(t2, sizeof(t2), "%s<span class='cardchip chip-%04x'>%06x</span> <span class='prov'>%s</span>", first?"":"<br>", card->caid, card->prov[i], pn);
+			else snprintf(t2, sizeof(t2), "%s<span class='cardchip chip-%04x'>%06x</span>", first?"":"<br>", card->caid, card->prov[i]);
 			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; cnt++; }
 		}
 		if (cnt) {
@@ -2648,8 +2648,8 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 			if (in) continue;
 			char *pn = providerID(card->caid, card->prov[i]);
 			char t2[220];
-			if (pn) snprintf(t2, sizeof(t2), "%s<span class='cardchip'>%06x</span> <span class='prov'>%s</span>", first?"":" ", card->prov[i], pn);
-			else snprintf(t2, sizeof(t2), "%s<span class='cardchip'>%06x</span>", first?"":" ", card->prov[i]);
+			if (pn) snprintf(t2, sizeof(t2), "%s<span class='cardchip'>%06x</span> <span class='prov'>%s</span>", first?"":"<br>", card->prov[i], pn);
+			else snprintf(t2, sizeof(t2), "%s<span class='cardchip'>%06x</span>", first?"":"<br>", card->prov[i]);
 			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; cnt2++; }
 		}
 		if (cnt2) {
@@ -2933,6 +2933,7 @@ void allconnected_servers( int *all, int *cccam, int *newcamd, int *radegast )
 void http_send_servers(int sock, http_request *req)
 {
 	char http_buf[5000];
+	char rowbuf[18000];
 	struct tcp_buffer_data tcpbuf;
 
 	char cell[8][16384];
@@ -3090,8 +3091,8 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
+				tcp_write(&tcpbuf, sock, rowbuf, strlen(rowbuf) );
 			}
 			srv = srv->next;
 		}
@@ -3103,8 +3104,8 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
+				tcp_write(&tcpbuf, sock, rowbuf, strlen(rowbuf) );
 			}
 			srv = srv->next;
 		}
@@ -3116,8 +3117,8 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
+				tcp_write(&tcpbuf, sock, rowbuf, strlen(rowbuf) );
 			}
 			srv = srv->next;
 		}
@@ -3129,8 +3130,8 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
+				tcp_write(&tcpbuf, sock, rowbuf, strlen(rowbuf) );
 			}
 			srv = srv->next;
 		}
