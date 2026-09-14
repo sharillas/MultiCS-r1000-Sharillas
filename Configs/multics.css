@@ -7,7 +7,7 @@ html { background:#1e232b; color-scheme:dark; }
 body {
   font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
   font-size:15px; font-weight:500; background:#1e232b; color:#e4e9f1;
-  min-height:100vh;
+  min-height:100vh; padding-left:224px;
 }
 
 /* ---------- links ---------- */
@@ -46,7 +46,7 @@ a.mbtn.on .badge-count { background:#38d0f0; color:#0b1a22; }
 /* ---------- layout base ---------- */
 .toolbar {
   position:sticky; top:0; z-index:500;
-  margin-left:224px; padding:10px 18px;
+  padding:10px 18px;
   background:#242a33; border-bottom:1px solid #363d48;
   display:flex; align-items:center; gap:12px; color:#9aa4b2; font-size:13px;
   backdrop-filter:blur(6px);
@@ -54,7 +54,7 @@ a.mbtn.on .badge-count { background:#38d0f0; color:#0b1a22; }
 .toolbar input[type=range] { accent-color:#0ea5e9; flex:0 1 220px; }
 .toolbar-label { color:#9aa4b2; font-weight:600; }
 .toolbar-badge { background:#2f3642; color:#7dd3fc; padding:2px 12px; border-radius:14px; font-weight:700; font-size:12px; }
-#mainDiv { margin-left:236px; margin-right:12px; padding:14px 6px 20px 6px; min-height:100vh; }
+#mainDiv { margin-left:12px; margin-right:12px; padding:14px 6px 20px 6px; min-height:100vh; }
 
 /* ---------- base elements ---------- */
 td { border-width:0; font-family:'Segoe UI',Tahoma,sans-serif; font-size:12px; font-weight:500; padding:4px 6px; color:#e4e9f1; }
@@ -211,7 +211,7 @@ pre {
 #dbglog { max-height:480px; }
 
 /* ---------- login ---------- */
-.login-page { display:flex; align-items:center; justify-content:center; min-height:100vh; background:#1e232b; }
+.login-page { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#1e232b; padding:0 !important; }
 .login-box { background:#242a33; border:1px solid #363d48; border-radius:16px; padding:28px 32px; min-width:320px; box-shadow:0 10px 40px rgba(0,0,0,0.4); }
 .login-box .brand { font-size:18px; }
 .login-error { color:#fb8080; font-weight:700; }
@@ -219,6 +219,7 @@ pre {
 /* ---------- footer ---------- */
 .home-footer { padding:14px 2px; margin-top:14px; border-top:1px solid #363d48; }
 .hf-ver { color:#6b7484; font-size:12px; }
+html.light-mode .home-footer { border-top-color:#dfe3ea; }
 
 /* ---------- scrollbars ---------- */
 ::-webkit-scrollbar { width:10px; height:10px; }
@@ -230,7 +231,9 @@ pre {
 @media (max-width: 860px) {
   .menu { position:static; width:100%; max-height:300px; border-right:none; border-bottom:1px solid #363d48; }
   .menu ul { flex-direction:column; }
+  body { padding-left:0; }
   .toolbar, #mainDiv { margin-left:0; }
+  .login-page { position:static; min-height:100vh; }
   .menu li.menu-right { flex-direction:row; flex-wrap:wrap; }
   .tile { min-width:120px; }
 }
