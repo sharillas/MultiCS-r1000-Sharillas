@@ -1,8 +1,8 @@
-# MultiCS r1000 v1.27 - by Sharillas
+# MultiCS r1000 v1.28 - by Sharillas
 
-Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruído e muito expandido: GUI web moderna, Softcam BISS/CW, proteções contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs**, login guard anti brute-force, NOK cache, validação de uploads sem crash, **SILENT NOK adiado** (v1.24), e o pacote anti-“cartões marcados” (v1.27): **ECM FILTER rule engine**, **DCW FILTER CWPK** com modo AUTO, **FAILBAN**, **ANTICASCADE**, **ECMRATELIMIT** e **DCW CAK7** (Sky DE 098D / MEO / NOS).
+Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruído e muito expandido: GUI web moderna, Softcam BISS/CW, proteções contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs**, login guard anti brute-force, NOK cache, validação de uploads sem crash, **SILENT NOK adiado** (v1.24), e o pacote anti-“cartões marcados” (v1.28): **ECM FILTER rule engine**, **DCW FILTER CWPK** com modo AUTO, **FAILBAN**, **ANTICASCADE**, **ECMRATELIMIT** e **DCW CAK7** (Sky DE 098D / MEO / NOS).
 
-> **Versão:** v1.27 | **Licença:** Sharillas@2026
+> **Versão:** v1.28 | **Licença:** Sharillas@2026
 
 ---
 
@@ -21,10 +21,10 @@ Os binários são **estáticos musl** ”” correm em Debian, Ubuntu, CentOS, R
 **Sem git** (download do asset do release):
 
 ```bash
-# 1. descarrega o pacote da release (exemplo v1.27)
-wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.27/multics-r1000-v1.27.tar.gz
+# 1. descarrega o pacote da release (exemplo v1.28)
+wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.28/multics-r1000-v1.28.tar.gz
 # 2. extrai e instala
-tar xzf multics-r1000-v1.27.tar.gz
+tar xzf multics-r1000-v1.28.tar.gz
 cd multics-r1000
 sudo bash install.sh            # ou: sudo bash install.sh /meu/caminho
 ```
@@ -75,7 +75,7 @@ Depois abre `http://SEU_IP:5500` â†’ login (default `admin`/`admin`) â†�
 | `ip2country.csv` | Base IP → país (bandeiras na GUI) |
 | `multics.css` | Tema externo (dark/light) |
 
-**Estrutura v1.27 (PT)**: os antigos `profiles.cfg`, `Nlines.cfg`, `users.cfg`, `Mgcamd.cfg`, `Camd35.cfg`, `Cache.cfg`, `CacheEX.cfg`, `1-Clients.cfg` foram reorganizados nos ficheiros acima. Os nomes antigos continuam aceites no editor/upload da GUI (compatibilidade).**Todos os ficheiros têm exemplos comentados completos** em `configs_exemplos/` (cada opção explicada em PT). Guia de configuração detalhado: **[docs/CONFIGS.md](docs/CONFIGS.md)**
+**Estrutura v1.28 (PT)**: os antigos `profiles.cfg`, `Nlines.cfg`, `users.cfg`, `Mgcamd.cfg`, `Camd35.cfg`, `Cache.cfg`, `CacheEX.cfg`, `1-Clients.cfg` foram reorganizados nos ficheiros acima. Os nomes antigos continuam aceites no editor/upload da GUI (compatibilidade).**Todos os ficheiros têm exemplos comentados completos** em `configs_exemplos/` (cada opção explicada em PT). Guia de configuração detalhado: **[docs/CONFIGS.md](docs/CONFIGS.md)**
 
 Fluxo mínimo para funcionar:
 
@@ -87,9 +87,9 @@ Fluxo mínimo para funcionar:
 
 ---
 
-## Features desta build (v1.27)
+## Features desta build (v1.28)
 
-### Novo na v1.27 ”” pacote anti-"cartões marcados" (análise do MultiCS r120)
+### Novo na v1.28 ”” pacote anti-"cartões marcados" (análise do MultiCS r120)
 - **DCW FILTER (CWPK)**: blacklist de CWs de cartões marcados com 35 valores conhecidos; modos `AUTO` (recomendado: desligado por defeito, **ativa-se sozinho no 1Âº hit** e passa a bloquear ”” sem ninguém ver o log), `LOGONLY` (só log) e `DROP`; regras `EXACT` (até 8 CWs por regra), `MASK` (wildcard) e `ALLEQUAL` (fake CW)
 - **ECM FILTER (rule engine)**: validação genérica do ECM por perfil ”” `PREFIX` (header whitelist), `LEN` (multi-comprimento), `BYTE <pos> INMASK <mask64>` (ex.: validação iCAM `BYTE 21 INMASK 1300010012`); modo `DROP`/`LOGONLY`
 - **FAILBAN**: ban automático de IPs com eventos maus por protocolo (CCCAM/NEWCAMD/MGCAMD/CAMD35/CS378X/CACHE) com `BANTIME`
