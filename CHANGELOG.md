@@ -1,3 +1,11 @@
+## v1.28 (2026-09-14)
+- **Novo tema "Stats Tiles"** (dark + light mode) com **menu lateral** (sidebar fixa): as 14 páginas ficam em coluna à esquerda com badges; dashboard com **tiles de números grandes** (Uptime, Servers, Clients, ECM Totais, RAM, Softcam) e barras de carga.
+- **Tabela de Servers**: coluna EcmTime removida; Cards continua na última coluna com **chips coloridos por CAID:PROVID** (ident + nome do provider MEO/NOS/etc).
+- **ON/OFF**: interruptores visuais (pills verdes/vermelhas) em todas as páginas de estado.
+- **Drop-downs e uploads** restilizados (setas próprias, file-selector button, focus rings).
+- **DEBUG**: log com fundo de consola e realce das linhas; botões DBG/INF uniformizados.
+- Correção do xmlupdateRow (linhas com nº variável de colunas); cache-bust do CSS v=1128; título/footer v1.28.
+
 # Changelog - MultiCS r1000 by Sharillas
 Todas as alterações notáveis desde a v1.20, por versão.
 
