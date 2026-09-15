@@ -348,7 +348,12 @@ void cs_senddcw_cli(struct cs_client_data *cli)
 		buf[2] = 0x10;
 		memcpy( &buf[3], &ecm->cw, 16 );
 		if ( !cs_message_send( cli->handle, &clicd, buf, 19, cli->sessionkey) ) cs_disconnect_cli( cli );
-		else mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," => cw to client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime);
+		else {
+			if ( ecm->cs && ecm->cs->option.dcw.dcwlog ) {
+				mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," => cw to client '%s' ch %04x:%06x:%04x (%dms) CW: %02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime, ecm->cw[0],ecm->cw[1],ecm->cw[2],ecm->cw[3],ecm->cw[4],ecm->cw[5],ecm->cw[6],ecm->cw[7],ecm->cw[8],ecm->cw[9],ecm->cw[10],ecm->cw[11],ecm->cw[12],ecm->cw[13],ecm->cw[14],ecm->cw[15]);
+			}
+			else mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," => cw to client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime);
+		}
 		cli->lastdcwtime = GetTickCount();
 	}
 	else { //if (ecm->data->dcwstatus==STAT_DCW_FAILED)
