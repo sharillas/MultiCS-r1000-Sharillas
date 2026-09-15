@@ -4225,6 +4225,15 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.dcw.cak7 = parse_boolean();
 			}
+			else if (!strcmp(str,"LOG")) {
+				// DCW LOG: YES - regista as CWs em hex no debug (aprendizagem CAK7)
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.dcw.dcwlog = parse_boolean();
+			}
 			else if (!strcmp(str,"FILTER")) {
 				// DCW FILTER: YES | DCW FILTER MODE: DROP/LOGONLY | DCW FILTER RULES: n
 				parse_spaces();
