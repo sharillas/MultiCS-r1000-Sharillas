@@ -259,6 +259,22 @@ void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		return;
 	}
 
+	// DCW LOG: ficheiro de aprendizagem (canal + CW) quando o perfil tem DCW LOG: YES
+	if (cs->option.dcw.dcwlog) {
+		FILE *fp = fopen("/var/log/multics-cw.log", "a");
+		if (fp) {
+			time_t t = time(NULL);
+			struct tm *lt = localtime(&t);
+			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d\n",
+				lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+				ecm->caid, ecm->provid, ecm->sid,
+				dcw[0],dcw[1],dcw[2],dcw[3],dcw[4],dcw[5],dcw[6],dcw[7],
+				dcw[8],dcw[9],dcw[10],dcw[11],dcw[12],dcw[13],dcw[14],dcw[15],
+				srctype);
+			fclose(fp);
+		}
+	}
+
 	int cwpart = 2;
 	if (ecm->cw1cycle) {
 		if (ecm->ecm[0]==ecm->cw1cycle) cwpart = 1; else cwpart = 0;
