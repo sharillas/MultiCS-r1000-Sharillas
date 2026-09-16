@@ -5,15 +5,6 @@ Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, recons
 > **Versão:** v1.28 | **Licença:** Sharillas@2026
 
 ---
-
-## Dashboard
-
-| Light mode | Dark mode |
-|---|---|
-| ![Dashboard Light](screenshot/dashboard-light.png) | ![Dashboard Dark](screenshot/dashboard-dark.png) |
-
----
-
 ## Instalação (qualquer VPS Linux x86/x64)
 
 Os binários são **estáticos musl** ”” correm em Debian, Ubuntu, CentOS, Rocky, Alma, Arch, Alpine”¦ sem dependências.
