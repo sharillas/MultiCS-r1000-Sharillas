@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================
-# MultiCS r1000 v1.26 by Sharillas - INSTALADOR (VPS Debian/Ubuntu)
+# MultiCS r1000 v1.29 by Sharillas - INSTALADOR (VPS Debian/Ubuntu)
 #
 # NAO PRECISA DE GIT - este script copia so o binario e as
 # configs de exemplo para a VPS.
 #
 # USO (na VPS):
-#   1. envia o pacote:  scp multics-r1000-v1.26.tar.gz root@IP:~
-#   2. na VPS:          tar xzf multics-r1000-v1.26.tar.gz
+#   1. envia o pacote:  scp multics-r1000-v1.29.tar.gz root@IP:~
+#   2. na VPS:          tar xzf multics-r1000-v1.29.tar.gz
 #   3.                  cd multics-r1000
 #   4.                  sudo bash install.sh
 #
@@ -76,7 +76,7 @@ systemctl restart multics 2>/dev/null
 cat <<GUIDE
 
 =============================================================
-  INSTALACAO CONCLUIDA - MultiCS r1000 v1.26
+  INSTALACAO CONCLUIDA - MultiCS r1000 v1.29
 =============================================================
 
 O QUE E ISTO
