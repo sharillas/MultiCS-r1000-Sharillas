@@ -89,8 +89,6 @@ build/               binários compilados (x64/x32 estáticos musl)
 configs_exemplos/    configs prontos (multics.cfg + perfis + users + readers)
 install.sh           instalador universal (systemd/init.d/crontab)
 build.ps1            build Windows (Zig)
-package.ps1          gera pacote dist/
-deploy.ps1           deploy scp+ssh
 tools_generate_httpstyle.py   gera src/httpstyle.c (CSS/JS embutidos)
 ```
 

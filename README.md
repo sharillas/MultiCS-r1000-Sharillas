@@ -148,12 +148,6 @@ Lista completa de fixes e implementaÃ§Ã£o: **[docs/IMPLEMENTACAO.md](docs/IM
 # compilar (cross-compile Zig 0.15.2, sem Linux)
 powershell -ExecutionPolicy Bypass -File build.ps1
 
-# empacotar (dist/)
-powershell -ExecutionPolicy Bypass -File package.ps1
-
-# deploy para a VPS (credenciais em deploy.secrets.ps1 - gitignored)
-powershell -ExecutionPolicy Bypass -File deploy.ps1
-
 # regenerar CSS/JS embutido (httpstyle.c) depois de mudar Configs/multics.css
 python tools_generate_httpstyle.py
 ```
