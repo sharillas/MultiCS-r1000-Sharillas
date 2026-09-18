@@ -282,13 +282,13 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.nagra.chk = 1;        // checksum das 4 quads
 	cs->option.nagra.prov = 0;       // provider na lista do perfil
 	cs->option.nagra.cycle = 1;      // ciclo + similaridade por canal
-	cs->option.nagra.onbad = 1;      // drop em bad dcw
+	cs->option.nagra.onbad = 0;      // LOG ONLY por defeito (v1.28: drop so se o perfil pedir NAGRA ONBAD: YES - false positives cortavam CWs legitimas)
 	cs->option.nagra.sensitive = 4;  // bytes iguais a CW anterior
 
 	// Flags
 	cs->option.faccept0caid = 1;
 	cs->option.faccept0provider = 1;
-	cs->option.faccept0sid = 0;
+	cs->option.faccept0sid = 1; // v1.29: relé transparente - aceitar SID vazio (boxes/ferramentas do circuito)
 	cs->option.fallownewcamd = 1;  // Allow newcamd server protocol to decode ecm
 	cs->option.fallowcccam = 1;    // Allow cccam server protocol to decode ecm
 	cs->option.fallowradegast = 1;
@@ -313,6 +313,8 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.cssendsid = 1;
 	memcpy( cs->newcamd.key, defdeskey, 14);
 	cs->option.dcw.check = 0; // default: off
+	cs->option.dcw.cyclecheck = 0; // v1.29: default off (no circuito multi-hop as metades chegam fora de ordem)
+	cs->option.dcw.lastcwon_nok = 0; // v1.29: opt-in por perfil
 	// Shares
 	cs->option.fsharecccam = 1;
 	cs->option.fsharenewcamd = 1;
@@ -466,10 +468,22 @@ void parse_server_data( struct server_data *tsrv )
 					sids->chid = 0;
 				}
 				else if (!strcmp(str,"shares")) parse_option_shares( tsrv->sharelimits );
-				else if (!strcmp(str,"priority")) {
-					if (parse_int(str)) tsrv->priority = atoi(str);
+			else if (!strcmp(str,"priority")) {
+				if (parse_int(str)) tsrv->priority = atoi(str);
+			}
+			else if (!strcmp(str,"name")) {
+				// nome do reader para a GUI ("from" do last used share) - o '=' ja foi consumido
+				parse_spaces();
+				if (*iparser=='"') {
+					iparser++;
+					int n = 0;
+					while (*iparser && (*iparser!='"') && (n<62)) { tsrv->name[n++] = *iparser++; }
+					tsrv->name[n] = 0;
+					if (*iparser=='"') iparser++;
 				}
-				else if (!strcmp(str,"nocheck")) {
+				else parse_name(tsrv->name);
+			}
+			else if (!strcmp(str,"nocheck")) {
 					// nao aplicar a protecao anti-loop (cliente e reader no mesmo IP)
 					tsrv->nocheck = parse_boolean();
 				}
@@ -4225,15 +4239,24 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.dcw.cak7 = parse_boolean();
 			}
-			else if (!strcmp(str,"LOG")) {
-				// DCW LOG: YES - regista as CWs em hex no debug (aprendizagem CAK7)
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.dcw.dcwlog = parse_boolean();
-			}
+		else if (!strcmp(str,"LOG")) {
+			// DCW LOG: YES - regista as CWs em hex no debug (aprendizagem CAK7)
+			parse_spaces();
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			cardserver->option.dcw.dcwlog = parse_boolean();
+		}
+		else if (!strcmp(str,"LASTCWONNOK")) {
+			// DCW LASTCWONNOK: YES - em NOK reenvia a ultima CW valida do canal (nao para o descrambler)
+			parse_spaces();
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			cardserver->option.dcw.lastcwon_nok = parse_boolean();
+		}
 			else if (!strcmp(str,"FILTER")) {
 				// DCW FILTER: YES | DCW FILTER MODE: DROP/LOGONLY | DCW FILTER RULES: n
 				parse_spaces();

@@ -113,7 +113,7 @@ struct camd35_client_data *getcamd35clientbyid(uint32_t id);
 
 
 
-char HTTP_UPDATE_DIV[] = "\nvar autorefresh=%d;\nvar tautorefresh;\nfunction setautorefresh(t)\n{\n	clearTimeout(tautorefresh);\n	autorefresh = t;\n	if (t>0) tautorefresh = setTimeout('updateDiv()',autorefresh);\n}\nfunction updateDiv()\n{\n	var d = document.getElementById('mainDiv');\n	if (d && d.matches && d.matches(':hover')) { tautorefresh = setTimeout('updateDiv()',autorefresh); return; }\n	var httpRequest;\n	try {\n		httpRequest = new XMLHttpRequest();  // Mozilla, Safari, etc\n	}\n	catch(trymicrosoft) {\n		try {\n			httpRequest = new ActiveXObject('Msxml2.XMLHTTP');\n		}\n		catch(oldermicrosoft) {\n			try {\n				httpRequest = new ActiveXObject('Microsoft.XMLHTTP');\n			}\n			catch(failed) {\n				httpRequest = false;\n			}\n		}\n	}\n	if (!httpRequest) {\n		alert('Your browser does not support Ajax.');\n		return false;\n	}\n	// Action http_request\n	httpRequest.onreadystatechange = function()\n	{\n		if (httpRequest.readyState == 4) {\n			if(httpRequest.status == 200) {\n				requestError=0;\n				document.getElementById('mainDiv').innerHTML = httpRequest.responseText;\n				if (window.bindSortable) bindSortable();\n			}\n			tautorefresh = setTimeout('updateDiv()',autorefresh);\n		}\n	}\n	httpRequest.open('GET', '%s',true);\n	httpRequest.send(null);\n}\n";
+char HTTP_UPDATE_DIV[] = "\nvar autorefresh=%d;\nvar tautorefresh;\nfunction setautorefresh(t)\n{\n	clearTimeout(tautorefresh);\n	autorefresh = t;\n	if (t>0) tautorefresh = setTimeout('updateDiv()',autorefresh);\n}\nfunction updateDiv()\n{\n	var d = document.getElementById('mainDiv');\n	if (d && d.matches && d.matches(':hover')) { tautorefresh = setTimeout('updateDiv()',autorefresh); return; }\n	var httpRequest;\n	try {\n		httpRequest = new XMLHttpRequest();  // Mozilla, Safari, etc\n	}\n	catch(trymicrosoft) {\n		try {\n			httpRequest = new ActiveXObject('Msxml2.XMLHTTP');\n		}\n		catch(oldermicrosoft) {\n			try {\n				httpRequest = new ActiveXObject('Microsoft.XMLHTTP');\n			}\n			catch(failed) {\n				httpRequest = false;\n			}\n		}\n	}\n	if (!httpRequest) {\n		alert('Your browser does not support Ajax.');\n		return false;\n	}\n	// Action http_request\n	httpRequest.onreadystatechange = function()\n	{\n		if (httpRequest.readyState == 4) {\n			if(httpRequest.status == 200) {\n				requestError=0;\n				document.getElementById('mainDiv').innerHTML = httpRequest.responseText;\n				if (window.bindSortable) bindSortable();\n				if (window.reopenDbg) reopenDbg();\n			}\n			tautorefresh = setTimeout('updateDiv()',autorefresh);\n		}\n	}\n	httpRequest.open('GET', '%s',true);\n	httpRequest.send(null);\n}\n";
 char HTTP_UPDATE_ROW[] = "\nvar idx = 0;\nvar tupdateRow;\n\nfunction setupdateRow(id)\n{\n	clearTimeout(tupdateRow);\n	idx = id;\n	if (id>0) tupdateRow = setTimeout('updateRow()',1000);\n}\n\nvar lastidx = 0;\nvar requestError = 0;\nfunction updateRow()\n{\n	if (lastidx!=idx) {\n		requestError = 0;\n		lastidx = idx;\n	}\n	if ( !requestError && (idx>0) ) {\n		var httpRequest;\n		try {\n			httpRequest = new XMLHttpRequest();  // Mozilla, Safari, etc\n		}\n		catch(trymicrosoft) {\n			try {\n				httpRequest = new ActiveXObject('Msxml2.XMLHTTP');\n			}\n			catch(oldermicrosoft) {\n				try {\n					httpRequest = new ActiveXObject('Microsoft.XMLHTTP');\n				}\n				catch(failed) {\n					httpRequest = false;\n				}\n			}\n		}\n		if (!httpRequest) {\n			alert('Your browser does not support Ajax.');\n			return false;\n		}\n		var savedidx = idx;\n		// Action http_request\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) {\n				if (httpRequest.status == 200) {\n					requestError=0;\n					xmlupdateRow( httpRequest.responseXML, 'Row'+savedidx );\n				}\n				else {\n					requestError++;\n				}\n				tupdateRow = setTimeout('updateRow()',1000);\n			}\n		}\n		httpRequest.open('GET', %s, true);\n		httpRequest.send(null);\n		requestError++;\n	}\n}\n";
 
 
@@ -794,9 +794,9 @@ char html_title[] = "<title>%s - %s</title>\n";
 
 char http_link[] = "<meta http-equiv=\"Content-type\" content=\"text/html; charset=utf-8\"/>\n";
 
-char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1128\" type=\"text/css\" />\n";
+char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1130\" type=\"text/css\" />\n";
 
-char http_javascript[] = "<script src=\"/customjs.js\"></script>\n";
+char http_javascript[] = "<script src=\"/customjs.js?v=1202\"></script>\n";
 
 #define PAGE_HOME      1
 #define PAGE_SERVERS   2
@@ -1605,6 +1605,30 @@ void http_send_index(int sock, http_request *req)
 
 
 static uint32_t viewdbgflag = 0;
+
+// CWFEED: feed live ECM/CW (estudo de CWs) - fragmento HTML para o painel DBG
+void http_send_cwfeed(int sock, http_request *req)
+{
+	int srv = 0, cli = 0, caid = 0;
+	char *v = isset_get(req, "srv");
+	if (v) srv = atoi(v);
+	v = isset_get(req, "cli");
+	if (v) cli = atoi(v);
+	v = isset_get(req, "caid");
+	if (v) caid = (int)strtol(v, NULL, 16);
+
+	char buf[32768];
+	int len = 0;
+	len += snprintf(buf + len, sizeof(buf) - len,
+		"<div class='cwfeed'>\n<div class='cwfeed-head'>"
+		"<span class='cwfeed-t'>age</span>"
+		"<span class='cwfeed-n'>canal</span><span class='cwfeed-e'>ECM</span>"
+		"<span class='cwfeed-c'>CW0 CW1</span><span class='cwfeed-ms'>ms</span>"
+		"<span class='cwfeed-s'>st</span><span class='cwfeed-src'>fonte</span></div>\n");
+	len += cwfeed_render(buf + len, sizeof(buf) - len - 64, srv, cli, (uint16_t)caid);
+	len += snprintf(buf + len, sizeof(buf) - len, "</div>");
+	http_send_text(sock, buf);
+}
 
 void http_send_debug(int sock, http_request *req)
 {
@@ -2886,7 +2910,7 @@ void getservercells(struct server_data *srv, char cell[8][16384] )
 			CELL6ADD(temp);
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/server?id=%d&action=dbginfo')\">DBG</span>",srv->id,srv->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/server?id=%d&action=dbginfo','/cwfeed?srv=%d')\">DBG</span>",srv->id,srv->id,srv->id);
 	CELL6ADD(temp);
 	sprintf( temp," <span class='icobtn inf' title='Info completa do server (todos os cards e detalhes)' onclick=\"location.href='/server?id=%d'\">INF</span>",srv->id);
 	CELL6ADD(temp);
@@ -4124,7 +4148,7 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][8192])
 		sprintf( temp," <span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">OFF</span>",cs->id);
 		C9ADD(temp);
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/profile?id=%d&action=dbginfo')\">DBG</span>",cs->id,cs->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/profile?id=%d&action=dbginfo','/cwfeed?caid=%04x')\">DBG</span>",cs->id,cs->id,cs->card.caid);
 	C9ADD(temp);
 	C9ADD("</span>");
 	#undef C9ADD
@@ -4230,7 +4254,7 @@ void http_send_profiles(int sock, http_request *req)
 	char http_buf[2048];
 	struct tcp_buffer_data tcpbuf;
 
-	char cell[11][4096];
+	char cell[11][8192];
 
 	//  Get Params
 	char *str_action = isset_get( req, "action");
@@ -4690,7 +4714,7 @@ void getnewcamdclientcells(struct cs_client_data *cli, char cell[10][2048])
 			strcat( cell[8], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/newcamdclient?id=%d&action=dbginfo')\">DBG</span>",cli->id,cli->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/newcamdclient?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
 	strcat( cell[8], temp );
 	strcat( cell[8], "</span>");
 
@@ -4821,27 +4845,6 @@ void http_send_newcamd(int sock, http_request *req) // page, div, row
 		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
 		tcp_writestr(&tcpbuf, sock, "\n<body onload=\"start();\">");
 		tcp_write_menu(&tcpbuf, sock,PAGE_NEWCAMD);
-		// Info de servidores (acima da div principal)
-		{
-			tcp_writestr(&tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
-			sprintf( http_buf, "<h3 class=stitle>Newcamd Profiles (%d)</h3>", total_profiles());
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Profile</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
-			int itotal, iconnected, iactive;
-			cs_allclients( &itotal, &iconnected, &iactive );
-			sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			struct cardserver_data *box = cfg.cardserver;
-			while (box) {
-				int btotal, bconnected, bactive;
-				cs_clients( box, &btotal, &bconnected, &bactive );
-				if (box->newcamd.handle>0) sprintf( http_buf, "<tr><td class=left><a href='/newcamd?pid=%d'>%s</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->name, box->newcamd.port, bconnected, btotal);
-				else sprintf( http_buf, "<tr><td class=left><a href='/newcamd?pid=%d'>%s</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->name, box->newcamd.port, bconnected, btotal);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				box = box->next;
-			}
-			tcp_writestr(&tcpbuf, sock, "</table></div></div>");
-		}
 		// DIV
 		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
 	}
@@ -4984,11 +4987,11 @@ void http_send_newcamd_client(int sock, http_request *req)
 	char http_buf[2048];
 	struct tcp_buffer_data tcpbuf;
 	char *str_id = isset_get( req, "id");
-	if (!str_id) return; //error
+	if (!str_id) { http_send_redirect(sock, "/newcamd"); return; } //error
 	int get_id = atoi(str_id);
 	//
 	struct cs_client_data *cli = getnewcamdclientbyid( get_id );
-	if (!cli) return;
+	if (!cli) { http_send_redirect(sock, "/newcamd"); return; }
 	// Action
 	char *str_action = isset_get( req, "action");
 	int get_action = 0;
@@ -5776,9 +5779,8 @@ void getcccamcells(struct cc_client_data *cli, char cell[10][2048])
 		sprintf( cell[8],"Last Seen %02dd %02d:%02d:%02d", d/(3600*24),(d/3600)%24,(d/60)%60,d%60);
 	}
 	else if ( cli->lastecm.caid ) {
-		char *pvn = providerID(cli->lastecm.caid, cli->lastecm.prov);
 		if (cli->lastecm.status)  strcpy( cell[8],"<span class=success"); else strcpy( cell[8],"<span class=failed");
-		sprintf( temp," title='%04x:%06x:%04x'>Canal: %s%s%s - %04x:%06x (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), pvn?" - ":"", pvn?pvn:"", cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
+		sprintf( temp," title='%04x:%06x:%04x'>Canal: %s - %04x:%06x:%04x (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
 		strcat( cell[8], temp );
 		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
 			// From ???
@@ -5802,7 +5804,7 @@ void getcccamcells(struct cc_client_data *cli, char cell[10][2048])
 			strcat( cell[8], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"imgrequest('/cccamclient?action=debug&id=%d',this)\">DBG</span>",cli->id);
+		sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cccamclient?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
 	strcat( cell[8], temp );
 	strcat( cell[8], "</span>");
 }
@@ -5844,6 +5846,7 @@ void http_send_cccam(int sock, http_request *req)
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
 		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
+		else if (!strcmp(str_action,"dbginfo")) get_action = ACTION_DEBUG;
 		else str_action = NULL;
 	}
 	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
@@ -5979,7 +5982,7 @@ void http_send_cccam(int sock, http_request *req)
 	struct cccam_server_data *cccam = NULL;
 	if (get_id) {
 		cccam = getcccamserverbyid(get_id);
-		if (!cccam) return;
+		if (!cccam) { http_send_redirect(sock, "/cccam"); return; }
 	}
 
 	tcp_init(&tcpbuf);
@@ -6243,7 +6246,7 @@ void getcs378xcells(struct camd35_client_data *cli, char cell[10][2048])
 			strcat( cell[7], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cs378xclient?id=%d&action=dbginfo')\">DBG</span>",cli->id,cli->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cs378xclient?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
 	strcat( cell[7], temp );
 	strcat( cell[7], "</span>");
 }
@@ -6930,7 +6933,7 @@ void getcamd35cells(struct camd35_client_data *cli, char cell[10][2048])
 			strcat( cell[7], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/camd35client?id=%d&action=dbginfo')\">DBG</span>",cli->id,cli->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/camd35client?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
 	strcat( cell[7], temp );
 	strcat( cell[7], "</span>");
 }
@@ -8291,7 +8294,7 @@ void http_send_cccam_client(int sock, http_request *req)
 		struct cccam_server_data *cccam = getcccamserverbyid( atoi(str_srvid) );
 		if (cccam) cli = getcccamclientbyname( cccam, str_name );
 	}
-	if (!cli) return;
+	if (!cli) { http_send_redirect(sock, "/cccam"); return; }
 	//
 
 	if (get_action==ACTION_XML) {
@@ -8811,7 +8814,7 @@ void getmgcamdcells(struct mg_client_data *cli, char cell[10][2048])
 			strcat( cell[8], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/mgcamdclient?id=%d&action=dbginfo')\">DBG</span>",cli->id,cli->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/mgcamdclient?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
 	strcat( cell[8], temp );
 	strcat( cell[8], "</span>");
 
@@ -10249,10 +10252,10 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 	int noeditor = noeditor_ed;
 
 	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><div class='cfgbtns'>"
-		"<div><input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\"><span class='cfgbtns-info'>Parse do teu CCcam.channelinfo sem restart</span></div>"
-		"<div><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\"><span class='cfgbtns-info'>Reconstroi o CCcam.channelinfo do KingOfSat e recarrega automaticamente</span></div>"
-		"<div><input type=button class='sbutton' value='Reload Main Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\"><span class='cfgbtns-info'>Aplica o multics.cfg e includes sem restart</span></div>"
-		"<div><a class='sbutton' href='/configurations?action=clearsessions' title='Termina todas as sessoes ativas (todos os browsers/scripts voltam ao login)' onclick=\"return confirm('Terminar TODAS as sessoes? Teras de voltar a fazer login.')\">Terminar todas as sessoes</a><span class='cfgbtns-info'>Invalida todas as cookies de sessao (tu incluido)</span></div>"
+		"<div class='cfgitem'><input type=button class='sbutton' value='Load Channel Info' title='Parse do teu CCcam.channelinfo sem restart (rele o ficheiro do disco)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\"></div>"
+		"<div class='cfgitem'><input type=button class='sbutton' value='Update Channel Info' title='Reconstroi o CCcam.channelinfo do KingOfSat (so feeds ativos) e recarrega automaticamente' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\"></div>"
+		"<div class='cfgitem'><input type=button class='sbutton' value='Reload Main Config' title='Aplica o multics.cfg e includes sem restart (rele toda a configuracao do disco)' onclick=\"imgrequest('/configurations?action=reread',this)\"></div>"
+		"<div class='cfgitem'><a class='sbutton' href='/configurations?action=clearsessions' title='Invalida todas as cookies de sessao (tu incluido) - todos voltam ao login' onclick=\"return confirm('Terminar TODAS as sessoes? Teras de voltar a fazer login.')\">Terminar Sessoes</a></div>"
 		"</div></div>");
 	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 
@@ -10841,6 +10844,9 @@ void *gererClient(struct connect_data *param)
 				else if (strcmp(req.path,"/dashboard")==0) http_send_index(sock,&req);
 				else if (strcmp(req.path,"/debug")==0) {
 					if (!cfg.http.show.nodebug) http_send_debug(sock,&req);
+				}
+				else if (strcmp(req.path,"/cwfeed")==0) {
+					http_send_cwfeed(sock,&req);
 				}
 				else if (strcmp(req.path,"/profiles")==0) {
 					if (!cfg.http.show.noprofiles) http_send_profiles(sock,&req);

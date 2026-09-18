@@ -113,6 +113,31 @@ void wakeup_sendecm() // not needed in mono-thread
 
 void ecm_faileddcw( ECM_DATA *ecm )
 {
+	uint32_t ticks = GetTickCount();
+	// CWFEED (estudo de CWs): registar falha
+	if (ecm->caid || ecm->sid)
+		cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, NULL, 0, (uint16_t)((ticks-ecm->recvtime)%60000), 2, 0, 0, 0);
+
+	// LASTCW ON NOK: reenviar a ultima CW valida deste canal em vez de NOK
+	// (mantem o descrambler do cliente a trabalhar quando a fonte falha 1 ciclo)
+	if (ecm->cs && ecm->cs->option.dcw.lastcwon_nok) {
+		uint8_t lastcw[16], prevcw[16];
+		int n = dcwchan_getlast2(ecm->caid, ecm->provid, ecm->sid, lastcw, prevcw);
+		if (n>0) {
+			uint8_t *use = lastcw;
+			if (n==2 && !dcwcmp16(ecm->cw, lastcw)) use = prevcw; // a ultima ja foi usada -> tenta a anterior (outra metade)
+			ecm->statusmsg = "Decode Success (last CW)";
+			ecm->dcwstatus = STAT_DCW_SUCCESS;
+			ecm->checktime = 0;
+			ecm->waitserver = 0;
+			memcpy(ecm->cw, use, 16);
+			sid_newecm(ecm);
+			clients_check_sendcw(ecm);
+			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,ecm->cs->id)," < Decode_Failed -> LAST CW resent ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
+			return;
+		}
+	}
+
 	// DEDUP: falhar os followers deste leader (partilham o resultado)
 	ECM_DATA *f = ecm->dedupnext;
 	while (f) {
@@ -429,6 +454,12 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 						}
 					}
 #endif
+					// CWFEED (estudo de CWs): registar envio ao server
+					if (newsrv) {
+						uint8_t fp = (newsrv->type==TYPE_CCCAM||newsrv->type==TYPE_CCAM3)?1:
+							(newsrv->type==TYPE_NEWCAMD)?2:(newsrv->type==TYPE_CAMD35)?4:(newsrv->type==TYPE_CS378X)?5:0;
+						cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, NULL, 0, 0, 0, fp, newsrv->id, 0);
+					}
 					ecm->statusmsg = "Waiting for servers...";
 					if ( cs->option.server.first > (ecm->server_totalsent+1) ) ecm->checktime = ticks + 10;
 					else {

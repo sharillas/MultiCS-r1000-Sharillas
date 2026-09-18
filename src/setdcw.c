@@ -141,6 +141,7 @@ struct dcwchan_data {
 	uint32_t provid;
 	uint16_t sid;
 	uint8_t cw[16];
+	uint8_t cw2[16]; // CW anterior (janela de 2 para LASTCWONNOK)
 	uint32_t lasttime;
 	uint8_t lasthalf; // 0 = metade0 mudou por ultimo, 1 = metade1, 2 = ambas/desconhecido
 };
@@ -220,12 +221,54 @@ int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
 	}
 
 	if (!reject) {
+		memcpy(e->cw2, e->cw, 16); // janela de 2 CWs
 		memcpy(e->cw, dcw, 16);
 		e->lasttime = now;
 	}
 
 	pthread_mutex_unlock(&dcwchan_mutex);
 	return reject;
+}
+
+// ultima CW valida do canal (para DCW LASTCWONNOK) - 1 se existe
+int dcwchan_getlast(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw[16])
+{
+	int found = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==caid && e->provid==provid && e->sid==sid) {
+			memcpy(cw, e->cw, 16);
+			found = 1;
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return found;
+}
+
+// janela de 2 CWs validas do canal - devolve o nr de CWs (1 ou 2)
+int dcwchan_getlast2(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw1[16], uint8_t cw2[16])
+{
+	char nullcw[16] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+	int found = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==caid && e->provid==provid && e->sid==sid) {
+			memcpy(cw1, e->cw, 16);
+			if (!dcwcmp16(e->cw2, nullcw) && dcwcmp16(e->cw2, e->cw)) { // cw2 valida e diferente
+				memcpy(cw2, e->cw2, 16);
+				found = 2;
+			}
+			else found = 1;
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return found;
 }
 
 
@@ -584,6 +627,22 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		return;
 	}
 
+	// DCW LOG: ficheiro de aprendizagem (canal + CW) quando o perfil tem DCW LOG: YES
+	if (cs->option.dcw.dcwlog) {
+		FILE *fp = fopen("/var/log/multics-cw.log", "a");
+		if (fp) {
+			time_t t = time(NULL);
+			struct tm *lt = localtime(&t);
+			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d\n",
+				lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+				ecm->caid, ecm->provid, ecm->sid,
+				dcw[0],dcw[1],dcw[2],dcw[3],dcw[4],dcw[5],dcw[6],dcw[7],
+				dcw[8],dcw[9],dcw[10],dcw[11],dcw[12],dcw[13],dcw[14],dcw[15],
+				srctype);
+			fclose(fp);
+		}
+	}
+
 	int cwpart = 2;
 	if (ecm->cw1cycle) {
 		if (ecm->ecm[0]==ecm->cw1cycle) cwpart = 1; else cwpart = 0;
@@ -632,6 +691,22 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		}
 	}
 
+	// CWLR (v1.29): CW NAGRA com checksum invalido = lixo -> NAO entregar.
+	// Marca a fonte (NOK cache) e deixa o ECM a espera de outra fonte;
+	// se nenhuma responder, o timeout cai no LASTCWONNOK (ultima CW boa).
+	if (cs->option.nagra.enable && cs->option.nagra.chk
+		&& (ecm->caid>=0x1813) && (ecm->caid<=0x1a12)
+		&& !checksumDCW(dcw)) {
+		if (srctype==DCW_SOURCE_SERVER) {
+			struct server_data *s = getsrvbyid(srcid&0xffff);
+			if (s) srv_nok_record(s, ecm->caid, ecm->sid);
+		}
+		mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cwlr: CW lixo (checksum) ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
+			ecm->caid, ecm->provid, ecm->sid, srctype);
+		pthread_mutex_unlock(&prg.lockecm);
+		return;
+	}
+
 	// DCW MINTIME + DCW CYCLE_CHECK (por canal)
 	if (cs->option.dcw.mintime || cs->option.dcw.cyclecheck) {
 		if (dcwchan_check( ecm, dcw, cs )) {
@@ -640,19 +715,23 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		}
 	}
 
-	// filter non-nds halfnulled cw
+	// filter non-nds halfnulled cw (v1.29: NAGRA 18xx half-null passa - half-cycle legitimo no circuito)
 	if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) {
-		if ((ecm->caid>>8)!=9) {
+		int isnds = ((ecm->caid>>8)==9);
+		int isnagra = (ecm->caid>=0x1813)&&(ecm->caid<=0x1a12);
+		if (!isnds && !isnagra) {
 			pthread_mutex_unlock(&prg.lockecm);
 			return;
 		}
-		int swap = 0;
+		if (isnds) {
+			int swap = 0;
 #ifdef DCWSWAP
-		if (cs)	if (cs->option.dcw.swap) swap = 1;
+			if (cs)	if (cs->option.dcw.swap) swap = 1;
 #endif
-		if ( !dcwcheck_nds( ecm, dcw, swap) ) {
-			pthread_mutex_unlock(&prg.lockecm);
-			return;
+			if ( !dcwcheck_nds( ecm, dcw, swap) ) {
+				pthread_mutex_unlock(&prg.lockecm);
+				return;
+			}
 		}
 	}
 
@@ -744,6 +823,11 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	cs->ecmoktime += ecmtime;
 	int time = (ecmtime+50)/100;
 	if (time<99) cs->ttime[time]++; else cs->ttime[99]++;
+
+	// CWFEED (estudo de CWs): registar CW entregue (pos-transform)
+	cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, dcw, 16,
+		(uint16_t)(ecmtime%60000), 1, 0,
+		(srctype==DCW_SOURCE_SERVER)?(srcid&0xffff):0, 0);
 
 	if (srctype==DCW_SOURCE_CACHE) {
 		if (srcid&PEER_CSP) { // Cache

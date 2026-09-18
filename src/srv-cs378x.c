@@ -476,9 +476,11 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 				else mlogf(LOGINFO,getdbgflag(DBG_CS378X,0,cli->id)," <!> decode failed to client '%s' ch %04x:%06x:%04x, Invalid CAID/PROVIDER\n", cli->user,caid,provid,sid);
 				break;
 			}
-			// Check for Accepted sids
-			uint8_t cw1cycle;
-			if ( !accept_sid(cs, provid, sid, ecm_getchid(ecmdata,caid), ecmlen, &cw1cycle) ) {
+		// Check for Accepted sids
+		uint8_t cw1cycle;
+		// CWFEED (estudo de CWs): pedido do cliente
+		cwfeed_add(caid, provid, sid, ecmdata, ecmlen, NULL, 0, 0, 0, 5, 0, cli->id);
+		if ( !accept_sid(cs, provid, sid, ecm_getchid(ecmdata,caid), ecmlen, &cw1cycle) ) {
 				cli->ecmdenied++;
 				cs->ecmdenied++;
 				buf[4] = 0x44;

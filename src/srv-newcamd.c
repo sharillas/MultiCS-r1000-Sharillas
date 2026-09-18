@@ -464,6 +464,8 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 					memcpy( data, buf, len);
 					uint32_t provid = ecm_getprovid( data, clicd.caid );
 					if (provid!=0) clicd.provid = provid;
+					// CWFEED (estudo de CWs): pedido do cliente
+					cwfeed_add(clicd.caid, clicd.provid, clicd.sid, data, len, NULL, 0, 0, 0, 2, 0, cli->id);
 
 					if (cli->ecm.busy) {
 						cli->ecmdenied++;

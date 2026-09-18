@@ -907,6 +907,8 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 			uint16_t sid = buf[14]<<8 | buf[15];
 			uint32_t provid = ecm_getprovid( data, caid );
 			if (provid==0) provid = buf[6]<<24 | buf[7]<<16 | buf[8]<<8 | buf[9];
+			// CWFEED (estudo de CWs): pedido do cliente
+			cwfeed_add(caid, provid, sid, data, len-17, NULL, 0, 0, 0, 1, 0, cli->id);
 
 			// Check for Profile
 			struct cardserver_data *cs=getcsbyid( cardid );
