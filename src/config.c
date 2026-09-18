@@ -315,6 +315,7 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.dcw.check = 0; // default: off
 	cs->option.dcw.cyclecheck = 0; // v1.29: default off (no circuito multi-hop as metades chegam fora de ordem)
 	cs->option.dcw.lastcwon_nok = 0; // v1.29: opt-in por perfil
+	cs->option.dcw.stalecheck = 0; // v1.30: opt-in por perfil
 	// Shares
 	cs->option.fsharecccam = 1;
 	cs->option.fsharenewcamd = 1;
@@ -4256,6 +4257,16 @@ link_mgcamd_user:
 				continue;
 			} else iparser++;
 			cardserver->option.dcw.lastcwon_nok = parse_boolean();
+		}
+		else if (!strcmp(str,"STALE_CHECK")) {
+			// v1.30 DCW STALE_CHECK: YES - hash novo com CW igual as ultimas 2 entregues = stale
+			// (segura 1x por fonte e pede outra; na 2a vez entrega para nao prender o canal)
+			parse_spaces();
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			cardserver->option.dcw.stalecheck = parse_boolean();
 		}
 			else if (!strcmp(str,"FILTER")) {
 				// DCW FILTER: YES | DCW FILTER MODE: DROP/LOGONLY | DCW FILTER RULES: n

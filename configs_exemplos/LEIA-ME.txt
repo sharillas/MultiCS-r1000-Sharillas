@@ -34,10 +34,12 @@ comentadas dentro do proprio ficheiro):
                           Gerada pela ferramenta Update Channel Info.
   multics.css          -> Tema externo (copiar de ../Configs/).
 
-NOTAS v1.29:
+NOTAS v1.30:
   - Rele transparente: CYCLE_CHECK off por omissao, half-null Nagra passa,
     ACCEPT NULL SID/PROVIDER aceite.
   - CWLR: CW Nagra com checksum invalido nao e entregue (espera outra fonte).
-  - DCW LASTCWONNOK + DCW SILENT_NOK + CACHE STATIC: anti-freeze do circuito.
+  - DCW LASTCWONNOK + DCW STALE_CHECK + DCW SILENT_NOK + RETRY 2: anti-freeze
+    do circuito (CACHE STATIC deve ficar NO - envenena a entrega).
   - DCW FILTER (CWPK) em standby (estudo CAK7 em curso).
+  - Perfil [SkyDE-098D] ICAM ativo (cartao Sky DE no circuito).
   - Ver TUTORIAL.md (raiz do repo) para a tabela completa de opcoes.

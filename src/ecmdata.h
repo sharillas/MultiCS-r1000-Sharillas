@@ -82,6 +82,7 @@ struct ecm_request {
 
 	char *statusmsg; // DCW status message
 	uint8_t nokbiss; // BISS NOK (sem chave/emulador desligado) -> NOK amarelo na GUI
+	uint8_t stalehold; // v1.30 STALE_CHECK: ja segurou 1x uma CW stale desta fonte
 
 #ifdef CHECK_NEXTDCW
 	// Last Successive ECM/DCW

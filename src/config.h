@@ -671,6 +671,7 @@ struct cardserver_data
 			uint8_t cak7;      // DCW CAK7: transformacao CAK7 Merlin da CW (NDS/Nagra 09xx/1802/1814)
 			uint8_t dcwlog;    // DCW LOG: regista as CWs em hex no debug (aprendizagem CAK7)
 			uint8_t lastcwon_nok; // DCW LASTCWONNOK: em NOK reenvia a ultima CW valida do canal
+			uint8_t stalecheck; // v1.30 DCW STALE_CHECK: hash novo + CW igual as ultimas 2 = stale (hold 1x por fonte)
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
