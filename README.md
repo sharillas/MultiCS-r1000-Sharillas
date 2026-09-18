@@ -1,8 +1,8 @@
-﻿# MultiCS r1000 v1.29 - by Sharillas
+﻿# MultiCS r1000 v1.30 - by Sharillas
 
 Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruÃ­do e muito expandido: GUI web moderna, Softcam BISS/CW, proteÃ§Ãµes contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs**, login guard anti brute-force, NOK cache, validaÃ§Ã£o de uploads sem crash, **SILENT NOK adiado** (v1.24), e o pacote anti-â€œcartÃµes marcadosâ€ (v1.29): **ECM FILTER rule engine**, **DCW FILTER CWPK** com modo AUTO, **FAILBAN**, **ANTICASCADE**, **ECMRATELIMIT** e **DCW CAK7** (Sky DE 098D / MEO / NOS).
 
-> **VersÃ£o:** v1.29 | **LicenÃ§a:** Sharillas@2026
+> **VersÃ£o:** v1.30 | **LicenÃ§a:** Sharillas@2026
 
 ---
 ## InstalaÃ§Ã£o (qualquer VPS Linux x86/x64)
@@ -12,10 +12,10 @@ Os binÃ¡rios sÃ£o **estÃ¡ticos musl** â€â€ correm em Debian, Ubu
 **Sem git** (download do asset do release):
 
 ```bash
-# 1. descarrega o pacote da release (exemplo v1.29)
-wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.29/multics-r1000-v1.29.tar.gz
+# 1. descarrega o pacote da release (exemplo v1.30)
+wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.30/multics-r1000-v1.30.tar.gz
 # 2. extrai e instala
-tar xzf multics-r1000-v1.29.tar.gz
+tar xzf multics-r1000-v1.30.tar.gz
 cd multics-r1000
 sudo bash install.sh            # ou: sudo bash install.sh /meu/caminho
 ```
@@ -78,7 +78,13 @@ Fluxo mÃ­nimo para funcionar:
 
 ---
 
-## Features desta build (v1.29)
+## Features desta build (v1.30)
+
+### Novo na v1.30 â€â€ anti-freeze real do circuito (LASTCW + STALE_CHECK)
+- **FIX LASTCWONNOK**: a janela de CWs por canal Ã© agora sempre actualizada â€â€ o reenvio da Ãºltima CW em NOK/timeout funciona mesmo sem `DCW MINTIME`/`CYCLE_CHECK` (antes o NOK ia sempre ao cliente)
+- **FIX CACHE STATIC**: revertido para NO nos perfis (respondia com a CW velha e descartava a fresca do cartÃ£o â€â€ congelava atÃ© restart)
+- **DCW STALE_CHECK**: hash novo + CW igual Ã s Ãºltimas 2 entregues = stale â€â€ segura 1x por fonte e pede outra (2Âª vez entrega)
+- **DCW RETRY: 2** nos perfis de circuito + perfil **[SkyDE-098D] ICAM activado**
 
 ### Novo na v1.29 â€â€ pacote anti-"cartÃµes marcados" (anÃ¡lise do MultiCS r120)
 - **DCW FILTER (CWPK)**: blacklist de CWs de cartÃµes marcados com 35 valores conhecidos; modos `AUTO` (recomendado: desligado por defeito, **ativa-se sozinho no 1Ã‚Âº hit** e passa a bloquear â€â€ sem ninguÃ©m ver o log), `LOGONLY` (sÃ³ log) e `DROP`; regras `EXACT` (atÃ© 8 CWs por regra), `MASK` (wildcard) e `ALLEQUAL` (fake CW)

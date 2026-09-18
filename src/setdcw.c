@@ -142,6 +142,7 @@ struct dcwchan_data {
 	uint16_t sid;
 	uint8_t cw[16];
 	uint8_t cw2[16]; // CW anterior (janela de 2 para LASTCWONNOK)
+	uint32_t lasthash; // hash da ultima CW aceite (v1.30 STALE_CHECK)
 	uint32_t lasttime;
 	uint8_t lasthalf; // 0 = metade0 mudou por ultimo, 1 = metade1, 2 = ambas/desconhecido
 };
@@ -223,6 +224,7 @@ int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
 	if (!reject) {
 		memcpy(e->cw2, e->cw, 16); // janela de 2 CWs
 		memcpy(e->cw, dcw, 16);
+		e->lasthash = ecm->hash; // v1.30: hash da ultima CW aceite (STALE_CHECK)
 		e->lasttime = now;
 	}
 
@@ -269,6 +271,28 @@ int dcwchan_getlast2(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw1[1
 	}
 	pthread_mutex_unlock(&dcwchan_mutex);
 	return found;
+}
+
+// v1.30 STALE CHECK: hash NOVO com CW igual a ultima (ou penultima) aceite = stale.
+// (a fonte atrasada repete a CW do ciclo anterior - nao desencripta o hash novo)
+int dcwchan_stale(ECM_DATA *ecm, uint8_t dcw[16])
+{
+	char nullcw[16] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+	int stale = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==ecm->caid && e->provid==ecm->provid && e->sid==ecm->sid) {
+			if (e->lasthash && (e->lasthash != ecm->hash)) {
+				if (!memcmp(e->cw, dcw, 16)) stale = 1;
+				else if (memcmp(e->cw2, nullcw, 16) && !memcmp(e->cw2, dcw, 16)) stale = 1;
+			}
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return stale;
 }
 
 
@@ -707,12 +731,28 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		return;
 	}
 
-	// DCW MINTIME + DCW CYCLE_CHECK (por canal)
-	if (cs->option.dcw.mintime || cs->option.dcw.cyclecheck) {
-		if (dcwchan_check( ecm, dcw, cs )) {
+	// STALE CHECK (v1.30): hash novo com CW igual as ultimas 2 entregues = stale
+	// (fonte atrasada a repetir a CW do ciclo anterior). Segura 1x por fonte e
+	// deixa o ECM a espera de outra fonte; na 2a vez entrega (evita prender o canal).
+	if (cs->option.dcw.stalecheck && (srctype==DCW_SOURCE_SERVER) && dcwchan_stale( ecm, dcw )) {
+		if (!ecm->stalehold) {
+			ecm->stalehold = 1;
+			struct server_data *s = getsrvbyid(srcid&0xffff);
+			if (s) srv_nok_record(s, ecm->caid, ecm->sid);
+			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," stalecw: CW stale (hash novo, CW repetida) ch %04x:%06x:%04x src %d - hold, a espera de outra fonte\n",
+				ecm->caid, ecm->provid, ecm->sid, srctype);
 			pthread_mutex_unlock(&prg.lockecm);
 			return;
 		}
+		mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," stalecw: 2a stale da mesma fonte ch %04x:%06x:%04x - entregar\n",
+			ecm->caid, ecm->provid, ecm->sid);
+	}
+
+	// DCW MINTIME + DCW CYCLE_CHECK (por canal) + janela LASTCWONNOK
+	// (v1.29-fix: janela atualizada SEMPRE - sem MINTIME/CYCLE_CHECK o LASTCWONNOK ficava sem CWs)
+	if (dcwchan_check( ecm, dcw, cs )) {
+		pthread_mutex_unlock(&prg.lockecm);
+		return;
 	}
 
 	// filter non-nds halfnulled cw (v1.29: NAGRA 18xx half-null passa - half-cycle legitimo no circuito)

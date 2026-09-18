@@ -1,10 +1,10 @@
-# Configuração do Cardserver — guia exacto (v1.29)
+# Configuração do Cardserver — guia exacto (v1.30)
 
 > **A tabela completa de todas as opções (DCW/ECM/SID/CACHE/NAGRA/TIMING/HEALTH/FALLBACK/protecções) está no [TUTORIAL.md](../TUTORIAL.md)** — este guia resume a estrutura de ficheiros e o fluxo.
 
 Os ficheiros ficam em `/var/etc/` (depois do `install.sh`). Qualquer alteração pode ser feita pela **GUI (Configs → Edit ou Upload)** — aplica na hora, sem restart.
 
-## Estrutura de ficheiros (v1.29)
+## Estrutura de ficheiros (v1.30)
 
 | Ficheiro | Função |
 |---|---|
@@ -22,6 +22,6 @@ Os ficheiros ficam em `/var/etc/` (depois do `install.sh`). Qualquer alteração
 
 > Ordem de parsing: perfis antes dos clientes. A GUI resolve os caminhos a partir da config em execução — funciona em qualquer layout.
 
-## Fluxo de um pedido (v1.29)
+## Fluxo de um pedido (v1.30)
 
-cliente → perfil (CAID/PROV/SID aceites) → cache/static (keep CW) → readers (load-balance: priority, val, hops, FALLBACK ORDER, health) → CW → **checksum gate** (CW lixo não entregue) → entrega ao cliente; em falha: `LASTCWONNOK` + `SILENT_NOK`.
+cliente → perfil (CAID/PROV/SID aceites) → cache (keep CW) → readers (load-balance: priority, val, hops, FALLBACK ORDER, health) → CW → **checksum gate** (CW lixo não entregue) → **STALE_CHECK** (v1.30: CW repetida com hash novo = stale → segura 1x e pede outra fonte) → entrega ao cliente; em falha: `LASTCWONNOK` + `SILENT_NOK`.

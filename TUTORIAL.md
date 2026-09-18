@@ -1,4 +1,4 @@
-# MultiCS r1000 v1.29 — Tutorial Plug & Play
+# MultiCS r1000 v1.30 — Tutorial Plug & Play
 
 > Cardserver proxy multiprotocolo (CCcam / Newcamd / Mgcamd / Camd35 / cs378x / Radegast / Cache / CacheEX) com tema "Stats Tiles" e painéis de estudo de CWs.
 > **Importante**: NUNCA colocar IPs, utilizadores, passwords ou linhas reais na repo — usa este tutorial com valores fictícios e guarda os teus segredos localmente (`deploy.secrets.ps1` está no .gitignore).
@@ -79,6 +79,8 @@ USER: cliente1 senha1 { name="Box cliente" }
 | `DCW CYCLE_CHECK: NO` | **NO (v1.29)** | exige alternância de metades — **desligado por omissão**: no circuito multi-hop as metades chegam fora de ordem e isto cortava CWs verdadeiras |
 | `DCW SILENT_NOK: YES` | NO | atrasa o NOK 2.5s (não pára o descrambler do cliente) |
 | `DCW LASTCWONNOK: YES` | NO | em NOK/timeout reenvia a última CW válida do canal (janela de 2) — **anti-freeze do circuito** |
+| `DCW STALE_CHECK: YES` | NO | **(v1.30)** hash novo + CW igual às últimas 2 entregues = stale → segura 1x por fonte e pede outra (na 2ª entrega) |
+| `DCW RETRY: 2` | 3 | **(v1.30)** nº de retries do pedido — cadeia mais curta = fallback mais rápido no circuito |
 | `DCW LOG: YES` | NO | regista as CWs em hex em `/var/log/multics-cw.log` (estudo CAK7) |
 | `DCW CAK7: YES` | NO | transformação CAK7 Merlin (canais que exigem) |
 | `DCW FILTER: NO` | **NO (v1.29)** | filtro CWPK de cartões marcados — **standby** até o estudo CAK7 avançar |
@@ -179,7 +181,7 @@ Formato: `CAID:PROVID:SID "NOME [PACOTE 30W]"` — alimenta o feed, o last-used-
 
 | Sintoma | Causa provável | Acção |
 |---|---|---|
-| Canal abre e congela | fonte a entregar CWs erradas/stale | activar `DCW LASTCWONNOK` + `DCW SILENT_NOK` + `CACHE STATIC` |
+| Canal abre e congela | fonte a entregar CWs erradas/stale | activar `DCW LASTCWONNOK` + `DCW STALE_CHECK` + `DCW SILENT_NOK` (v1.30); NÃO usar `CACHE STATIC` — responde com CW velha e descarta a fresca |
 | Canal não abre | CW lixo da fonte | ver o feed: `cwlr: CW lixo (checksum)` no debug = a nossa build segurou a CW má |
 | "Channel denied" | SID DENYLIST mal ordenado | `SID LIST` primeiro, `SID DENYLIST: YES` DEPOIS |
 | Botões não respondem | cache do browser | Ctrl+F5 (customjs tem versão no URL) |

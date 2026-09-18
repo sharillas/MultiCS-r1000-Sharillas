@@ -1,3 +1,11 @@
+## v1.30 (setembro 2026) - anti-freeze real do circuito (LASTCW + STALE_CHECK)
+- FIX LASTCWONNOK: a janela dcwchan e sempre actualizada - antes so com DCW MINTIME/CYCLE_CHECK activos o LASTCWONNOK nunca tinha CWs para reenviar (NOK ia sempre ao cliente)
+- FIX CACHE STATIC: revertido para NO nos perfis de circuito (respondia com a CW velha e descartava a CW fresca do cartao - congelava ate restart)
+- DCW STALE_CHECK (opt-in por perfil): hash novo + CW igual as ultimas 2 entregues = stale -> segura 1x por fonte (NOK cache) e pede outra; na 2a vez entrega (nao prende o canal)
+- DCW RETRY: 2 nos perfis [MEO]/[NOS] (cadeia de retries mais curta)
+- Perfil [SkyDE-098D] ICAM activado (cartao Sky DE no circuito, porta 15052)
+- Resultado medido no circuito: RTP 1 HD NOS (1802:0097) passou de freezes permanentes para entrega continua (LAST CW resent + ciclos seguidos found)
+
 ## v1.29 (setembro 2026) - rele transparente + CW learning filter
 - Rele transparente: CYCLE_CHECK default OFF (circuito multi-hop), half-null Nagra 18xx passa, ACCEPT NULL SID/PROVIDER YES
 - CWLR: CW Nagra com checksum invalido = lixo -> nao entregue, espera outra fonte (checksum gate)
@@ -10,7 +18,7 @@
 - CWPK (DCW FILTER) em standby (estudo CAK7 em curso)
 - TUTORIAL.md plug-and-play; scripts de build/deploy fora da repo (ficam locais)
 
-# Implementação — o que foi feito nesta build (historico ate v1.29)
+# Implementação — o que foi feito nesta build (historico ate v1.30)
 
 Base: fork multi-cs/multics (evileyes). Compilação: Zig 0.15.2 cross-compile (Windows → Linux), binários estáticos musl x64/x32.
 

@@ -54,3 +54,11 @@ Todas as alteraÃ§Ãµes notÃ¡veis desde a v1.20, por versÃ£o.
 - name="..." nos readers, channelinfo 30W com nomes reais, flag ip2country corrigida
 - CWPK (DCW FILTER) em standby (estudo CAK7 em curso)
 - TUTORIAL.md (plug and play), limpeza da repo (binarios/ficheiros obsoletos fora)
+
+## v1.30 (2026-09-19)
+- FIX LASTCWONNOK: a janela de CWs por canal e sempre actualizada (antes so com DCW MINTIME/CYCLE_CHECK activos o LASTCWONNOK nunca tinha CWs para reenviar - o NOK ia sempre ao cliente)
+- FIX CACHE STATIC: revertido para NO nos perfis (respondia com a CW velha e descartava a CW fresca do cartao - o canal congelava ate restart)
+- DCW STALE_CHECK: hash novo + CW igual as ultimas 2 entregues = stale -> segura 1x por fonte e pede outra (2a vez entrega)
+- DCW RETRY: 2 nos perfis de circuito ([MEO]/[NOS]) - cadeia de retries mais curta
+- Perfil [SkyDE-098D] ICAM activado (cartao Sky DE no circuito, porta 15052)
+- Resultado no circuito: RTP 1 HD NOS (1802:0097) de freezes permanentes para entrega continua

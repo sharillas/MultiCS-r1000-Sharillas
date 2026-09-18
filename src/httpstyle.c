@@ -1,6 +1,6 @@
 char style_css[] =
 	"/* ============================================================\n"
-	"   MultiCS r1000 v1.28 - Stats Tiles Theme (Side Menu)\n"
+	"   MultiCS r1000 v1.30 - Stats Tiles Theme (Side Menu)\n"
 	"   by Sharillas@2026 - external stylesheet (FILE STYLESHEET)\n"
 	"   ============================================================ */\n"
 	"* { margin:0; padding:0; box-sizing:border-box; }\n"
@@ -363,7 +363,7 @@ char style_css[] =
 	"body.light-mode ::-webkit-scrollbar-thumb:hover { background:#b3bac5; }\n"
 	"\n"
 	"/* ============================================================\n"
-	"   CW FEED (painel DBG - estudo de CWs, v1.28)\n"
+	"   CW FEED (painel DBG - estudo de CWs, v1.30)\n"
 	"   ============================================================ */\n"
 	"tr.dbgrow td { background:#151a21; padding:8px; border-radius:8px; }\n"
 	"body.light-mode tr.dbgrow td { background:#eef1f6; }\n"
