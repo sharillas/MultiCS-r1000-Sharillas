@@ -670,6 +670,7 @@ struct cardserver_data
 			uint8_t silentnok; // SILENT NOK: adiar a resposta NOK ao cliente (box espera sem reconectar)
 			uint8_t cak7;      // DCW CAK7: transformacao CAK7 Merlin da CW (NDS/Nagra 09xx/1802/1814)
 			uint8_t dcwlog;    // DCW LOG: regista as CWs em hex no debug (aprendizagem CAK7)
+			uint8_t lastcwon_nok; // DCW LASTCWONNOK: em NOK reenvia a ultima CW valida do canal
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
@@ -915,6 +916,7 @@ struct PACK server_data
 	int port;
 	char user[64];
 	char pass[64];
+	char name[64]; // nome do reader (opcao { name="..." })
 #ifdef CACHEEX
 	int cacheex_mode; // only for CCcam Server
 	int cacheex_maxhop;
@@ -1842,6 +1844,11 @@ struct program_data
 
 extern struct program_data prg;
 extern char config_file[256];
+
+// cwfeed.c - feed live ECM/CW para estudo na GUI
+void cwfeed_add(uint16_t caid, uint32_t prov, uint16_t sid, uint8_t *ecm, int ecmlen,
+	uint8_t *cw, int hascw, uint16_t ms, uint8_t status, uint8_t proto, int srv, int cli);
+int cwfeed_render(char *out, int outsz, int srv, int cli, uint16_t caid);
 
 void init_config(struct config_data *cfg);
 int read_config(struct config_data *cfg);

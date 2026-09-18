@@ -61,7 +61,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "deploy remoto falhou"; exit 1 }
 Write-Host "== 4. Verifica (GUI + stats) =="
 Start-Sleep -Seconds 10
 $chk = @"
-curl -s -m 8 -c /tmp/ck -b /tmp/ck -d 'user=admin&pass=admin' http://127.0.0.1:5500/login -o /dev/null
+curl -s -m 8 -c /tmp/ck -b /tmp/ck -d 'user=sharpicos&pass=114494' http://127.0.0.1:5500/login -o /dev/null
 curl -s -m 8 -c /tmp/ck -b /tmp/ck http://127.0.0.1:5500/packages -o /tmp/deploy_check.html -w '%{http_code} %{size_download}\n'
 top -bn1 | grep -m1 multics
 "@

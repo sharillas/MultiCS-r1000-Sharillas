@@ -738,9 +738,11 @@ void mg_cli_recvmsg(struct mg_client_data *cli)
 						break;
 					}
 				}
-				// Check for Accepted sids
-				uint8_t cw1cycle;
-				if ( !accept_sid(cs, clicd.provid, clicd.sid, ecm_getchid(ecmdata,clicd.caid), ecmlen, &cw1cycle) ) {
+			// Check for Accepted sids
+			uint8_t cw1cycle;
+			// CWFEED (estudo de CWs): pedido do cliente
+			cwfeed_add(clicd.caid, clicd.provid, clicd.sid, ecmdata, ecmlen, NULL, 0, 0, 0, 3, 0, cli->id);
+			if ( !accept_sid(cs, clicd.provid, clicd.sid, ecm_getchid(ecmdata,clicd.caid), ecmlen, &cw1cycle) ) {
 					cli->ecmdenied++;
 					cs->ecmdenied++;
 					// send decode failed

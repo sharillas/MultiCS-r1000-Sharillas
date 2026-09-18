@@ -565,6 +565,7 @@ void forward_cs378x(ECM_DATA *ecm);
 #include "lite.c"  // BUILD LITE: filtro de canais CCcam.lite
 #include "ipblock.c" // Lista de IPs bloqueados (Iptables)
 #include "protection.c" // ECM/DCW filters, FAILBAN, ANTICASCADE, RATELIMIT, CAK7
+#include "cwfeed.c"   // Feed live ECM/CW para estudo na GUI
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -582,8 +583,10 @@ char *src2string(int srctype, int srcid, char *ret)
 
 	if (srctype==DCW_SOURCE_SERVER) {
 		struct server_data *srv = getsrvbyid(srcid&0xFFFF);
-		if (srv)
-			sprintf( ret,"server (%s:%d)", srv->host->name, srv->port);
+		if (srv) {
+			if (srv->name[0]) sprintf( ret,"server %s", srv->name);
+			else sprintf( ret,"server (%s:%d)", srv->host->name, srv->port);
+		}
 		else
 			sprintf( ret,"Unknow server (id=%d)", srcid);
 		return ss1;
