@@ -1,5 +1,5 @@
 ﻿# ============================================================
-# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.20)
+# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.29)
 # ============================================================
 
 Ficheiros e funcao de cada um (todos com explicacoes detalhadas
@@ -16,54 +16,28 @@ comentadas dentro do proprio ficheiro):
                           FALLBACK, TIMING, EMULATOR BISS, LITE...).
                           Usa [DEFAULT] + [NOME]. Perfis desactivados com
                           #[NOME] aparecem na GUI com botao ON.
-  Cache.cfg            -> PEERS de cache (partilha de CWs entre servers):
-                          CACHE: host porta user pass { opcoes }
-  CacheEX.cfg          -> PEERS CacheEX: C: host porta user pass
-                          { cacheex_mode=3 ... }
-  1-Clients.cfg        -> F-LINES (clientes CCcam) com todas as opcoes.
-  Nlines.cfg           -> N-LINES (clientes newcamd + readers).
-  users.cfg            -> Utilizadores globais (valem para todos os
-                          profiles; INCLUDE antes do profiles.cfg).
-  Mgcamd.cfg           -> Utilizadores MGcamd.
-  Camd35.cfg           -> Utilizadores Camd35 (UDP) e CS378x (TCP).
+  servidores.cfg       -> READERS (N:/C:/L:/CACHE/CACHEEX) com as opcoes
+                          { nocheck=yes; name="..."; priority=N }.
+  clientes_cccam.cfg   -> F-LINES (clientes CCcam) com todas as opcoes
+                          (profiles=, host=, expire=, name=...).
+  clientes_mgcamd.cfg  -> Utilizadores MGcamd.
+  clientes_camd35.cfg  -> Utilizadores Camd35 (UDP).
+  clientes_cs378x.cfg  -> Utilizadores CS378x (TCP).
+  clientes_cache.cfg   -> PEERS de cache (partilha de CWs entre servers).
   Softcam.cfg          -> Chaves CONSTCW (BISS/Tandberg) do Softcam
                           (pagina Softcam da GUI).
   blocked_ips.cfg      -> IPs bloqueados (gerido na pagina Configs).
-  CCcam.channelinfo    -> Nomes de canais para a GUI (editavel na Configs).
+  CCcam.channelinfo    -> Nomes de canais para a GUI (feed e last share).
   CCcam.providers      -> Nomes de providers para a GUI.
   CCcam.lite           -> BUILD LITE: lista de canais activos
                           (CAID:PROVID:SID, FFFE = qualquer CAID).
                           Gerada pela ferramenta Update Channel Info.
-  ip2country.csv       -> Base IP -> pais para as bandeiras da GUI
-                          (IP_INICIO,IP_FIM,CC; amostra minima aqui -
-                          a completa vai no pacote da build).
   multics.css          -> Tema externo (copiar de ../Configs/).
 
-Instalacao na VPS (Debian/Ubuntu):
-  mkdir -p /var/etc
-  copiar todos os ficheiros para /var/etc/
-  chmod -R 775 /var/etc/
-  executar: ./multics.x64 -b -C /var/etc/multics.cfg
-
-Actualizacao automatica de chaves BISS (opcional):
-  copiar biss_updater.py para /var/etc/ e adicionar ao crontab:
-  0 */6 * * * root /usr/bin/python3 /var/etc/biss_updater.py >> /var/log/biss_updater.log 2>&1
-
-Notas:
-  - O multics.cfg e o ficheiro MESTRE: todos os ficheiros que o parse
-    deve ler tem de estar la descritos (FILE ... ou INCLUDE "...").
-  - Alteracoes nos cfgs sao detectadas automaticamente (inotify).
-  - A pagina "Configs" da GUI tem 3 seccoes:
-      * Upload Configs: envia qualquer um dos ficheiros acima para
-        /var/etc (backup automatico .bak-<timestamp>). Se o ficheiro
-        tiver erros, as linhas mas sao comentadas automaticamente e as
-        opcoes default ficam ativas; se nao der para corrigir, o upload
-        e rejeitado e o anterior e reposto (nunca crasha/fica sem arrancar).
-      * Blocked IPs: bloquear/desbloquear IPs (com pais e tempo de
-        bloqueio em formato DD:HH:MM:SS).
-      * Edit Config: edicao de TODOS os ficheiros acima (dropdown) com
-        save sem restart, e os botoes Update Channel Info (KingOfSat),
-        Load Channel Info e Reload Main Config.
-  - A pagina "Softcam" gere as chaves BISS/Tandberg (upload SoftCam.Key,
-    Update SoftCam.Key remoto, Reload Keys).
-  - Mudar sempre HTTP USER/PASS e TELNET USER/PASS antes de expor na net.
+NOTAS v1.29:
+  - Rele transparente: CYCLE_CHECK off por omissao, half-null Nagra passa,
+    ACCEPT NULL SID/PROVIDER aceite.
+  - CWLR: CW Nagra com checksum invalido nao e entregue (espera outra fonte).
+  - DCW LASTCWONNOK + DCW SILENT_NOK + CACHE STATIC: anti-freeze do circuito.
+  - DCW FILTER (CWPK) em standby (estudo CAK7 em curso).
+  - Ver TUTORIAL.md (raiz do repo) para a tabela completa de opcoes.

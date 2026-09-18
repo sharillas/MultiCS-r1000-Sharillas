@@ -1,4 +1,16 @@
-# Implementação — o que foi feito nesta build (v1.0.10.2)
+## v1.29 (setembro 2026) - rele transparente + CW learning filter
+- Rele transparente: CYCLE_CHECK default OFF (circuito multi-hop), half-null Nagra 18xx passa, ACCEPT NULL SID/PROVIDER YES
+- CWLR: CW Nagra com checksum invalido = lixo -> nao entregue, espera outra fonte (checksum gate)
+- DCW LASTCWONNOK (janela de 2 CWs) + DCW SILENT_NOK - anti-freeze do circuito
+- CACHE STATIC + CACHE TIMEOUT 6000 (keep CW por canal)
+- NAGRA ONBAD default LOG ONLY (opt-in por perfil)
+- Feed ECM/CW live nos paineis DBG (servers + clientes), endpoint /cwfeed
+- name="..." nos readers (from do last-used-share), channelinfo 30W com nomes reais
+- Botoes DBG/ON/OFF corrigidos (paginas de clientes), flags ip2country corrigidas
+- CWPK (DCW FILTER) em standby (estudo CAK7 em curso)
+- TUTORIAL.md plug-and-play; scripts de build/deploy fora da repo (ficam locais)
+
+# Implementação — o que foi feito nesta build (historico ate v1.29)
 
 Base: fork multi-cs/multics (evileyes). Compilação: Zig 0.15.2 cross-compile (Windows → Linux), binários estáticos musl x64/x32.
 
