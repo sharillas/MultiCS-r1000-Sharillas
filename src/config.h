@@ -1008,6 +1008,8 @@ struct PACK server_data
 	int ecmtimeout; // number of errors for timeout (no cw returned by server)
 	int ecmerrdcw;  // null DCW/failed DCW checksum (diffeent dcw)
 	uint32_t ecmerrdcw_time; // ultima vez que ecmerrdcw++ (para decay no health)
+	uint32_t cwbad;  // v1.30.1: CWs inteligentes flaggadas (nagra/cwlr/cwpk) - lixo de cartao marcado
+	uint32_t cwbad_time; // ultima vez que cwbad++ (para decay no health)
 	int ecmnb;	// total number of ecm requests
 	int ecmok;	// dcw returned to client
 	int ecmoktime;
