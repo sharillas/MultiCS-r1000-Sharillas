@@ -210,7 +210,7 @@ int srv_healthscore(struct cardserver_data *cs, struct server_data *srv)
 	int sta = (int)((uptime*1000)/600);
 	if (sta>1000) sta = 1000;
 
-	// Erros: timeouts + bad dcw (20 erros = penalizacao maxima)
+	// Erros: timeouts + bad dcw + CWs suspeitas (nagra/cwlr/cwpk/stale) (20 = penalizacao maxima)
 	// decay: se nao ha conflitos ha >10min, a penalizacao cai para metade;
 	// >30min sem conflitos, desaparece (o colega pode ter corrigido as CWs)
 	int errdcw_eff = srv->ecmerrdcw;
@@ -219,7 +219,14 @@ int srv_healthscore(struct cardserver_data *cs, struct server_data *srv)
 		if (el > 1800) errdcw_eff = 0;
 		else if (el > 600) errdcw_eff = errdcw_eff / 2;
 	}
-	int err = (srv->ecmtimeout + errdcw_eff) * 50;
+	// v1.30.1: cwbad (lixo inteligente) com o mesmo decay
+	int cwbad_eff = (int)srv->cwbad;
+	if (srv->cwbad_time) {
+		uint32_t el = (GetTickCount() - srv->cwbad_time) / 1000;
+		if (el > 1800) cwbad_eff = 0;
+		else if (el > 600) cwbad_eff = cwbad_eff / 2;
+	}
+	int err = (srv->ecmtimeout + errdcw_eff + cwbad_eff) * 50;
 	if (err>1000) err = 1000;
 
 	int score = (suc*wsuc + lat*wlat + sta*wsta - err*werr)/100;
@@ -487,9 +494,9 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 	if (cs->option.health.enable) {
 		for(i=0; i<nbsrv; i++) {
 			psrvlist[i]->health = srv_healthscore(cs, psrvlist[i]->srv);
-			mlogf(LOGDEBUG,getdbgflagpro(DBG_SERVER,0,psrvlist[i]->srv->id,cs->id)," health: server (%s:%d) score=%d (ok=%d/%d tmo=%d baddcw=%d)\n",
+			mlogf(LOGDEBUG,getdbgflagpro(DBG_SERVER,0,psrvlist[i]->srv->id,cs->id)," health: server (%s:%d) score=%d (ok=%d/%d tmo=%d baddcw=%d cwbad=%d)\n",
 				psrvlist[i]->srv->host->name, psrvlist[i]->srv->port, psrvlist[i]->health,
-				psrvlist[i]->srv->ecmok, psrvlist[i]->srv->ecmnb, psrvlist[i]->srv->ecmtimeout, psrvlist[i]->srv->ecmerrdcw);
+				psrvlist[i]->srv->ecmok, psrvlist[i]->srv->ecmnb, psrvlist[i]->srv->ecmtimeout, psrvlist[i]->srv->ecmerrdcw, psrvlist[i]->srv->cwbad);
 		}
 
 		if (cs->option.health.dropoff>0) {

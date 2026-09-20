@@ -273,11 +273,13 @@ int dcwchan_getlast2(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw1[1
 	return found;
 }
 
-// v1.30 STALE CHECK: hash NOVO com CW igual a ultima (ou penultima) aceite = stale.
+// v1.30 STALE CHECK: hash NOVO com CW igual a ultima aceite = stale.
 // (a fonte atrasada repete a CW do ciclo anterior - nao desencripta o hash novo)
+// v1.30.1: so compara com a CW IMEDIATAMENTE anterior - o padrao real do circuito
+// reaproveita uma metade de ciclos anteriores (cadeia NAGRA), so o par completo
+// repetido e suspeito.
 int dcwchan_stale(ECM_DATA *ecm, uint8_t dcw[16])
 {
-	char nullcw[16] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 	int stale = 0;
 	pthread_mutex_lock(&dcwchan_mutex);
 	struct dcwchan_data *e = dcwchan_list;
@@ -285,7 +287,6 @@ int dcwchan_stale(ECM_DATA *ecm, uint8_t dcw[16])
 		if (e->caid==ecm->caid && e->provid==ecm->provid && e->sid==ecm->sid) {
 			if (e->lasthash && (e->lasthash != ecm->hash)) {
 				if (!memcmp(e->cw, dcw, 16)) stale = 1;
-				else if (memcmp(e->cw2, nullcw, 16) && !memcmp(e->cw2, dcw, 16)) stale = 1;
 			}
 			break;
 		}
@@ -332,12 +333,12 @@ void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		if (fp) {
 			time_t t = time(NULL);
 			struct tm *lt = localtime(&t);
-			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d\n",
+			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d srv %d\n",
 				lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
 				ecm->caid, ecm->provid, ecm->sid,
 				dcw[0],dcw[1],dcw[2],dcw[3],dcw[4],dcw[5],dcw[6],dcw[7],
 				dcw[8],dcw[9],dcw[10],dcw[11],dcw[12],dcw[13],dcw[14],dcw[15],
-				srctype);
+				srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0);
 			fclose(fp);
 		}
 	}
@@ -647,6 +648,10 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	// DCW FILTER: blacklist CWPK (cartoes marcados / fakes)
 	if ( dcw_filter_check(cs, dcw) ) {
 		ecm->lastdecode.error++;
+		if (srctype==DCW_SOURCE_SERVER) {
+			struct server_data *s = getsrvbyid(srcid&0xffff);
+			if (s) { s->cwbad++; s->cwbad_time = GetTickCount(); }
+		}
 		mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: CW rejeitada (DROP) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
 		return;
 	}
@@ -657,12 +662,12 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		if (fp) {
 			time_t t = time(NULL);
 			struct tm *lt = localtime(&t);
-			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d\n",
+			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d srv %d\n",
 				lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
 				ecm->caid, ecm->provid, ecm->sid,
 				dcw[0],dcw[1],dcw[2],dcw[3],dcw[4],dcw[5],dcw[6],dcw[7],
 				dcw[8],dcw[9],dcw[10],dcw[11],dcw[12],dcw[13],dcw[14],dcw[15],
-				srctype);
+				srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0);
 			fclose(fp);
 		}
 	}
@@ -705,6 +710,11 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	{
 		int ncode = nagra_check( ecm, dcw );
 		if (ncode) {
+			// v1.30.1: conta CWs suspeitas por reader (qualidade no load-balance)
+			if (srctype==DCW_SOURCE_SERVER) {
+				struct server_data *s = getsrvbyid(srcid&0xffff);
+				if (s) { s->cwbad++; s->cwbad_time = GetTickCount(); }
+			}
 			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," nagra: dcw rejected (code %d) ch %04x:%06x:%04x profile '%s'%s\n",
 				ncode, ecm->caid, ecm->provid, ecm->sid, cs->name,
 				cs->option.nagra.onbad ? " (drop)" : " (log only)");
@@ -723,7 +733,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		&& !checksumDCW(dcw)) {
 		if (srctype==DCW_SOURCE_SERVER) {
 			struct server_data *s = getsrvbyid(srcid&0xffff);
-			if (s) srv_nok_record(s, ecm->caid, ecm->sid);
+			if (s) { srv_nok_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
 		}
 		mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cwlr: CW lixo (checksum) ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
 			ecm->caid, ecm->provid, ecm->sid, srctype);
@@ -738,7 +748,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		if (!ecm->stalehold) {
 			ecm->stalehold = 1;
 			struct server_data *s = getsrvbyid(srcid&0xffff);
-			if (s) srv_nok_record(s, ecm->caid, ecm->sid);
+			if (s) { srv_nok_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
 			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," stalecw: CW stale (hash novo, CW repetida) ch %04x:%06x:%04x src %d - hold, a espera de outra fonte\n",
 				ecm->caid, ecm->provid, ecm->sid, srctype);
 			pthread_mutex_unlock(&prg.lockecm);
