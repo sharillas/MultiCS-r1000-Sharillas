@@ -79,7 +79,7 @@ USER: cliente1 senha1 { name="Box cliente" }
 | `DCW CYCLE_CHECK: NO` | **NO (v1.29)** | exige alternância de metades — **desligado por omissão**: no circuito multi-hop as metades chegam fora de ordem e isto cortava CWs verdadeiras |
 | `DCW SILENT_NOK: YES` | NO | atrasa o NOK 2.5s (não pára o descrambler do cliente) |
 | `DCW LASTCWONNOK: YES` | NO | em NOK/timeout reenvia a última CW válida do canal (janela de 2) — **anti-freeze do circuito** |
-| `DCW STALE_CHECK: YES` | NO | **(v1.30)** hash novo + CW igual às últimas 2 entregues = stale → segura 1x por fonte e pede outra (na 2ª entrega) |
+| `DCW STALE_CHECK: YES` | NO | **(v1.30)** hash novo + CW igual às últimas 2 entregues = stale → segura 1x por fonte e pede outra (na 2ª entrega). **Só usar se a fonte NÃO repete CWs**: no cartão MEO fica OFF (repete metades legitimamente) |
 | `DCW RETRY: 2` | 3 | **(v1.30)** nº de retries do pedido — cadeia mais curta = fallback mais rápido no circuito |
 | `DCW LOG: YES` | NO | regista as CWs em hex em `/var/log/multics-cw.log` (estudo CAK7) |
 | `DCW CAK7: YES` | NO | transformação CAK7 Merlin (canais que exigem) |

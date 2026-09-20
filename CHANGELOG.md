@@ -60,5 +60,6 @@ Todas as alteraÃ§Ãµes notÃ¡veis desde a v1.20, por versÃ£o.
 - FIX CACHE STATIC: revertido para NO nos perfis (respondia com a CW velha e descartava a CW fresca do cartao - o canal congelava ate restart)
 - DCW STALE_CHECK: hash novo + CW igual as ultimas 2 entregues = stale -> segura 1x por fonte e pede outra (2a vez entrega)
 - DCW RETRY: 2 nos perfis de circuito ([MEO]/[NOS]) - cadeia de retries mais curta
+- FIX STALE_CHECK no [MEO]: o cartao MEO repete metades legitimamente (15% dos pedidos) - o hold congelava 1 ciclo por repeticao; STALE_CHECK fica OFF no MEO e ON no NOS
 - Perfil [SkyDE-098D] ICAM activado (cartao Sky DE no circuito, porta 15052)
 - Resultado no circuito: RTP 1 HD NOS (1802:0097) de freezes permanentes para entrega continua
