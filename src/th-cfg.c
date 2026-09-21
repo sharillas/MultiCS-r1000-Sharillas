@@ -45,7 +45,6 @@ void *reread_config_thread(void *param)
 	usleep(100000);
 	check_config(&cfg);
 	cfg_set_id_counters(&cfg);
-	emu_load();
 	ipblock_load();
 	lite_load();
 
@@ -97,7 +96,6 @@ void *reread_config_thread(void *param)
 			sleep(1);
 			check_config(&cfg);
 			cfg_set_id_counters(&cfg);
-			emu_load();
 			ipblock_load();
 			lite_load();
 		}

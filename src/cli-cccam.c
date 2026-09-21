@@ -462,7 +462,7 @@ int cc_sendinfo_srv(struct server_data *srv, int ismultics)
 	memset(buf, 0, CC_MAXMSGSIZE);
 	memcpy(buf, srv->user, 20);
 	memcpy(buf + 20, cfg.nodeid, 8 );
-	buf[28] = 0; //srv->wantemus;
+	buf[28] = 0;
 	memcpy(buf + 29, cfg.cccam.version, 32);	// cccam version (ascii)
 	if (ismultics) {
 		buf[57]='W'; buf[58]='H'; buf[59]='O';

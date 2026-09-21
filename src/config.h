@@ -523,7 +523,6 @@ struct cardserver_data
 			int sidtime;  // ms entre ECMs do mesmo SID (0=off)
 			int maxecm;   // max ECMs por segundo no perfil (0=off)
 		} ratelimit;
-		int fenableemu;    // ENABLE EMULATOR BISS (default ON)
 		int fenablelite;   // ENABLE LITE (filtro de canais CCcam.lite, default OFF)
 		// Health scoring (ordena/elimina servers por saude: sucesso, latencia,
 		// estabilidade, erros) - pesos configuraveis por perfil
@@ -828,7 +827,6 @@ struct PACK cc_client_data { // Connected Client
 	uint32_t userhash;
 	uint8_t dnhops;		// Max Down Hops
 	uint8_t uphops;		// Max distance to get cards
-	uint8_t shareemus;		// Client use our emu
 	uint8_t allowemm;		// Client has rights for au
 #ifdef CACHEEX
 	int cacheex_mode;
@@ -1181,7 +1179,6 @@ struct config_data
 	char channelinfo_file[256];
 	char providers_file[256];
 	char ip2country_file[256];
-	char constcw_file[256];
 	char lite_file[256];
 	char blockedip_file[256];
 	struct ip2country_data *ip2country;

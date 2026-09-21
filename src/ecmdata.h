@@ -40,7 +40,6 @@ typedef enum
 #define DCW_SOURCE_MGCLIENT  4
 #endif
 #define DCW_SOURCE_CCCLIENT  6
-#define DCW_SOURCE_EMU       7
 
 struct ecm_request {
 	struct ecm_request *next;
