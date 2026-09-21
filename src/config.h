@@ -34,11 +34,7 @@
 #endif
 
 //Don't pack structs on ARM processors like RPI. It causes unaligned access exceptions
-#ifdef NOPACK
-#define PACK
-#else
 #define PACK __attribute__ ((__packed__))
-#endif
 
 
 
@@ -202,10 +198,8 @@ struct PACK cachepeer_data
 		int csid;
 		int hits;
 	} csporthit[MAX_CSPORTS];
-#ifndef PUBLIC
 	// Share Limits
 	struct sharelimit_data sharelimits[100];
-#endif
 
 	//## Runtime Data
 	int runtime; // Added At Runtime
@@ -688,9 +682,7 @@ struct cardserver_data
 		int fsharecccam;
 		int fsharenewcamd;
 		int fsharemgcamd;
-#ifndef PUBLIC
 		int fshareexpired;
-#endif
 
 		// allow incoming dcw from...
 		int fallowcccam;	// Allow cccam server protocol to decode ecm
@@ -799,9 +791,7 @@ struct cardserver_data
 		int cachesendreq;
 		int cacheresendreq;
 		int cachesendrep;
-#ifndef PUBLIC
 		int cachestatic; // Static/dynamic Timeout 
-#endif
 
 		int fmaxuphops; // allowed cards distance to decode ecm
 		int cssendcaid; // flag send caid to servers
@@ -815,9 +805,7 @@ struct cardserver_data
 			uint32_t timeout;     // timeout for resending ecm request to server
 			uint32_t timeperecm;  // min time to senddo a request
 			uint32_t validecmtime;  // max server ecm reply time
-#ifndef PUBLIC
 			uint32_t threshold; // Threshold of cs number to decode ecm
-#endif
 		} server;
 		// Server Retry
 		struct {
@@ -874,12 +862,10 @@ struct cardserver_data
 		uint32_t dcwtime; // last good dcw time sent to client
 	} last;
 
-#ifndef PUBLIC
 	struct {
 		uint16_t sid;
 		uint16_t nbsrv;
 	} deniedsids[1024]; // Runtime deniedsids
-#endif
 
 	int ecmbusysrv; // nb of ecm returned with busy srv
 
@@ -921,9 +907,7 @@ struct PACK server_data
 #ifdef CACHEEX
 	int cacheex_mode; // only for CCcam Server
 	int cacheex_maxhop;
-#ifndef PUBLIC
 	int cacheex_forward;
-#endif
 	//number of hits for each profile
 	struct {
 		int csid;
@@ -1100,9 +1084,7 @@ struct PACK cc_client_data { // Connected Client
 #endif
 
 	struct {
-#ifndef PUBLIC
 		int checknodeid;
-#endif
 		uint8_t nodeid[8];
 		char version[32];
 	} option;
@@ -1271,9 +1253,7 @@ struct PACK mg_client_data
 	char user[64];
 	char pass[64];
 	uint32_t userhash;
-#ifndef PROXY
 	int proxy;
-#endif
 	// Profiles
 	uint16_t csport[MAX_CSPORTS];
 	// Share Limits
@@ -1289,10 +1269,8 @@ struct PACK mg_client_data
 	int dcwcheck;
 #endif
 
-#ifndef PUBLIC
 	int badcw; // if yes => send badcw to client :D
 	int infraction; /// INFRACTION => FREEZE
-#endif
 
 	//## Runtime Data (DYNAMIC)
 	uint32_t ip;
@@ -1445,9 +1423,7 @@ struct http_file_data {
 // Configurable Data
 struct config_data
 {
-#ifndef PUBLIC
 	struct host_data *srvhost;
-#endif
 	struct filename_data *files;
 	char stylesheet_file[256];
     char javascript_file[256];
@@ -1471,35 +1447,6 @@ struct config_data
 	} testchn;
 #endif
 
-#ifdef TWIN
-	struct {
-		struct {
-			char fname[256];
-			int count;
-			struct {
-				char name[256];
-				uint16_t caid;
-				uint32_t prov;
-				uint8_t sid;
-				uint16_t deg;
-				uint16_t freq;
-				uint8_t cw1cycle;
-				struct {
-					uint32_t rtime;
-					char cw[16];
-					char prevcw[16];
-					uint8_t cwcycle;
-					int error;
-				} ecm;
-			} data[512];
-		} chninfo;
-		struct {
-			char device[256];
-			int handle;
-		} serial;
-	} twin;
-#endif
-
 	// UniqueID counters
 	int clientid;
 	int serverid;
@@ -1521,10 +1468,8 @@ struct config_data
 		int filter;
 		int filtertime;
 		int threshold;
-#ifndef PUBLIC
 		int dcwcheck2;
 		int dcwcheck3;
-#endif
 		int forward;
 		int hits;  // Total Hits
 		int ihits; // Instant Hits
@@ -1729,9 +1674,7 @@ struct config_data
 struct program_data
 {
 	int restart;
-#ifndef PUBLIC
 	int updatenodes;
-#endif
 
 	struct timeval exectime; // last dcw time sent to client
 

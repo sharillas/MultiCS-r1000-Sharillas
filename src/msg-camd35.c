@@ -64,12 +64,6 @@ void camd35_send( int handle, AES_KEY *encryptkey, uint32_t ucrc, unsigned char 
 	sbuf[10] = datacrc>>8;
 	sbuf[11] = datacrc;
 	int newlen = camd35_padding(len);
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,0," camd35: Send data length %d\n", newlen+4);
-		debughex(sbuf, newlen+4);
-	}
-#endif
 	aes_encrypt( encryptkey, sbuf+4, newlen);
 	// SEND
 	send( handle, sbuf, newlen+4, 0);
@@ -91,12 +85,6 @@ void camd35_sendto( int handle, uint32_t ip, int port, AES_KEY *encryptkey, uint
 	sbuf[10] = datacrc>>8;
 	sbuf[11] = datacrc;
 	int newlen = camd35_padding(len);
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,0," camd35: Send data to (%s:%d) length %d\n", ip2string(ip), port, newlen+4);
-		debughex(sbuf, newlen+4);
-	}
-#endif
 	aes_encrypt( encryptkey, sbuf+4, newlen);
 	// SEND
 	struct sockaddr_in si_other;
@@ -164,9 +152,7 @@ int cs378x_msg_peek(int handle, uint32_t ucrc, AES_KEY *decryptkey, unsigned cha
 	int datalen = buf[5];
 	if (buf[4] == 0) datalen = (((buf[25] & 0x0f) << 8) | buf[26]) + 3; // ECM
 	else if ( (buf[4]&0xFC)==0x3C ) datalen = buf[5] | (buf[6] << 8); // cacheex
-#ifndef PUBLIC
 	else if ( (buf[4]&0xFE)==0x80 ) datalen = buf[5] | (buf[6] << 8); // ECM REQUEST
-#endif
 	else datalen = buf[5]; // Normal
 	int newlen = 4+camd35_padding(20+datalen);
 	if (len<newlen) {

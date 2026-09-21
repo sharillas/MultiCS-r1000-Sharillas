@@ -1,9 +1,7 @@
 void* thread_enddate(void *param)
 {
-#ifndef PUBLIC
 	prg.pid_date = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Expire Date Thread",0,0,0);
-#endif
 	while (!prg.restart) {
 		pthread_mutex_lock(&prg.lockthreaddate);
 		time_t nowtime = time(NULL);
@@ -99,7 +97,6 @@ void* thread_enddate(void *param)
 		pthread_mutex_unlock(&prg.lockthreaddate);
 		sleep(10);
 
-#ifndef PUBLIC
 		// TODO: Make loadaverage limit for restart a config file parameter
 		//       For now I prefer increasing it to 100
 		// check for load average
@@ -114,7 +111,6 @@ void* thread_enddate(void *param)
 			}
 			fclose(fp);
 		}
-#endif
 
 	}
 	return NULL;

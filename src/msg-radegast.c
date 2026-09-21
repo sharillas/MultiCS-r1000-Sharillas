@@ -5,22 +5,6 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <signal.h>
@@ -29,8 +13,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
-
-#endif
 
 #include "debug.h"
 #include "sockets.h"
@@ -62,12 +44,6 @@ int rdgd_message_receive(int sock, unsigned char *buffer, int timeout)
 		return -1;
 	}
 	len += 2;
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,0," radegast: receive data %d\n",len);
-		debughex(netbuf,len);
-	}
-#endif
 	memcpy(buffer, netbuf, len);
 	return len;
 }
@@ -76,12 +52,6 @@ int rdgd_message_receive(int sock, unsigned char *buffer, int timeout)
 
 int rdgd_message_send(int sock, unsigned char *buf, int len)
 {
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,0," radegast: send data %d\n",len);
-		debughex(buf,len);
-	}
-#endif
 	return send_nonb( sock, buf, len, 100);
 }
 

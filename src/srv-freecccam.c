@@ -293,12 +293,9 @@ void freecccam_srv_accept(struct cccam_server_data *srv)
 	}
 }
 
-#ifndef MONOTHREAD_ACCEPT
 void *freecccam_accept_thread(void *param)
 {
-#ifndef PUBLIC
 	prctl(PR_SET_NAME,"FreeCCcam Accept",0,0,0);
-#endif
 
 	while(!prg.restart) {
 
@@ -323,8 +320,6 @@ void *freecccam_accept_thread(void *param)
 	}
 	return NULL;
 }
-#endif
-
 ////////////////////////////////////////////////////////////////////////////////
 // CCCAM SERVER: SEND DCW TO CLIENTS
 ////////////////////////////////////////////////////////////////////////////////
@@ -584,9 +579,7 @@ void *freecccam_recvmsg_thread(void *param)
 {
 	int i;
 
-#ifndef PUBLIC
 	prctl(PR_SET_NAME,"FreeCCcam RecvMSG",0,0,0);
-#endif
 
 	struct epoll_event evlist[MAX_EPOLL_EVENTS]; // epoll recv events
 	prg.epoll.freecccam = epoll_create( MAX_EPOLL_EVENTS );
@@ -632,9 +625,7 @@ void *freecccam_recvmsg_thread(void *param)
 {
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
-#ifndef PUBLIC
 	prctl(PR_SET_NAME,"FreeCCcam RecvMSG",0,0,0);
-#endif
 	while(1) {
 		pfdcount = 0;
 		// PIPE
@@ -695,9 +686,7 @@ void *freecccam_recvmsg_thread(void *param)
 int start_thread_freecccam()
 {
 	pthread_t tid;
-#ifndef MONOTHREAD_ACCEPT
 	create_thread(&tid, freecccam_accept_thread,NULL);
-#endif
 
 	create_thread(&tid, freecccam_recvmsg_thread,NULL);
 	return 0;

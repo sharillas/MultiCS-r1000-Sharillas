@@ -1,9 +1,5 @@
 //Don't pack structs on ARM processors like RPI. It causes unaligned access exceptions
-#ifdef NOPACK
-#define PACK
-#else
 #define PACK __attribute__ ((__packed__))
-#endif
 
 void stringtohtml(char *src, char *dest)
 {
@@ -765,7 +761,6 @@ void pipe_cache_reply( ECM_DATA *ecm, struct cardserver_data *cs)
 	pipe_send( prg.pipe.cache[1], buf, len);
 }
 
-#ifndef PUBLIC
 void pipe_cache_resendreq(ECM_DATA *ecm, struct cardserver_data *cs)
 {
 	uint8_t buf[64];
@@ -774,7 +769,6 @@ void pipe_cache_resendreq(ECM_DATA *ecm, struct cardserver_data *cs)
 	pipe_send( prg.pipe.cache[1], buf, len);
 	mlogf(LOGDEBUG,getdbgflag(DBG_NEWCAMD,cs->id,0), " [%s] CACHE RESENDREQ ch %04x:%06x:%04x\n", cs->name,ecm->caid,ecm->provid,ecm->sid);
 }
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // 
@@ -804,12 +798,6 @@ void sendtopeer( struct cachepeer_data *peer, unsigned char *buf, int len)
 		si_other.sin_family = AF_INET;
 		si_other.sin_port = htons( peer->port );
 		si_other.sin_addr.s_addr = peer->host->ip;
-#ifdef DEBUG_NETWORK2
-		if (flag_debugnet) {
-			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cache: send data (%d) to peer (%s:%d)\n", len, peer->host->name,peer->port);
-			debughex(buf,len);
-		}
-#endif
 		sendto(peer->outsock, buf, len, 0, (struct sockaddr *)&si_other, slen);
 	}
 }
@@ -879,7 +867,6 @@ int peer_acceptcard( struct cachepeer_data *peer, uint16_t caid, uint32_t provid
 			if (peer->cards[i] == caprov) break;
 		}
 	}
-#ifndef PUBLIC
 	if ( peer->sharelimits[0].caid!=0xffff ) {
 		for (i=0; i<100; i++) {
 			if (peer->sharelimits[i].caid==0xffff) return 0;
@@ -889,7 +876,6 @@ int peer_acceptcard( struct cachepeer_data *peer, uint16_t caid, uint32_t provid
 			}
 		}
 	}
-#endif
 	return 1;
 }		
 
@@ -1050,7 +1036,6 @@ void cache_send_fwdreply(struct cache_data *pcache, uint8_t cw[16], cwcycle_t cw
 	}
 }
 
-#ifndef PUBLIC
 void cache_send_resendreq(struct cache_data *pcache)
 {
 	struct cacheserver_data *cache = cfg.cache.server;
@@ -1093,7 +1078,6 @@ void cache_send_resendreq(struct cache_data *pcache)
 		cache = cache->next;
 	}
 }
-#endif
 
 void cache_send_ping(struct cacheserver_data *cache, struct cachepeer_data *peer)
 {
@@ -1102,11 +1086,7 @@ void cache_send_ping(struct cacheserver_data *cache, struct cachepeer_data *peer
 	// New Cache IDENT
 	buf[1] = 'M';
 	buf[2] = 'C';
-#ifndef PUBLIC
 	buf[3] = 1 | BIT_CACHE_HANDSHAKE;
-#else
-	buf[3] = 1;
-#endif
 	// PEER ID
 	buf[4] = peer->id>>8; 
 	buf[5] = peer->id&0xff;
@@ -1404,7 +1384,6 @@ inline struct cw_cache_data *iscwincache(struct cache_data *pcache, uint8_t cw[1
 	return NULL;
 }
 
-#ifndef PUBLIC
 
 // update dcw for cache data of same channel with different hash and provider
 inline struct cache_data *cache_fetch_samechannel( struct cache_data *thereq, uint8_t cw[16], int peerid )
@@ -1489,7 +1468,6 @@ inline struct cache_data *cache_fetch_goodcw3( struct cache_data *thereq, uint8_
 	return result;
 }
 
-#endif
 
 // -1: bad cw
 // 0: nothing to do
@@ -1601,10 +1579,8 @@ int cache_setdcw( struct cache_data *req, uint8_t cw[16], cwcycle_t cwcycle, int
 	char nullcw[8] = "\0\0\0\0\0\0\0\0";
 	if ( !dcwcmp8(cw,nullcw) && !dcwcmp8(cw+8,nullcw) ) {
 
-#ifndef PUBLIC
 		if (cfg.cache.dcwcheck2) cache_fetch_samechannel(pcache, cw, peerid);
 		if (cfg.cache.dcwcheck3) cache_fetch_goodcw3(pcache, cw, peerid);
-#endif
 		if ( !isnullDCW(pcache->prevcw) ) {
 			if (  ( (pcache->cwcycle==CW1CYCLE) && dcwcmp8(pcache->prevcw,cw) && !similarcw(pcache->prevcw+8,cw+8) ) ||
 				( (pcache->cwcycle==CW0CYCLE) && !similarcw(pcache->prevcw,cw) && dcwcmp8(pcache->prevcw+8,cw+8) )  ) {
@@ -1727,13 +1703,6 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 	memcpy( &recv_ip, &si_other.sin_addr, 4);
 	recv_port = ntohs(si_other.sin_port);
 
-#ifdef DEBUG_NETWORK2
-	if (flag_debugnet) {
-		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cache: recv data (%d) from address (%s:%d)\n", received, ip2string(recv_ip), recv_port );
-		debughex(buf,received);
-	}
-#endif
-
 	// Store Data
 	struct cache_data req;
 	switch(buf[0]) {
@@ -1813,9 +1782,7 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 					memcpy(cw, buf+13, 16);
 					// Search for Cache data
 					cwcycle_t cwcycle = NO_CYCLE;
-#ifndef PUBLIC
 					if ( peer->fwd && (received==30) ) cwcycle = buf[29];
-#endif
 					int status = cache_setdcw(&req,cw,cwcycle,peer->id|PEER_CSP);
 					if ( !(status&DCW_ERROR) ) { // && (status&DCW_CYCLE) ) {
 						if (!peer->fwd) {
@@ -1828,7 +1795,6 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 			pthread_mutex_unlock( &prg.lockcache );
 			break;
 
-#ifndef PUBLIC
 		case TYPE_RESENDREQ:
 			// Check Peer
 			peer = getpeerbyaddr(cache, recv_ip,recv_port);
@@ -1866,7 +1832,6 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 			//
 			pthread_mutex_unlock( &prg.lockcache );
 			break;
-#endif
 
 		case TYPE_PINGREQ:
 			if (received<13) break; // minimo para ler o porto (buf[11..12])
@@ -2091,7 +2056,6 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 
 							//sendtopeer( peer, buf, pos);
 
-#ifndef PUBLIC
 							if (peer->sharelimits[0].caid!=0xffff) {
 								int i;
 								for (i=0; i<100; i++) {
@@ -2114,7 +2078,6 @@ inline void cache_recvmsg(struct cacheserver_data *cache)
 								}
 							}
 							else
-#endif
 							{
 								struct cardserver_data *cs = cfg.cardserver;
 								while (cs) {
@@ -2545,9 +2508,7 @@ void cache_pipe_recvmsg()
 				//cwdata->peerid = peerid;
 				cwdata->next = pcache->cwdata;
 				pcache->cwdata = cwdata;
-#ifndef PUBLIC
 ////				if (cfg.cache.dcwcheck2) cache_fetch_samechannel(pcache, cw, 0);
-#endif
 			}
 			//cwdata->status |= DCW_CYCLE;
 
@@ -2557,7 +2518,6 @@ void cache_pipe_recvmsg()
 			cache_send_reply(pcache, NULL, cw);
 			break;
 
-#ifndef PUBLIC
 		case PIPE_CACHE_RESENDREQ:
 			get_ecm2cache(buf , &req, NULL);
 /*
@@ -2573,7 +2533,6 @@ void cache_pipe_recvmsg()
 */
 			cache_send_resendreq(&req);
 			break;
-#endif
 
 	}
 }
@@ -2677,11 +2636,9 @@ void cache_check_peers(struct cacheserver_data *cache)
 
 void *cache_thread(void *param)
 {
-#ifndef PUBLIC
 	prg.pid_cache = syscall(SYS_gettid);
 	prg.tid_cache = pthread_self();
 	prctl(PR_SET_NAME,"Cache RecvMSG",0,0,0);
-#endif
 	sleep(3);
 
 #ifdef PEERLIST
@@ -2732,11 +2689,9 @@ void *cache_thread(void *param)
 
 void *cache_thread(void *param)
 {
-#ifndef PUBLIC
 	prg.pid_cache = syscall(SYS_gettid);
 	prg.tid_cache = pthread_self();
 	prctl(PR_SET_NAME,"Cache RecvMSG",0,0,0);
-#endif
 
 #ifdef PEERLIST
 	struct cacheserver_data *cache = cfg.cache.server;
@@ -2761,11 +2716,9 @@ void *cache_thread(void *param)
 
 		struct pollfd pfd[100];
 		int pfdcount = 0;
-#ifndef THREAD_CACHE_PIPE
 		pfd[pfdcount].fd = prg.pipe.cache[0];
 		pfd[pfdcount].events = POLLIN | POLLPRI;
 		pfdcount++;
-#endif
 		struct cacheserver_data *cache = cfg.cache.server;
 		while (cache) {
 			if (cache->handle>0) {
@@ -2779,13 +2732,11 @@ void *cache_thread(void *param)
 		int retval = poll(pfd, pfdcount, 3001);
 
 		if ( retval>0 ) {
-#ifndef THREAD_CACHE_PIPE
 			if ( pfd[0].revents & (POLLIN|POLLPRI) ) {
 				pthread_mutex_lock( &prg.lockcache );
 				cache_pipe_recvmsg();
 				pthread_mutex_unlock( &prg.lockcache );
 			}
-#endif
 			struct cacheserver_data *cache = cfg.cache.server;
 			while (cache) {
 				if ( (cache->handle>0)&&(cache->ipoll>=0)&&(cache->handle==pfd[cache->ipoll].fd) )
@@ -2802,49 +2753,15 @@ void *cache_thread(void *param)
 	//close(cfg.cache.handle);
 	return NULL;
 }
-
 #endif
 
 
-///////////////////////////////////////////////////////////////////////////////
-// 
-///////////////////////////////////////////////////////////////////////////////
-#ifdef THREAD_CACHE_PIPE
-
-void *cache_pipe_thread(void *param)
-{
-#ifndef PUBLIC
-	prg.pid_cache_pipe = syscall(SYS_gettid);
-	prg.tid_cache_pipe = pthread_self();
-	prctl(PR_SET_NAME,"Cache Pipe",0,0,0);
-#endif
-
-	while (!prg.restart) {
-		struct pollfd pfd;
-		pfd.fd = prg.pipe.cache[0];
-		pfd.events = POLLIN | POLLPRI;
-		int retval = poll(&pfd, 1, 3031);
-		if ( retval>0 ) {
-			pthread_mutex_lock( &prg.lockcache );
-			cache_pipe_recvmsg();
-			pthread_mutex_unlock( &prg.lockcache );
-		}
-		else usleep( 99000 );
-	}
-	return NULL;
-}
-
-#endif
 ///////////////////////////////////////////////////////////////////////////////
 // 
 ///////////////////////////////////////////////////////////////////////////////
 
 int start_thread_cache()
 {
-#ifdef THREAD_CACHE_PIPE
-	create_thread(&prg.tid_cache, (threadfn)cache_pipe_thread,NULL);
-#endif
-
 	create_thread(&prg.tid_cache, (threadfn)cache_thread,NULL);
 	return 0;
 }

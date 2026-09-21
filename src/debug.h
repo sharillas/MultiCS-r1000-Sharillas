@@ -29,9 +29,6 @@ struct trace_data {
 };
 
 extern int flag_debugscr;
-#ifdef DEBUG_NETWORK
-extern int flag_debugnet;
-#endif
 extern int flag_debugfile;
 extern char debug_file[256];
 extern int loglevel;

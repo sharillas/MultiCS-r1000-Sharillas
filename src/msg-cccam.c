@@ -5,30 +5,12 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <signal.h>
 #include <errno.h>
 #include <poll.h>
-
-#endif
 
 #include "debug.h"
 #include "msg-cccam.h"
@@ -203,12 +185,6 @@ int cc_msg_recv(int handle,struct cc_crypt_block *recvblock, uint8_t *buf, int t
 	}
 
 	//debugdump(netbuf, len, "CCcam: Reveive Data");
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,0,0), " CCcam: receive data %d\n",len);
-		debughex(netbuf,len);
-	}
-#endif
 	memcpy(buf, netbuf, len);
 	return len;
 }
@@ -276,12 +252,6 @@ int cc_msg_send(int handle,struct cc_crypt_block *sendblock, cc_msg_cmd cmd, int
 		len += 4;
 	}
 	//debugdump(netbuf, len, "CCcam: Send data");
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,0,0), " CCcam: send data %d\n",len);
-		debughex(netbuf,len);
-	}
-#endif
 	cc_encrypt(sendblock, netbuf, len);
 	return send_nonb(handle, netbuf, len, 100);
 }

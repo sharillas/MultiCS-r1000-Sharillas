@@ -72,16 +72,6 @@ void camd35_srv_recvmsg(struct server_data *srv)
 	if (srv->ucrc!=ucrc) return;
 	//
 	aes_decrypt( &srv->decryptkey, buf+4, received-4);
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		unsigned int recv_ip;
-		unsigned short recv_port;
-		memcpy( &recv_ip, &si_other.sin_addr, 4);
-		recv_port = ntohs(si_other.sin_port);
-		mlogf(LOGDEBUG,0," camd35: Recv data (length=%d) from address (%s:%d)\n", received, ip2string(recv_ip), recv_port );
-		debughex(buf,received);
-	}
-#endif
 
 	switch (buf[4]) {
 

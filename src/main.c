@@ -64,9 +64,6 @@
 char config_file[256] = "/var/etc/multics.cfg";
 
 int flag_debugscr;
-#ifdef DEBUG_NETWORK
-int flag_debugnet;
-#endif
 int flag_debugfile;
 char debug_file[256];
 char sms_file[256];
@@ -552,9 +549,7 @@ void forward_cs378x(ECM_DATA *ecm);
 #include "th-srv.c"  // Servers Connnection
 #include "th-dns.c"  // Dns Resolving
 #include "th-ecm.c"  // Check/send ecm request to servers & Check/send dcw to clients
-#ifndef WIN32 
 #include "th-cfg.c"  // Reread Config
-#endif
 #ifdef EXPIREDATE
 #include "th-date.c"
 #endif
@@ -700,11 +695,9 @@ uint8_t fastrnd2()
 
 void mainprocess()
 {
-#ifndef WIN32
 	gettimeofday( &startime, NULL );
 	//if (startime.tv_sec>1380237152) exit(0);
 	//printf(" %ld\n", startime.tv_sec + (24*3600*5) ); exit(0);
-#endif
 // INIT
 	pthread_mutex_init(&prg.lock, NULL);
 	pthread_mutex_init(&prg.lockecm, NULL);
@@ -828,9 +821,7 @@ void mainprocess()
 	prg.nodeid[7] = 0xff & fastrnd2();
 #endif
 
-#ifndef WIN32
 	start_thread_config();
-#endif
 
 	usleep(100000);
 
@@ -881,10 +872,6 @@ void mainprocess()
 
 #ifdef CAMD35_SRV
 	start_thread_camd35();
-#endif
-
-#ifdef MONOTHREAD_ACCEPT
-	create_thread(&cli_tid, (threadfn)connect_cli_thread, NULL); // Lock server
 #endif
 
 	start_thread_http();
@@ -1018,9 +1005,6 @@ int main(int argc, char *argv[])
 
 	flag_debugscr = 0;
 	flag_debugfile = 0;
-#ifdef DEBUG_NETWORK
-	flag_debugnet = 0;
-#endif
 
 	if (IP_ADRESS) printf("*Server IP: %s\n", ip2string(IP_ADRESS)); 	// Extract filename
 	char *p = argv[0];
@@ -1034,14 +1018,6 @@ int main(int argc, char *argv[])
 	char path[255];
 	if (dot>slash) memcpy( path, slash, dot-slash); else strcpy(path, slash);
 
-#ifdef WIN32
-	// Set Config name
-	sprintf( config_file, "%s.cfg", path);
-//	sprintf( sid_file, "/var/etc/%s.sid", path);
-//	sprintf( card_file, "/var/etc/%s.card", path);
-	sprintf( debug_file, "%s.log", path);
-	sprintf( sms_file, "%s.sms", path);
-#else
 	// Set Config name
 	sprintf( config_file, "/var/etc/%s.cfg", path);
 //	sprintf( sid_file, "/var/etc/%s.sid", path);
@@ -1049,7 +1025,6 @@ int main(int argc, char *argv[])
 	sprintf( debug_file, "/var/tmp/%s.log", path);
 	sprintf( sms_file, "/var/tmp/%s.sms", path);
 	sprintf( ecm_file, "/var/tmp/%s.ecm", path);
-#endif
 	loglevel=LOGINFO; // Default initial loglevel
 
 	// Parse Options
@@ -1078,9 +1053,6 @@ OPTIONS\n\
 				for(j=1; j<strlen(args); j++) {
 					if (args[j]=='b') option_background = 1;
 					else if (args[j]=='v') flag_debugscr = 1;
-#ifdef DEBUG_NETWORK
-					else if (args[j]=='n') flag_debugnet = 1;
-#endif
 					else if (args[j]=='f') flag_debugfile = 1;
 				}
 			}

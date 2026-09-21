@@ -174,14 +174,10 @@ void cs378x_srv_accept(struct camd35_server_data *srv)
 	}
 }
 
-#ifndef MONOTHREAD_ACCEPT
-
 void *cs378x_accept_thread(void *param)
 {
 
-#ifndef PUBLIC
 	prctl(PR_SET_NAME,"cs378x Accept",0,0,0);
-#endif
 	while(!prg.restart) {
 
 		struct pollfd pfd[MAX_PFD];
@@ -213,9 +209,6 @@ void *cs378x_accept_thread(void *param)
 	}
 	return NULL;
 }
-
-#endif
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // SEND DCW
@@ -584,7 +577,6 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 
 
 
-#ifndef PUBLIC
 		case  0x80:    // ECM
 		case  0x81:    // ECM
 			cli->lastecmtime = ticks;
@@ -676,7 +668,6 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 			}
 			pthread_mutex_unlock(&prg.lockecm); //###
 			break;	//camd35_process_ecm(mbuf, n);
-#endif 
 	}
 }
 
@@ -695,10 +686,8 @@ void cs378x_recv_pipe()
 ///////////////////////////////////////////////////////////////////////////////
 void *cs378x_recvmsg_thread(void *param)
 {
-#ifndef PUBLIC
 	cfg.cs378x.pid_recvmsg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"cs378x RecvMSG",0,0,0);
-#endif
 
 	while (!prg.restart) {
 		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
@@ -786,10 +775,8 @@ void cs378x_cacheex_recv_pipe()
 ///////////////////////////////////////////////////////////////////////////////
 void *cs378x_cacheex_recvmsg_thread(void *param)
 {
-#ifndef PUBLIC
 	cfg.cs378x.pid_recvmsg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"cs378x RecvMSG",0,0,0);
-#endif
 
 	while (!prg.restart) {
 		struct pollfd pfd[MAX_CSPORTS];
@@ -848,9 +835,7 @@ void *cs378x_cacheex_recvmsg_thread(void *param)
 int start_thread_cs378x()
 {
 	pthread_t tid;
-#ifndef MONOTHREAD_ACCEPT
 	create_thread(&tid, cs378x_accept_thread,NULL);
-#endif
 
 	create_thread(&cfg.cs378x.tid_recvmsg, cs378x_cacheex_recvmsg_thread,NULL);
 	create_thread(&cfg.cs378x.tid_recvmsg, cs378x_recvmsg_thread,NULL);

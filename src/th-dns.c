@@ -30,11 +30,9 @@ void *dns_child_thread(struct host_data *host)
 
 void *dns_thread(void *param)
 {
-#ifndef PUBLIC
 	prg.pid_dns = syscall(SYS_gettid);
 	//prg.tid_dns = pthread_self();
 	prctl(PR_SET_NAME,"Lookup",0,0,0);
-#endif
 	do {
 		pthread_mutex_lock(&prg.lockdnsth);
 

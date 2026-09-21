@@ -58,7 +58,7 @@ extern "C" {
 
 #if defined(__WINDOWS__) || defined(_WINDOWS) || defined(_Windows)
 #  define __LZO_WIN
-#elif defined(__WIN32__) || defined(_WIN32) || defined(WIN32)
+#elif defined(__WIN32__) || defined(_WIN32)
 #  define __LZO_WIN
 #elif defined(__NT__) || defined(__WINDOWS_386__)
 #  define __LZO_WIN
