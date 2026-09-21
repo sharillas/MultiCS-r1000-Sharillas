@@ -418,7 +418,6 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		}
 	}
 
-#ifndef PUBLIC
 	// Store number of available servers, Runtime ADD SIDS
 	if (ecm->sid) {
 		for(i=0; i<1024; i++) {
@@ -433,18 +432,13 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 			}
 		}
 	}
-#endif
 
 
-#ifndef PUBLIC
 	// Check if there is no/few servers to decode, send decode failed to client
 	// dont get from few servers (for many cccam servers)
 	if (nbsrv<=cs->option.server.threshold) {
 		return -1;
 	}
-#else
-	if (!nbsrv) return -1;
-#endif
 
 
 	// Remove Busy Servers

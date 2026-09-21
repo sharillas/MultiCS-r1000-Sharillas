@@ -204,13 +204,6 @@ void camd35_recvmsg( struct camd35_server_data *camd35 )
 	memcpy( &recv_ip, &si_other.sin_addr, 4);
 	recv_port = ntohs(si_other.sin_port);
 
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,0," camd35: Recv data (%d) from address (%s:%d)\n", received, ip2string(recv_ip), recv_port );
-		debughex(buf,received);
-	}
-#endif
-
 	uint32_t ucrc = (buf[0]<<24)|(buf[1]<<16)|(buf[2]<<8)|buf[3];
 	//Check for clients
 	struct camd35_client_data *cli = camd35->client;

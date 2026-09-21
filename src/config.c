@@ -6,22 +6,6 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/time.h>
@@ -33,8 +17,6 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <poll.h>
-
-#endif
 
 #include "common.h"
 #include "convert.h"
@@ -495,11 +477,9 @@ void parse_server_data( struct server_data *tsrv )
 				else if (!strcmp(str,"cacheex_maxhop")) {
 					if (parse_hex(str)) tsrv->cacheex_maxhop = hex2int(str);
 				}
-#ifndef PUBLIC
 				else if (!strcmp(str,"cacheex_forward")) {
 					if (parse_hex(str)) tsrv->cacheex_forward = hex2int(str);
 				}
-#endif
 #endif
 
 				parse_spaces();
@@ -1351,7 +1331,6 @@ link_camd35_server:
 
 
 
-#ifndef PUBLIC
 		else if (!strcmp(str,"DELAY")) {
 			parse_name(str);
 			uppercase(str);
@@ -1372,7 +1351,6 @@ link_camd35_server:
 				if (parse_int(str)) cfg->delay.connect = atoi(str);
 			}
 		}
-#endif
 
 		else if (!strcmp(str,"LOGLEVEL")) {
 			parse_spaces();
@@ -1990,36 +1968,7 @@ sid accept:
 		}
 
 
-#ifdef TWIN
-///////////////////////////////////////////////////////////////////////////////
-// TWIN PROTOCOL
-///////////////////////////////////////////////////////////////////////////////
-		else if (!strcmp(str,"TWIN")) {
-			parse_name(str);
-			uppercase(str);
-			if (!strcmp(str,"DEVICE")) {
-				parse_spaces();
-				if ( (*iparser!=':')&&(*iparser!='=') ) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
 
-				cfg->twin.serial.handle=-1;
-				parse_quotes('"',cfg->twin.serial.device);
-				//debug("SERIAL = '%s', '%s'\n", twin->device, twin->chninfo.fname);
-			}
-			else if (!strcmp(str,"CHANNELINFO")) {
-				parse_spaces();
-				if ( (*iparser!=':')&&(*iparser!='=') ) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				parse_quotes('"', cfg->twin.chninfo.fname);
-				twin_read_chninfo(cfg);
-				//debug("SERIAL = '%s', '%s'\n", cfg->twin.device, cfg->twin.chninfo.fname);
-			}
-		}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // DEFAULT
@@ -2401,7 +2350,6 @@ sid accept:
 					if (defaultcs.option.server.first<0) defaultcs.option.server.first = 0;
 					else if (defaultcs.option.server.first>5) defaultcs.option.server.first = 5;
 				}
-#ifndef PUBLIC
 				else if ( (!strcmp(str,"ECMTIME"))||(!strcmp(str,"TIMEPERECM")) ) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2452,7 +2400,6 @@ sid accept:
 					}
 					else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): cardserver send variable expected\n",file->nbline,iparser-currentline);
 				}
-#endif
 				else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): profile variable expected\n",file->nbline,iparser-currentline);
 			}
 			else if ( !strcmp(str,"RETRY") ) {
@@ -2533,7 +2480,6 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.cachesendreq = parse_boolean();
 				}
-#ifndef PUBLIC
 				else if (!strcmp(str,"STATIC")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2558,7 +2504,6 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.cachesendrep = parse_boolean();
 				}
-#endif
 			}
 			else if ( !strcmp(str,"CWC") ) {
 				parse_name(str);
@@ -3461,7 +3406,6 @@ link_mgcamd_user:
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifndef PUBLIC
 		else if (!strcmp(str,"HOST")) {
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3471,7 +3415,6 @@ link_mgcamd_user:
 			parse_str(str);
 			cfg->srvhost = add_host(cfg, str);
 		}
-#endif
 
 #ifdef CACHEEX
 		else if ( !strcmp(str,"CACHEEX") ) {
@@ -3543,9 +3486,7 @@ link_mgcamd_user:
 				parse_int(str);
 				peer->port = atoi(str);
 				if (parse_bin(str)) peer->fblock0onid = str[0]=='1';
-#ifndef PUBLIC
 				peer->sharelimits[0].caid = 0xFFFF;
-#endif
 				parse_spaces();
 				if (*iparser=='{') { // Get Ports List
 					iparser++;
@@ -3573,7 +3514,6 @@ link_mgcamd_user:
 						else if (!strcmp(str,"sendreq")) {
 							if (parse_boolean()) peer->flags |= FLAG_CACHE_SENDREQ; else peer->flags &= ~FLAG_CACHE_SENDREQ;
 						}
-#ifndef PUBLIC
 						else if (!strcmp(str,"fwd")) {
 							peer->fwd = parse_boolean();
 						}
@@ -3581,7 +3521,6 @@ link_mgcamd_user:
 							if (parse_boolean()) peer->flags |= FLAG_CACHE_SENDREP; else peer->flags &= ~FLAG_CACHE_SENDREP;
 						}
 						else if (!strcmp(str,"shares")) parse_option_shares( peer->sharelimits );
-#endif
 						parse_spaces();
 						if (*iparser==';') iparser++; else break;
 					}
@@ -3697,7 +3636,6 @@ link_mgcamd_user:
 					else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Invalid integer (FILTER TIME)\n",file->nbline,iparser-currentline);
 				}
 			}
-#ifndef PUBLIC
 			else if (!strcmp(str,"DCWCHECK2")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3715,7 +3653,6 @@ link_mgcamd_user:
 				} else iparser++;
 				cfg->cache.dcwcheck3 = parse_boolean();
 			}
-#endif
 
 			else if (!strcmp(str,"FORWARD")) {
 				parse_spaces();
@@ -3742,7 +3679,6 @@ link_mgcamd_user:
 				else if (!strcmp(str,"YES")) cardserver->option.cachesendreq = 1;
 			}
 
-#ifndef PUBLIC
 			else if (!strcmp(str,"STATIC")) {
 				if (!cardserver) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip CACHE STATIC, undefined profile\n",file->nbline,iparser-currentline);
@@ -3788,7 +3724,6 @@ link_mgcamd_user:
 				if (!strcmp(str,"NO")) cardserver->option.cachesendrep = 0;
 				else if (!strcmp(str,"YES")) cardserver->option.cachesendrep = 1;
 			}
-#endif
 
 		}
 
@@ -4619,7 +4554,6 @@ link_mgcamd_user:
 				if (cardserver->option.server.first<0) cardserver->option.server.first = 0;
 				else if (cardserver->option.server.first>3) cardserver->option.server.first = 3;
 			}
-#ifndef PUBLIC
 			else if ( (!strcmp(str,"ECMTIME"))||(!strcmp(str,"TIMEPERECM")) ) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -4673,7 +4607,6 @@ link_mgcamd_user:
 				}
 				else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): cardserver send variable expected\n",file->nbline,iparser-currentline);
 			}
-#endif
 			else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): cardserver variable expected\n",file->nbline,iparser-currentline);
 		}
 
@@ -5059,7 +4992,6 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fsharemgcamd = parse_boolean();
 			}
-#ifndef PUBLIC
 			else if (!strcmp(str,"EXPIRED")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -5068,7 +5000,6 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fshareexpired = parse_boolean();
 			}
-#endif
 		}
 
 		else if (!strcmp(str,"BLOCK")) {
@@ -5351,9 +5282,7 @@ link_mgcamd_user:
 		free( oldgl );
 	}
 
-#ifndef PUBLIC
 	read_cccam_nodeid(cfg);
-#endif
 
 //	read_chinfo(cfg);
 
@@ -5368,7 +5297,6 @@ link_mgcamd_user:
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-#ifndef PUBLIC
 int read_cccam_nodeid( struct config_data *cfg )
 {
 	if (!cfg->cccam.server) return 0;
@@ -5407,104 +5335,12 @@ int read_cccam_nodeid( struct config_data *cfg )
 	fclose(fhandle);
 	return 0;
 }
-#endif
 
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifdef TWIN
 
-void twin_read_chninfo( struct config_data *cfg )
-{
-	int len,i;
-	char str[255];
-	FILE *fhandle;
-	int nbline = 0;
-
-	// Open Config file
-	fhandle = fopen(cfg->twin.chninfo.fname,"rt");
-	if (fhandle==0) {
-		mlogf(LOGERROR,0," file not found '%s'\n",cfg->twin.chninfo.fname);
-		return -1;
-	} else mlogf(LOGINFO,0," config: parsing file '%s'\n",cfg->twin.chninfo.fname);
-
-	// Init config data
-	cfg->twin.chninfo.count = 0;
-
-	while (!feof(fhandle))
-	{
-		if ( !fgets(currentline, 1023, fhandle) ) break;
-		nbline++;
-		iparser = &currentline[0];
-
-		parse_spaces();
-		if ( (*iparser=='#')||(*iparser==0)||(*iparser==13)||(*iparser==10) ) continue;
-
-		if ( parse_hex(str)!=4 ) continue;
-
-		cfg->twin.chninfo.data[cfg->twin.chninfo.count].caid = hex2int(str);
-
-		parse_spaces();
-		if (*iparser!=':') {
-			mlogf(LOGERROR,0," config(%d,%d): ':' expected\n",nbline,iparser-currentline);
-			continue;
-		} else iparser++;
-		parse_hex(&str[0]);
-		cfg->twin.chninfo.data[cfg->twin.chninfo.count].prov = hex2int(str);
-
-		parse_spaces();
-		if (*iparser!=':') {
-			mlogf(LOGERROR,0," config(%d,%d): ':' expected\n",nbline,iparser-currentline);
-			continue;
-		} else iparser++;
-		parse_hex(str);
-		cfg->twin.chninfo.data[cfg->twin.chninfo.count].sid = hex2int(str);
-
-		parse_spaces();
-		if (*iparser!=':') {
-			mlogf(LOGERROR,0," config(%d,%d): ':' expected\n",nbline,iparser-currentline);
-			continue;
-		} else iparser++;
-		parse_hex(str);
-		cfg->twin.chninfo.data[cfg->twin.chninfo.count].deg = hex2int(str);
-
-		parse_spaces();
-		if (*iparser!=':') {
-			mlogf(LOGERROR,0," config(%d,%d): ':' expected\n",nbline,iparser-currentline);
-			continue;
-		} else iparser++;
-		parse_hex(str);
-		cfg->twin.chninfo.data[cfg->twin.chninfo.count].freq = hex2int(str);
-
-		parse_spaces();
-		if (*iparser=='.') {
-			iparser++;
-			parse_hex(str);
-			cfg->twin.chninfo.data[cfg->twin.chninfo.count].cw1cycle = hex2int(str);
-		}
-
-		parse_quotes( '"', str );
-		str[63] = 0; // Overflow
-		strcpy(cfg->twin.chninfo.data[cfg->twin.chninfo.count].name, str);
-
-		//debug("%s -> %04x:%06x:%04x\n",chninfo[nbchninfo].name, chninfo[nbchninfo].caid,chninfo[nbchninfo].prov,chninfo[nbchninfo].sid);
-		cfg->twin.chninfo.count++;
-	}
-	fclose(fhandle);
-}
-
-void twin_free_chinfo( struct config_data *cfg )
-{
-	cfg->twin.chninfo.count = 0;
-}
-
-#endif
-
-
-
-
-///////////////////////////////////////////////////////////////////////////////
 
 int read_chinfo( struct config_data *cfg )
 {
@@ -6454,9 +6290,7 @@ void update_cccam_clients(struct cccam_server_data *srv, struct cccam_server_dat
 				cli->flags |= FLAG_DISCONNECT;
 				memcpy(cli->option.nodeid, newcli->option.nodeid, 8);
 			}
-#ifndef PUBLIC
 			cli->option.checknodeid = newcli->option.checknodeid;
-#endif
 
 			// Share Limits
 #ifdef CACHEEX
@@ -6569,9 +6403,7 @@ void update_cccam_cacheexclients(struct cccam_server_data *srv, struct cccam_ser
 				cli->flags |= FLAG_DISCONNECT;
 				memcpy(cli->option.nodeid, newcli->option.nodeid, 8);
 			}
-#ifndef PUBLIC
 			cli->option.checknodeid = newcli->option.checknodeid;
-#endif
 
 			// Share Limits
 #ifdef CACHEEX
@@ -6868,14 +6700,12 @@ void update_cache_peers(struct cacheserver_data *srv, struct cacheserver_data *n
 			peer->fblock0onid = newpeer->fblock0onid;
 			peer->csp = newpeer->csp;
 			peer->runtime = 0;
-#ifndef PUBLIC
 			peer->fwd = newpeer->fwd;
 			// csport
 			if ( memcmp(peer->sharelimits,newpeer->sharelimits,sizeof(peer->sharelimits)) ) {
 				peer->flags |= FLAG_DISCONNECT;
 				memcpy( peer->sharelimits, newpeer->sharelimits, sizeof(peer->sharelimits) );
 			}
-#endif
 		}
 		else if (!peer->runtime) peer->flags |= FLAG_DELETE; // if it is not created at runtime so delete
 		peer = peer->next;
@@ -7119,42 +6949,11 @@ void update_cardserver(struct config_data *cfg, struct config_data *newcfg)
 	while (cs) {
 		struct cardserver_data *next = cs->next;
 		if (cs->flags&FLAG_DELETE) {
-#ifdef MULTITHREADED
-			// SEND DEL SHARE TO CCCAM/MGCAMD CLIENTS
-			mlogf(LOGINFO,0, " DEL share [%s] id:%d  caid:%04x\n", cs->name, cs->id, cs->card.caid);
-			uint8_t buf[16];
-			buf[0] = PIPE_CARD_DEL;
-			memcpy( buf+1, &cs, sizeof(void*) );
-			pipe_send( prg.pipe.cccam[1], buf, 1+sizeof(void*) );
-			pipe_send( prg.pipe.mgcamd[1], buf, 1+sizeof(void*) );
-#endif
 			if (prev) prev->next = cs->next; else cfg->cardserver = cs->next;
 			cfg_addprofile(newcfg, cs);
 		} else prev = cs;
 		cs = next;
 	}
-#ifdef MULTITHREADED
-	//check for card update
-	cs = newcfg->cardserver;
-	while (cs) {
-		if (cs->flags&FLAG_DISCONNECT) {
-			uint8_t buf[16];
-			// SEND DEL SHARE TO CCCAM/MGCAMD CLIENTS
-			mlogf(LOGINFO,0, " DEL share [%s] id:%d  caid:%04x\n", cs->name, cs->id, cs->card.caid);
-			buf[0] = PIPE_CARD_DEL;
-			memcpy( buf+1, &cs, sizeof(void*) );
-			if (cs->option.fsharecccam) pipe_send( prg.pipe.cccam[1], buf, 1+sizeof(void*) );
-			if (cs->option.fsharemgcamd) pipe_send( prg.pipe.mgcamd[1], buf, 1+sizeof(void*) );
-			// SEND ADD SHARE TO CCCAM/MGCAMD CLIENTS
-			mlogf(LOGINFO,0, " ADD share [%s] id:%d  caid:%04x\n", cs->name, cs->id, cs->card.caid);
-			buf[0] = PIPE_CARD_ADD;
-			memcpy( buf+1, &cs, sizeof(void*) );
-			if (cs->option.fsharecccam) pipe_send( prg.pipe.cccam[1], buf, 1+sizeof(void*) );
-			if (cs->option.fsharemgcamd) pipe_send( prg.pipe.mgcamd[1], buf, 1+sizeof(void*) );
-		} 
-		cs = cs->next;
-	}
-#endif
 
 
 }
@@ -7320,9 +7119,7 @@ void update_servers(struct config_data *cfg, struct config_data *newcfg )
 #ifdef CACHEEX
 			srv->cacheex_mode = newsrv->cacheex_mode;
 			srv->cacheex_maxhop = newsrv->cacheex_maxhop;
-#ifndef PUBLIC
 			srv->cacheex_forward = newsrv->cacheex_forward;
-#endif
 #endif
 			// Share Limits
 			if ( memcmp(srv->sharelimits, newsrv->sharelimits, sizeof(srv->sharelimits)) ) {
@@ -7403,9 +7200,7 @@ void update_cacheexservers(struct config_data *cfg, struct config_data *newcfg )
 #ifdef CACHEEX
 			srv->cacheex_mode = newsrv->cacheex_mode;
 			srv->cacheex_maxhop = newsrv->cacheex_maxhop;
-#ifndef PUBLIC
 			srv->cacheex_forward = newsrv->cacheex_forward;
-#endif
 #endif
 			// Share Limits
 			if ( memcmp(srv->sharelimits, newsrv->sharelimits, sizeof(srv->sharelimits)) ) {
@@ -7582,10 +7377,8 @@ void reread_config( struct config_data *cfg )
 	cfg->cache.threshold = newcfg.cache.threshold;
 	cfg->cache.filter = newcfg.cache.filter;
 	cfg->cache.filtertime = newcfg.cache.filtertime;
-#ifndef PUBLIC
 	cfg->cache.dcwcheck2 = newcfg.cache.dcwcheck2;
 	cfg->cache.dcwcheck3 = newcfg.cache.dcwcheck3;
-#endif
 	cfg->cache.forward = newcfg.cache.forward;
 	cfg->cache.faccept0onid = newcfg.cache.faccept0onid;
 	memcpy( cfg->cache.caids, newcfg.cache.caids, sizeof(newcfg.cache.caids) );
@@ -8011,12 +7804,10 @@ int check_config(struct config_data *cfg)
 #ifdef EPOLL_CACHE
 //				epoll_add( prg.epoll.cache, cache->handle, cache );
 #endif
-#ifndef PUBLIC
 				int n = 1024 * 1024;
 				if (setsockopt(cache->handle, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n)) == -1) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," setsockopt failure\n");
 				}
-#endif
 				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," Cache server started on port %d\n",cache->port);
 				CHECK_IP_ADRESS(cache->handle);
 			}

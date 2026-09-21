@@ -6,22 +6,6 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -30,8 +14,6 @@
 #include <pthread.h>
 #include <poll.h>
 #include <sys/prctl.h>
-
-#endif
 
 #include "debug.h"
 #include "convert.h"
@@ -146,7 +128,6 @@ void *telnetprocess(int *param )
 			while ( fgets(wbuf, sizeof(wbuf), fp) ) writes(fd, wbuf);
 			fclose(fp);
 		}
-#ifndef PUBLIC
 		else if ( !strcmp(str, "SCHED") ) {
 			if (parse_name(str)) {
 				uppercase(str);
@@ -196,7 +177,6 @@ void *telnetprocess(int *param )
 				fclose(fp);
 			}
 		}
-#endif
 		else if ( !strcmp(str, "HELP") ) {
 			writes(fd, " Commands: help - uptime - stat - cccam - mgcamd - debug - loadavg - cpuinfo - meminfo - exit/quit\r\n");
 		}
@@ -399,9 +379,7 @@ void *telnet_thread(void *param)
 	int clientsock;
 	struct sockaddr_in client_addr;
 	socklen_t socklen = sizeof(client_addr);
-#ifndef PUBLIC
 	prctl(PR_SET_NAME,"Telnet",0,0,0);
-#endif
 	while(1) {
 		if (cfg.telnet.handle>0) {
 			struct pollfd pfd;

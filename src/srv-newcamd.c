@@ -253,8 +253,6 @@ void newcamd_srv_accept(struct cardserver_data *srv)
 	}
 }
 
-#ifndef MONOTHREAD_ACCEPT
-
 void *newcamd_accept_thread(void *param)
 {
 	sleep(5);
@@ -291,9 +289,6 @@ void *newcamd_accept_thread(void *param)
 	}
 	return NULL;
 }
-
-#endif
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // SEND DCW
@@ -571,10 +566,8 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 						else ecm->checktime = 1; // Check NOW
 						pipe_wakeup( prg.pipe.ecm[1] );
 
-#ifndef PUBLIC
 #if defined(CACHEEX) && defined(CS378X_SRV)
 						forward_cs378x(ecm);
-#endif
 #endif
 
 #ifdef TESTCHANNEL
@@ -707,10 +700,8 @@ void cs_recv_pipe()
 
 void *cs_recvmsg_thread(void *param)
 {
-#ifndef PUBLIC
 	prg.pid_cs_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Newcamd RecvMSG",0,0,0);
-#endif
 
 	prg.epoll.newcamd = epoll_create( MAX_EPOLL_EVENTS );
 	// Add PIPE
@@ -775,10 +766,8 @@ void *cs_recvmsg_thread(void *param)
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
 
-#ifndef PUBLIC
 	prg.pid_cs_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Newcamd RecvMSG",0,0,0);
-#endif
 
 	while (!prg.restart) {
 		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
@@ -876,9 +865,7 @@ void *cs_recvmsg_thread(void *param)
 int start_thread_newcamd()
 {
 	pthread_t tid;
-#ifndef MONOTHREAD_ACCEPT
 	create_thread(&tid, newcamd_accept_thread,NULL);
-#endif
 	create_thread(&tid, cs_recvmsg_thread,NULL);
 	return 0;
 }

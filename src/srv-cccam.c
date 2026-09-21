@@ -306,24 +306,12 @@ void *cc_connect_cli(struct connect_cli_data *param)
 	for (i = 0; i < 4; i++) {
 		data[12 + i] = (data[i] + data[4 + i] + data[8 + i]) & 0xff;
 	}
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," CCcam%d: Send Random Key 16\n", cccam->id);
-		debughex(data, 16);
-	}
-#endif
 	if ( !send_nonb(sock, data, 16, 500) ) {
 		close(sock);
 		return NULL;
 	}
 	//XOR init bytes with 'CCcam'
 	cc_crypt_xor(data);
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0), " CCcam: XOR init bytes with 'CCcam'\n");
-		debughex(data, 16);
-	}
-#endif
 	//SHA1
 	SHA_CTX ctx;
 	SHA1_Init(&ctx);
@@ -338,27 +326,9 @@ void *cc_connect_cli(struct connect_cli_data *param)
 	cc_decrypt(&recvblock, buf, 20);
 		//mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," CCcam%d: recvblock:cc_crypt_init \n", cccam->id); debughex(recvblock.keytable,256);
 
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," CCcam: SHA1 hash\n");
-		debughex(buf,20);
-	}
-#endif
 	memcpy(usr,buf,20);
 	if ((i=recv_nonb(sock, buf, 20,5000)) == 20) {
-#ifdef DEBUG_NETWORK
-		if (flag_debugnet) {
-			mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," CCcam%d: receive SHA1 hash %d\n", cccam->id, i);
-			debughex(buf,i);
-		}
-#endif
 		cc_decrypt(&recvblock, buf, 20);
-#ifdef DEBUG_NETWORK
-		if (flag_debugnet) {
-			mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," Decrypted SHA1 hash (20):\n");
-			debughex(buf,20);
-		}
-#endif
 		if ( memcmp(buf,usr,20)!=0 ) {
 			//mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," cc_connect_cli(): wrong sha1 hash from client! (%s)\n",ip2string(ip));
 			close(sock);
@@ -372,12 +342,6 @@ void *cc_connect_cli(struct connect_cli_data *param)
 
 	// receive username
 	i = recv_nonb(sock, buf, 20,5000);
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0) , " CCcam%d: receive username %s -%d\n", cccam->id, ip2string(ip), i);
-		debughex(buf,i);
-	}
-#endif
 	if (i == 20) {
 		cc_decrypt(&recvblock, buf, i);
 		memcpy(usr,buf,20);
@@ -510,9 +474,7 @@ void *cc_connect_cli(struct connect_cli_data *param)
 	memcpy( tmpcli.build, buf+65, 31 );
 	mlogf(LOGINFO,getdbgflag(DBG_CCCAM,cli->parent->id,cli->id)," CCcam%d: client '%s' running version %s build %s\n", cccam->id, usr, tmpcli.version, tmpcli.build);  // cli->nodeid,8,
 	// Check for Nodeid/CCcam Version
-#ifndef PUBLIC
 	if (cli->option.checknodeid)
-#endif
 	if (cli->option.nodeid[0] && cli->option.nodeid[7]) {
 		if (memcmp(cli->option.nodeid, tmpcli.nodeid, 8)) { // diff nodeid
 			mlogf(LOGWARNING,getdbgflag(DBG_CCCAM,cli->parent->id,cli->id)," CCcam%d: login failed from client '%s' (%s), wrong nodeid\n", cccam->id, usr, ip2string(ip));
@@ -550,13 +512,11 @@ void *cc_connect_cli(struct connect_cli_data *param)
 	memcpy(&cli->sendblock, &tmpcli.sendblock,sizeof(tmpcli.sendblock));
 	memcpy(&cli->recvblock, &tmpcli.recvblock,sizeof(tmpcli.recvblock));
 	memcpy(cli->nodeid, tmpcli.nodeid, 8);
-#ifndef PUBLIC
 	// store nodeid if not set :)
 	if (!cli->option.nodeid[0] && !cli->option.nodeid[7]) {
 		memcpy(cli->option.nodeid, tmpcli.nodeid, 8);
 		prg.updatenodes = 1;
 	}
-#endif
 	memcpy(cli->version, tmpcli.version, 31);
 	memcpy(cli->build, tmpcli.build, 31 );
 
@@ -667,12 +627,9 @@ void cccam_srv_accept(struct cccam_server_data *srv)
 	}
 }
 
-#ifndef MONOTHREAD_ACCEPT
 void *cccam_accept_thread(void *param)
 {
-#ifndef PUBLIC
 	prctl(PR_SET_NAME,"CCcam Accept",0,0,0);
-#endif
 	sleep(5);
 
 	while(!prg.restart) {
@@ -706,7 +663,6 @@ void *cccam_accept_thread(void *param)
 	}
 	return NULL;
 }
-#endif
 
 
 
@@ -1045,10 +1001,8 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 				else ecm->checktime = 1; // Check NOW
 				pipe_wakeup( prg.pipe.ecm[1] );
 
-#ifndef PUBLIC
 #if defined(CACHEEX) && defined(CS378X_SRV)
 				forward_cs378x(ecm);
-#endif
 #endif
 
 #ifdef TESTCHANNEL
@@ -1253,11 +1207,9 @@ void *cc_recvmsg_thread(void *param)
 {
 	int i;
 
-#ifndef PUBLIC
 	cfg.cccam.pid_recvmsg = syscall(SYS_gettid);
 	prg.pid_cc_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"CCcam RecvMSG",0,0,0);
-#endif
 
 	struct epoll_event evlist[MAX_EPOLL_EVENTS]; // epoll recv events
 	prg.epoll.cccam = epoll_create( MAX_EPOLL_EVENTS );
@@ -1321,11 +1273,9 @@ void *cc_recvmsg_thread(void *param)
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
 
-#ifndef PUBLIC
 	cfg.cccam.pid_recvmsg = syscall(SYS_gettid);
 	prg.pid_cc_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"CCcam RecvMSG",0,0,0);
-#endif
 
 	while (!prg.restart) {
 		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
@@ -1421,10 +1371,8 @@ void *cc_recvmsg_thread(void *param)
 int start_thread_cccam()
 {
 	pthread_t tid;
-#ifndef MONOTHREAD_ACCEPT
 	create_thread(&tid, cccam_accept_thread,NULL);
 	create_thread(&tid, cccam_connector_thread,NULL);
-#endif
 
 	create_thread(&cfg.cccam.tid_recvmsg, cc_recvmsg_thread,NULL);
 	return 0;

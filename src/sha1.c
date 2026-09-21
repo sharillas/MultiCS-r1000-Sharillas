@@ -109,19 +109,6 @@ A million repetitions of "a"
 #define R4(v,w,x,y,z,i) z+=(w^x^y)+blk(i)+0xCA62C1D6+rol(v,5);w=rol(w,30);
 
 
-#ifdef VERBOSE  /* SAK */
-void SHAPrintContext(SHA_CTX *context, char *msg){
-  printf("%s (%d,%d) %x %x %x %x %x\n",
-     msg,
-     context->count[0], context->count[1],
-     context->state[0],
-     context->state[1],
-     context->state[2],
-     context->state[3],
-     context->state[4]);
-}
-#endif /* VERBOSE */
-
 /* Hash a single 512-bit block. This is the core of the algorithm. */
 void SHA1_Transform(uint32_t state[5], const uint8_t buffer[64])
 {
@@ -199,10 +186,6 @@ void SHA1_Update(SHA_CTX* context, const uint8_t* data, const size_t len)
 {
     size_t i, j;
 
-#ifdef VERBOSE
-    SHAPrintContext(context, "before");
-#endif
-
     j = (context->count[0] >> 3) & 63;
     if ((context->count[0] += len << 3) < (len << 3)) context->count[1]++;
     context->count[1] += (len >> 29);
@@ -216,10 +199,6 @@ void SHA1_Update(SHA_CTX* context, const uint8_t* data, const size_t len)
     }
     else i = 0;
     memcpy(&context->buffer[j], &data[i], len - i);
-
-#ifdef VERBOSE
-    SHAPrintContext(context, "after ");
-#endif
 }
 
 

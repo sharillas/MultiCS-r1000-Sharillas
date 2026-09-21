@@ -476,13 +476,6 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 					ecm->waitserver = 1; // XXX
 					ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm); // till the end if there is no server
 
-#ifdef BUSY_SERVER
-					if (!ecm->server_totalwait && !ecm->server_totalsent) {
-						ecm->statusmsg = "Decode failed, no free server";
-						ecm_faileddcw( ecm );
-						cs->ecmbusysrv++;
-					}
-#endif
 					return;
 				}
 			}
@@ -491,7 +484,6 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				if ( (ecm->checktime-ecm->recvtime) > (cs->option.server.timeout*ecm->period) ) ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 			}
 		}
-#ifndef PUBLIC
 		else if (!ecm->server_totalwait) {
 			ecm->statusmsg = "Decode failed, no server open this channel";
 			ecm_faileddcw( ecm );
@@ -506,7 +498,6 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 			ecm->cachestatus = ECM_CACHE_REQ2;
 			ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 		}
-#endif
 		else ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 	}
 }
@@ -583,10 +574,8 @@ void recv_ecm_pipe()
 					ecm = req.ecm; //search_ecmdata_byhash( req.caid, req.sid, req.hash );
 					if (ecm) {
 						if ( (ecm->caid==req.caid)&&(ecm->hash==req.hash)&&(ecm->sid==req.sid)&&(ecm->dcwstatus==STAT_DCW_WAITCACHE) ) {
-#ifndef PUBLIC
 							struct cardserver_data *cs = ecm->cs;
 							if ( cs && (!cs->option.cachestatic) )
-#endif
 							ecm->dcwstatus = STAT_DCW_WAIT;
 							ecm->checktime = ecm->recvtime;
 						}
@@ -669,11 +658,9 @@ inline void srv_recvmsg( struct server_data *srv )
 
 void *recv_msg_thread(void *param)
 {
-#ifndef PUBLIC
 	prg.pid_msg = syscall(SYS_gettid);
 	prg.tid_msg = pthread_self();
 	prctl(PR_SET_NAME,"ECM Thread",0,0,0);
-#endif
 
 	struct epoll_event evlist[MAX_EPOLL_EVENTS]; // epoll recv events
 	prg.epoll.ecm = epoll_create( MAX_EPOLL_EVENTS );
@@ -739,11 +726,9 @@ void *recv_msg_thread(void *param)
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
 
-#ifndef PUBLIC
 	prg.pid_msg = syscall(SYS_gettid);
 	prg.tid_msg = pthread_self();
 	prctl(PR_SET_NAME,"ECM Thread",0,0,0);
-#endif
 
 	while (!prg.restart) {
 		// getmintime

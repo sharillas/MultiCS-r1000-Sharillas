@@ -12,22 +12,6 @@ char *prot_event_get(int n, unsigned int *age_ms);
 unsigned int prot_uptime_ticks(void);
 int dcw_filter_learned_count(void);
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -37,8 +21,6 @@ int dcw_filter_learned_count(void);
 #include <poll.h>
 #include <sys/prctl.h>
 #include <poll.h>
-
-#endif
 
 #include "debug.h"
 #include "convert.h"
@@ -1585,9 +1567,7 @@ void http_send_index(int sock, http_request *req)
 #ifdef CACHEEX
 	if (sel==DBG_CACHEEX) tcp_writestr(&tcpbuf, sock, "<option value='CACHEEX' selected>CACHEEX</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='CACHEEX'>CACHEEX</option>");
 #endif
-#ifndef PUBLIC
 	if (sel==DBG_ERROR) tcp_writestr(&tcpbuf, sock, "<option value='ERROR' selected>ERROR</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='ERROR'>ERROR</option>");
-#endif
 	tcp_writestr(&tcpbuf, sock, "</select><div id='dbglog'><pre style=\"font-size:13px;\">");
 	int current = idbgline;
 	int i = current - 25;
@@ -1769,9 +1749,7 @@ void http_send_debug(int sock, http_request *req)
 #ifdef CACHEEX
 		if (sel==DBG_CACHEEX) tcp_writestr(&tcpbuf, sock, "<option value='CACHEEX' selected>CACHEEX</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='CACHEEX'>CACHEEX</option>"); 
 #endif
-#ifndef PUBLIC
 		if (sel==DBG_ERROR) tcp_writestr(&tcpbuf, sock, "<option value='ERROR' selected>ERROR</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='ERROR'>ERROR</option>");
-#endif
 		tcp_writestr(&tcpbuf, sock, "</select></legend>\n");
 		tcp_writestr(&tcpbuf, sock, "<div id='dbglog'>");
 		sprintf( http_buf, "<pre style=\"font-size:13px;\">"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -3525,11 +3503,9 @@ void getcachecells(struct cachepeer_data *peer, char cell[12][2048] )
 		}
 		if (peer->csporthit[0].csid) {
 			strcat( cell[4], "<table class=\"connect_data\">" );
-#ifndef PUBLIC
 			if (peer->ismultics) sprintf( temp,"<tr><td>Protocol</td><td>*%d</td></tr>", peer->protocol);
 			else sprintf( temp,"<tr><td>Protocol</td><td>%d</td></tr>", peer->protocol);
 			strcat( cell[4], temp );
-#endif
 			strcat( cell[4], "<tr><td width=150px>Profile</td><td>Hits</td></tr>" );
 			int i;
 			for(i=0; i<10; i++) {
@@ -4263,9 +4239,7 @@ void http_send_profiles(int sock, http_request *req)
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
 		else if (!strcmp(str_action,"onprof")) get_action = ACTION_ENABLE; // descomentar perfil por nome
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else str_action = NULL;
 	}
 	if (get_action==ACTION_ENABLE) {
@@ -4742,9 +4716,7 @@ void http_send_newcamd(int sock, http_request *req) // page, div, row
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
@@ -5291,9 +5263,7 @@ void http_send_profile(int sock, http_request *req)
 		else if (!strcmp(str_action,"disable")) get_action = 3;
 		else if (!strcmp(str_action,"enable")) get_action = 4;
 		else if (!strcmp(str_action,"status")) get_action = 5;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = 6; // XML info
-#endif
 		else if (!strcmp(str_action,"debug")) get_action = 7;
 		else if (!strcmp(str_action,"dbginfo")) get_action = 8;
 		else if (!strcmp(str_action,"off")) get_action = 9;  // comentar perfil no profiles.cfg
@@ -5389,9 +5359,7 @@ void http_send_profile(int sock, http_request *req)
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM CHECK</td><td>%s</td></tr>", yesno(cs->option.checkecm)); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM CHECK LENGTH</td><td>%s</td></tr>", yesno(cs->option.checkecmlength)); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW TIMEOUT</td><td>%dms</td></tr>", cs->option.dcw.timeout); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#ifndef PUBLIC
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW RETRY</td><td>%d</td></tr>", cs->option.dcw.retry ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CHECK</td><td>%s</td></tr>", yesno(cs->option.dcw.check) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW HALFNULLED</td><td>%s</td></tr>", yesno(cs->option.dcw.halfnulled) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #ifdef DCWSWAP
@@ -5437,11 +5405,9 @@ void http_send_profile(int sock, http_request *req)
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>RETRY CCCAM</td><td>%d</td></tr>", cs->option.retry.cccam); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE TIMEOUT</td><td>%dms</td></tr>", cs->option.cachetimeout); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE SENDREQ</td><td>%s</td></tr>", yesno(cs->option.cachesendreq) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#ifndef PUBLIC
 	//sprintf( http_buf,"<tr><td>CACHE RESENDREQ</td><td>%s</td></tr>", yesno(cs->option.cacheresendreq) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE SENDREP</td><td>%s</td></tr>", yesno(cs->option.cachesendrep) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE STATIC</td><td>%s</td></tr>", yesno(cs->option.cachestatic) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
 	sprintf( http_buf, "</table></span></div><br><br>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "<div style=\"clear:both\"></div>" );
 
@@ -5586,7 +5552,6 @@ void http_send_profile(int sock, http_request *req)
 		sprintf( http_buf, "</table><br>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 
-#ifndef PUBLIC
 	// Runtime SIDS
 	if (cs->deniedsids[0].sid) {
 		sprintf( http_buf, "<br><b>Available Servers</b>");
@@ -5677,7 +5642,6 @@ void http_send_profile(int sock, http_request *req)
 		}
 	}
 
-#endif
 
 	tcp_flush(&tcpbuf, sock);
 }
@@ -5832,9 +5796,7 @@ void http_send_cccam(int sock, http_request *req)
 	char *str_list = isset_get( req, "list");
 	char *str_id = isset_get( req, "id"); // CCcam server ID
 	char *str_clid = isset_get( req, "clid"); // Client ID
-#ifndef PUBLIC
 	char *str_clname = isset_get( req, "clname"); // Client NAME
-#endif
 	// Param 'action'
 	int get_action;
 	if (str_action) {
@@ -6303,9 +6265,7 @@ void http_send_cs378x(int sock, http_request *req)
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
@@ -6990,9 +6950,7 @@ void http_send_camd35(int sock, http_request *req)
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
@@ -8272,9 +8230,7 @@ void http_send_cccam_client(int sock, http_request *req)
 	int get_action;
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
@@ -8880,17 +8836,13 @@ void http_send_mgcamd(int sock, http_request *req)
 	char *str_list = isset_get( req, "list");
 	char *str_id = isset_get( req, "id"); // server ID
 	char *str_clid = isset_get( req, "clid"); // Client ID
-#ifndef PUBLIC
 	char *str_clname = isset_get( req, "clname"); // Client NAME
-#endif
 	// Param 'action'
 	int get_action;
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
@@ -8908,7 +8860,6 @@ void http_send_mgcamd(int sock, http_request *req)
 			cli = getmgcamdclientbyid( atoi(str_clid) );
 			if (!cli) return;
 		}
-#ifndef PUBLIC
 		else {
 			if (str_id && str_clname) {
 				struct mgcamdserver_data *mgcamd = getmgcamdserverbyid( atoi(str_id) );
@@ -8918,9 +8869,6 @@ void http_send_mgcamd(int sock, http_request *req)
 			}
 			else return;
 		}
-#else
-		else return;
-#endif
 		// Send XML CELLS
 		getmgcamdcells(cli,cell);
 		int i; for(i=0; i<10; i++) xmlescape( cell[i] );

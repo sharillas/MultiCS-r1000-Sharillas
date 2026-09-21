@@ -492,13 +492,6 @@ int cc_connect_srv(struct server_data *srv, int fd)
 		return -2;
 	}
 
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " CCcam: receive server init seed (%d)\n",n);
-		debughex(data,n);
-	}
-#endif
-
 	// Check Multics
 	int ismultics = 0;
 	uint8_t a = (data[0]^'M') + data[1] + data[2];

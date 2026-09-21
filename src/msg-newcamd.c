@@ -5,22 +5,6 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <signal.h>
@@ -31,8 +15,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <poll.h>
-
-#endif
 
 #include "des.h"
 #include "debug.h"
@@ -73,12 +55,6 @@ int cs_message_send(int sock,struct cs_custom_data *cd, unsigned char *buffer, i
 	len += 12;
 
 	//debugdump(netbuf,len,"SEND BUF ");
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,0," newcamd: send data %d\n",len);
-		debughex(netbuf,len);
-	}
-#endif
 	len=des_encrypt(netbuf, len, deskey);
 
 	if (len < 0) return -1;
@@ -149,12 +125,6 @@ int cs_message_receive(int sock,struct cs_custom_data *cd, unsigned char *buffer
   }
 
   //debugdump(netbuf,returnLen+12,"RECV BUF ");
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGDEBUG,0," newcamd: receive data %d\n",returnLen+12);
-		debughex(netbuf,returnLen+12);
-	}
-#endif
 	// Setup Custom Data
 	if (cd) {
 		cd->msgid = (netbuf[2] << 8) | netbuf[3];

@@ -5,13 +5,6 @@
 #include <string.h>
 #include <stdint.h>
 
-#ifdef WIN32
-
-#include <windows.h>
-//#include <sys/types.h>
-
-#else
-
 #include <fcntl.h>
 #include <sys/time.h>
 #include <time.h>
@@ -24,21 +17,9 @@
 #include <netinet/tcp.h>
 #include <errno.h>
 
-#endif
-
 #include "tools.h"
 
 struct timeval startime;
-
-#ifdef WIN32
-
-void usleep( int count )
-{
-  unsigned long int Ticks = GetTickCount() + count/1000;
-  while (Ticks>GetTickCount()) ;
-}
-
-#else
 
 uint64_t GetTickCount()
 {
@@ -60,8 +41,6 @@ unsigned int GetTicks(struct timeval *tv)
 {
     return (unsigned int)( (tv->tv_sec-startime.tv_sec) * 1000 + tv->tv_usec/1000 );
 }
-
-#endif
 
 unsigned int getseconds()
 {

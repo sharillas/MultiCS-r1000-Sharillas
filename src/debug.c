@@ -7,13 +7,6 @@
 #include <stdint.h>
 
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-
-#else
-
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -27,8 +20,6 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <errno.h>
-
-#endif
 
 #include "debug.h"
 

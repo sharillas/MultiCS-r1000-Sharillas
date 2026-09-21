@@ -6,22 +6,6 @@
 #include <unistd.h>
 
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <fcntl.h>
 #include <sys/time.h>
 #include <time.h>
@@ -34,8 +18,6 @@
 #include <netinet/tcp.h>
 #include <errno.h>
 #include <poll.h>
-
-#endif
 
 #include "debug.h"
 #include "convert.h"

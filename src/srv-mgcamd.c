@@ -392,13 +392,9 @@ void mgcamd_srv_accept(struct mgcamdserver_data *srv)
 	}
 }
 
-#ifndef MONOTHREAD_ACCEPT
-
 void *mgcamd_accept_thread(void *param)
 {
-#ifndef PUBLIC
 	prctl(PR_SET_NAME,"MGcamd Accept",0,0,0);
-#endif
 	sleep(5);
 
 	while(!prg.restart) {
@@ -432,9 +428,6 @@ void *mgcamd_accept_thread(void *param)
 	}
 	return NULL;
 }
-
-#endif
-
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -850,10 +843,8 @@ void mg_cli_recvmsg(struct mg_client_data *cli)
 					}
 					else ecm->checktime = 1; // Check NOW
 					pipe_wakeup( prg.pipe.ecm[1] );
-#ifndef PUBLIC
 #if defined(CACHEEX) && defined(CS378X_SRV)
 					forward_cs378x(ecm);
-#endif
 #endif
 
 #ifdef TESTCHANNEL
@@ -1025,11 +1016,9 @@ void *mg_recvmsg_thread(void *param)
 {
 	int i;
 
-#ifndef PUBLIC
 	cfg.mgcamd.pid_recvmsg = syscall(SYS_gettid);
 	prg.pid_mg_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Mgcamd RecvMSG",0,0,0);
-#endif
 	struct epoll_event evlist[MAX_EPOLL_EVENTS]; // epoll recv events
 
 	prg.epoll.mgcamd = epoll_create( MAX_EPOLL_EVENTS );
@@ -1093,11 +1082,9 @@ void *mg_recvmsg_thread(void *param)
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
 
-#ifndef PUBLIC
 	cfg.mgcamd.pid_recvmsg = syscall(SYS_gettid);
 	prg.pid_mg_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"MGcamd RecvMSG",0,0,0);
-#endif
 
 	while (1) {
 		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
@@ -1193,10 +1180,8 @@ void *mg_recvmsg_thread(void *param)
 int start_thread_mgcamd()
 {
 	pthread_t tid;
-#ifndef MONOTHREAD_ACCEPT
 	create_thread(&tid, mgcamd_accept_thread,NULL);
 	create_thread(&tid, mgcamd_connector_thread,NULL);
-#endif
 
 	create_thread(&cfg.mgcamd.tid_recvmsg, mg_recvmsg_thread,NULL);
 	return 0;

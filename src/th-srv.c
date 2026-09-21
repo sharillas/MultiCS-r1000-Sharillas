@@ -165,10 +165,8 @@ void connect_server(struct server_data *srv)
 
 void *connect_servers(void *param)
 {
-#ifndef PUBLIC
 	prg.pid_srv = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Server Conn",0,0,0);
-#endif
 	while (!prg.restart) {
 		pthread_mutex_lock(&prg.locksrvth);
 

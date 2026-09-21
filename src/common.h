@@ -31,19 +31,11 @@
 #define FALSE 0
 #define TRUE 1
 
-#ifdef WIN32
-
-#define pthread_t DWORD
-
-#else
-
 typedef int SOCKET;
 #define INVALID_HANDLE_VALUE -1
 #define INVALID_SOCKET       -1
 #define SOCKET_ERROR         -1
 #define closesocket          close
-
-#endif
 
 
 #define MAX_ECM_SIZE 700
