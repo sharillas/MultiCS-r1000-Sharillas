@@ -46,7 +46,6 @@
 #include "cacheex.h"
 
 #include "main.h"
-#include "emu.h"
 #include "cwc.h"
 #include "chnbudget.h"
 #include "nagra.h"
@@ -513,7 +512,6 @@ struct connect_cli_data {
 #ifdef EXPIREDATE
 #include "th-date.c"
 #endif
-#include "emu.c"   // Emulator (constcw / BISS)
 #include "cwc.c"   // CW Cycle Check (estilo OSCam)
 #include "chnbudget.c" // Timing budget por canal (cryptoperiod adaptativo)
 #include "nagra.c" // NAGRA protection (18xx/19xx)
@@ -530,11 +528,6 @@ char *src2string(int srctype, int srcid, char *ret)
 	static char ss1[] = "server";
 	static char ss2[] = "cache peer";
 	static char ss3[] = "newcamd client";
-
-	if (srctype==DCW_SOURCE_EMU) {
-		sprintf( ret, "emulator (constcw)" );
-		return "emulator";
-	}
 
 	if (srctype==DCW_SOURCE_SERVER) {
 		struct server_data *srv = getsrvbyid(srcid&0xFFFF);

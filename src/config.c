@@ -247,7 +247,6 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.fallownewcamd = 1;  // Allow newcamd server protocol to decode ecm
 	cs->option.fallowcccam = 1;    // Allow cccam server protocol to decode ecm
 	cs->option.fallowskipcwc = 1; // default ON: ignorar cws repetidas
-	cs->option.fenableemu = 1;    // default ON: emulador BISS por perfil
 	cs->option.fenablelite = 0;   // default OFF: filtro de canais CCcam.lite
 
 	cs->option.fallowcache = 1;
@@ -1498,22 +1497,6 @@ sid accept:
 					strcpy( cfg->javascript_file, str );
 				}
 			}
-			else if (!strcmp(str,"CONSTCW")) {
-				parse_spaces();
-				if (!strncmp(iparser,"FILE",4)) {
-					iparser += 4;
-					parse_spaces();
-				}
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				parse_spaces();
-				if ( parse_path(str) ) {
-					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: read CONSTCW file %s\n",str);
-					strcpy( cfg->constcw_file, str );
-				}
-			}
 			else if (!strcmp(str,"BLOCKEDIP")) {
 				parse_spaces();
 				if (!strncmp(iparser,"FILE",4)) {
@@ -1529,24 +1512,6 @@ sid accept:
 					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: read BLOCKEDIP file %s\n",str);
 					strcpy( cfg->blockedip_file, str );
 				}
-			}
-		}
-
-		// top-level: CONSTCW FILE: ...  (sinonimo de FILE CONSTCW: ...)
-		else if (!strcmp(str,"CONSTCW")) {
-			parse_spaces();
-			if (!strncmp(iparser,"FILE",4)) {
-				iparser += 4;
-				parse_spaces();
-			}
-			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-				continue;
-			} else iparser++;
-			parse_spaces();
-			if ( parse_path(str) ) {
-				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: read CONSTCW file %s\n",str);
-				strcpy( cfg->constcw_file, str );
 			}
 		}
 
@@ -2364,16 +2329,6 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.enable = parse_boolean();
-				}
-				else if (!strcmp(str,"EMULATOR")) {
-					parse_name(str); // BISS
-					uppercase(str);
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.fenableemu = parse_boolean();
 				}
 				else if (!strcmp(str,"LITE")) {
 					parse_spaces();
@@ -4300,16 +4255,6 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.nagra.enable = parse_boolean();
 			}
-			else if (!strcmp(str,"EMULATOR")) {
-				parse_name(str); // BISS
-				uppercase(str);
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.fenableemu = parse_boolean();
-			}
 			else if (!strcmp(str,"LITE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -5309,7 +5254,6 @@ void update_cccam_clients(struct cccam_server_data *srv, struct cccam_server_dat
 			}
 			//
 			cli->uphops = newcli->uphops;
-			cli->shareemus = newcli->shareemus;
 			cli->allowemm = newcli->allowemm;
 #ifdef CACHEEX
 			if (cli->cacheex_mode!=newcli->cacheex_mode) {
@@ -5422,7 +5366,6 @@ void update_cccam_cacheexclients(struct cccam_server_data *srv, struct cccam_ser
 			}
 			//
 			cli->uphops = newcli->uphops;
-			cli->shareemus = newcli->shareemus;
 			cli->allowemm = newcli->allowemm;
 #ifdef CACHEEX
 			if (cli->cacheex_mode!=newcli->cacheex_mode) {
@@ -6294,7 +6237,6 @@ void reread_config( struct config_data *cfg )
 	strcpy(cfg->channelinfo_file,newcfg.channelinfo_file);
 	strcpy(cfg->providers_file,newcfg.providers_file);
 	strcpy(cfg->ip2country_file,newcfg.ip2country_file);
-	strcpy(cfg->constcw_file,newcfg.constcw_file);
 	strcpy(cfg->blockedip_file,newcfg.blockedip_file);
 	// SWAP das listas de dados (as antigas vao para oldcfg e sao libertadas no fim)
 	struct config_data oldcfg;

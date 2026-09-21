@@ -40,7 +40,6 @@ int dcw_filter_learned_count(void);
 #include "dyn_buffer.c"
 
 #include "main.h"
-#include "emu.h"
 #include "ipblock.h"
 
 const unsigned char *boyermoore_horspool_memmem(const unsigned char* haystack, ssize_t hlen, const unsigned char* needle, ssize_t nlen);
@@ -734,7 +733,6 @@ char http_javascript[] = "<script src=\"/customjs.js?v=1202\"></script>\n";
 #define PAGE_CACHEEX   11
 
 #define PAGE_DEBUG     14
-#define PAGE_EMULATOR  15
 #define PAGE_IPTABLES  16
 #define PAGE_CONFIGURATIONS 17
 #define PAGE_PACKAGES  18
@@ -844,12 +842,6 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	{
 		if (selected==PAGE_PACKAGES) class = cSelected; else class = cNormal;
 		sprintf( buf, class, "/packages", "Packages"); tcp_writestr(tcpbuf, sock, buf);
-	}
-	// Softcam
-	{
-		if (selected==PAGE_EMULATOR) class = cSelected; else class = cNormal;
-		sprintf( label, "Softcam <span class='badge-count'> %d </span>", emu_keycount);
-		sprintf( buf, class, "/emulator", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Configurations (Iptables + Edit Config)
 	{
@@ -1356,8 +1348,6 @@ void http_send_index(int sock, http_request *req)
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		sprintf( http_buf, "<div class='tile'><div class='lbl'>RAM</div><div class='big c-amber'>%d%%</div><div class='sub'>%d / %d MB</div></div>", rampct, memtotal?((memtotal-memavail>0&&memavail)?(memtotal-memavail):(memtotal-memfree))/1024:0, memtotal/1024);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>Softcam</div><div class='big c-red'>%d</div><div class='sub'>%d cache servers</div></div>", emu_keycount, cfg.cache.totalservers);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "</div>");
 	}
 
@@ -1671,7 +1661,7 @@ void http_send_debug(int sock, http_request *req)
 			pfi++;
 			pfs = pfs->next;
 		}
-		sprintf( http_buf, "CONSTCW: %s\nSTYLESHEET: %s\nBLOCKEDIP: %s\nLITE FILE: %s\n", cfg.constcw_file[0]?cfg.constcw_file:"(none)", cfg.stylesheet_file[0]?cfg.stylesheet_file:"(none)", cfg.blockedip_file[0]?cfg.blockedip_file:"(none)", cfg.lite_file[0]?cfg.lite_file:"(none)");
+		sprintf( http_buf, "STYLESHEET: %s\nBLOCKEDIP: %s\nLITE FILE: %s\n", cfg.stylesheet_file[0]?cfg.stylesheet_file:"(none)", cfg.blockedip_file[0]?cfg.blockedip_file:"(none)", cfg.lite_file[0]?cfg.lite_file:"(none)");
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "</pre></fieldset>");
 	}
@@ -2002,286 +1992,8 @@ void http_logout(int sock, http_request *req)
 	tcp_flush(&tcpbuf, sock);
 }
 
-static int emu_parsehex16(const char *s, uint8_t out[16])
-{
-	int n=0;
-	while (*s && n<16) {
-		if (*s==' '||*s=='\t') { s++; continue; }
-		uint8_t hi, lo;
-		char c = *s;
-		if (c>='0'&&c<='9') hi = c-'0';
-		else if (c>='a'&&c<='f') hi = c-'a'+10;
-		else if (c>='A'&&c<='F') hi = c-'A'+10;
-		else return -1;
-		c = *(s+1);
-		if (c>='0'&&c<='9') lo = c-'0';
-		else if (c>='a'&&c<='f') lo = c-'a'+10;
-		else if (c>='A'&&c<='F') lo = c-'A'+10;
-		else return -1;
-		out[n++] = (hi<<4)|lo;
-		s += 2;
-	}
-	return n;
-}
-
-static void emu_readmeta(char *out, int outlen)
-{
-	out[0] = 0;
-	if (!cfg.constcw_file[0]) return;
-	char meta[512];
-	strncpy(meta, cfg.constcw_file, sizeof(meta)-1);
-	meta[sizeof(meta)-1]=0;
-	char *slash = strrchr(meta, '/');
-	if (!slash) return;
-	strcpy(slash+1, "biss_updater.meta");
-	FILE *fp = fopen(meta, "r");
-	if (!fp) {
-		snprintf(out, outlen, "No updater data yet");
-		return;
-	}
-	char buf[1024] = "";
-	int len = fread(buf, 1, sizeof(buf)-1, fp);
-	fclose(fp);
-	buf[len] = 0;
-	long long last_check = 0, last_update = 0, added = 0, updated = 0, total = 0;
-	sscanf(buf, "{\"last_check\": %lld", &last_check);
-	sscanf(buf, "{\"last_update\": %lld", &last_update);
-	sscanf(buf, "{\"added\": %lld", &added);
-	sscanf(buf, "{\"updated\": %lld", &updated);
-	sscanf(buf, "{\"total\": %lld", &total);
-	uint32_t ticks = GetTickCount()/1000;
-	if (last_update) {
-		uint32_t ago = ticks - (uint32_t)last_update;
-		snprintf(out, outlen, "Last update: <b>%dh %dm ago</b><br>New keys: <b>+%lld</b><br>Updated: <b>%lld</b><br>Total after update: <b>%lld</b>", ago/3600, (ago/60)%60, added, updated, total);
-	}
-	else if (last_check) {
-		uint32_t ago = ticks - (uint32_t)last_check;
-		snprintf(out, outlen, "Last check: <b>%dh %dm ago</b><br>No key changes yet.<br>Total keys: <b>%lld</b>", ago/3600, (ago/60)%60, total);
-	}
-	else snprintf(out, outlen, "No updater data yet");
-}
-
 static int find_tool(const char *name, char *out, int outsz);
 static void resolve_cfg_path(const char *name, char *out, int outsz);
-
-void http_send_emulator(int sock, http_request *req)
-{
-	char http_buf[2048];
-	struct tcp_buffer_data tcpbuf;
-
-	// ===== ACTIONS =====
-	char *str_action = isset_get( req, "action");
-	if (str_action && !strcmp(str_action,"delete")) {
-		char *caid = isset_get( req, "caid");
-		char *provid = isset_get( req, "provid");
-		char *sid = isset_get( req, "sid");
-		if (caid && provid && sid)
-			emu_delkey( (uint16_t)strtol(caid,NULL,16), (uint32_t)strtol(provid,NULL,16), (uint16_t)strtol(sid,NULL,16) );
-		http_send_redirect(sock, "/emulator");
-		return;
-	}
-	if (str_action && !strcmp(str_action,"add")) {
-		char *sid = isset_get( req, "sid");
-		char *cw = isset_get( req, "cw");
-		if (sid && cw && sid[0] && cw[0]) {
-			uint16_t caid = 0x2600;
-			uint32_t provid = 0;
-			char *pcaid = isset_get( req, "caid");
-			char *pprov = isset_get( req, "provid");
-			if (pcaid && pcaid[0]) caid = (uint16_t)strtol(pcaid,NULL,16);
-			if (pprov && pprov[0]) provid = (uint32_t)strtol(pprov,NULL,16);
-			uint8_t keycw[16];
-			int n = emu_parsehex16(cw, keycw);
-			if (n==8) memcpy(keycw+8, keycw, 8);
-			if ((n==8)||(n==16)) {
-				emu_addkey( caid, provid, (uint16_t)strtol(sid,NULL,16), keycw, "", 1 );
-				mlogf(LOGINFO,DBG_HTTP," emu: key added %04x:%06x:%04x via web\n", caid, provid, (uint16_t)strtol(sid,NULL,16));
-			}
-		}
-		http_send_redirect(sock, "/emulator");
-		return;
-	}
-	if (str_action && !strcmp(str_action,"updatekey")) {
-		static uint32_t lastupdatekey = 0;
-		uint32_t now = GetTickCount();
-		if (lastupdatekey && ((now-lastupdatekey)<300000)) {
-			http_send_text(sock, "<span class='miss'>Aguarda 5 minutos entre atualizacoes</span>");
-			return;
-		}
-		lastupdatekey = now;
-		char tool[512];
-		if (find_tool("tools_update_softcam.py", tool, sizeof(tool))) {
-			sprintf( http_buf, "python3 %s --port %d >/var/tmp/softcam_update.log 2>&1 &", tool, cfg.http.port);
-			system(http_buf);
-			mlogf(LOGINFO, DBG_HTTP, " http: softcam update iniciado (porta %d)\n", cfg.http.port);
-			http_send_text(sock, "<span class='success'>Update SoftCam.Key iniciado. Resultado no Debug Log.</span>");
-		}
-		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (tools_update_softcam.py)</span>");
-		return;
-	}
-	if (str_action && !strcmp(str_action,"applykeys")) {
-		emu_load();
-		sprintf( http_buf, "<span class='success'>Reload Keys OK (%d chaves carregadas)</span>", emu_keycount);
-		http_send_text(sock, http_buf);
-		return;
-	}
-
-	// ===== POST multipart (SoftCam.Key upload) =====
-	if (req->type==HTTP_POST) {
-		char *content = isset_header(req, "Content-Type");
-		if (content && !memcmp(content,"multipart/form-data",19)) {
-			// boundary
-			while (*content!=';') { if (*content==0) break; content++; }
-			if (*content==';') {
-				content++;
-				while (*content==' ') content++;
-				if (!memcmp(content,"boundary",8)) {
-					while (*content!='=') { if (*content==0) break; content++; }
-					if (*content=='=') {
-						content++;
-						while (*content==' '||*content=='\t') content++;
-						char boundary[255];
-						char endboundary[255];
-						sprintf( boundary, "--%s", content);
-						sprintf( endboundary, "\r\n--%s", content);
-						char *p = req->dbf.data;
-						p = (char*) boyermoore_horspool_memmem( (uint8_t*)p, req->dbf.datasize, (uint8_t*)boundary, strlen(boundary) );
-						if (p) {
-							p += strlen(boundary);
-							if ( *p=='\r' && *(p+1)=='\n' ) {
-								p += 2;
-								// headers
-								char *h = p;
-								while ( !(h[0]=='\r'&&h[1]=='\n'&&h[2]=='\r'&&h[3]=='\n') ) {
-									if (h[0]==0) break;
-									h++;
-								}
-								char *pdata = h+4;
-								char *end = (char*) boyermoore_horspool_memmem( (uint8_t*)pdata, req->dbf.datasize-(pdata-(char*)req->dbf.data), (uint8_t*)endboundary, strlen(endboundary) );
-								if (end && end>pdata) {
-									int added = emu_parse_softcam( pdata, end-pdata );
-									mlogf(LOGINFO,DBG_HTTP," emu: SoftCam.Key upload: %d keys added\n", added);
-									if (added>0) sprintf( http_buf, "<span class='success'>Guardado com sucesso: %d chaves novas</span>", added);
-									else sprintf( http_buf, "<span class='miss'>Nao encontrei chaves novas nesse ficheiro (ja existiam ou formato errado)</span>");
-									http_send_text(sock, http_buf);
-									return;
-								}
-								http_send_text(sock, "<span class='failed'>Nao consegui processar o upload</span>");
-								return;
-							}
-						}
-					}
-				}
-			}
-			http_send_redirect(sock, "/emulator");
-			return;
-		}
-	}
-
-	// ===== PAGE =====
-	tcp_init(&tcpbuf);
-	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
-	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
-	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-	sprintf( http_buf, html_title, cfg.http.title, "Softcam"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
-	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
-	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
-	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
-	tcp_writestr(&tcpbuf, sock, "\nfunction filterKeys(){var q=document.getElementById('keysearch').value.toLowerCase();var t=document.getElementById('keystable');var r=t.querySelectorAll('tbody tr');for(var i=0;i<r.length;i++){r[i].style.display=r[i].textContent.toLowerCase().indexOf(q)>-1?'':'none';}}");
-	tcp_writestr(&tcpbuf, sock, "\nfunction uploadSoftcam(e)\n{\n	if(e&&e.preventDefault)e.preventDefault();\n	var f=document.getElementById('softcamform');\n	if(!f)return true;\n	var s=document.getElementById('softcamstatus');\n	if(s)s.innerHTML='<span class=busy>A processar...</span>';\n	var x=new XMLHttpRequest();\n	x.open('POST','/emulator',true);\n	x.onreadystatechange=function()\n	{\n		if(x.readyState==4){\n			if(x.status==200&&s)s.innerHTML=x.responseText;\n			else if(s)s.innerHTML='<span class=failed>Erro HTTP '+x.status+'</span>';\n		}\n	};\n	x.send(new FormData(f));\n	return false;\n}");
-	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 setautorefresh(autorefresh);\n}");
-	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
-	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
-	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
-	tcp_write_menu(&tcpbuf, sock, PAGE_EMULATOR);
-	tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
-
-	// stat sections
-	tcp_writestr(&tcpbuf, sock, "<div style='display:flex;gap:15px;flex-wrap:wrap;margin:10px 0'>");
-	// Emulator Settings
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Softcam Settings</h3><div class=stat-value>");
-	char emup[512];
-	emu_path(emup, sizeof(emup));
-	sprintf( http_buf, "Softcam.cfg: <b>%s</b><br>", emup);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	if (!cfg.constcw_file[0]) {
-		tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;color:#f0ad4e'>CONSTCW FILE nao definido no multics.cfg - a usar o caminho acima (junto do multics.cfg). Adiciona CONSTCW FILE para um caminho proprio.</span><br>");
-	}
-	sprintf( http_buf, "Keys loaded: <b>%d</b><br>", emu_keycount);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "</div></div>");
-	// Activity Stats
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Activity Stats</h3><div class=stat-value>");
-	sprintf( http_buf, "Decrypted CWs: <b>%d</b><br>", emu_logcount);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	if (emu_lastmatch) {
-		sprintf( http_buf, "Last match: <b>%us ago</b>", (GetTickCount()-emu_lastmatch)/1000);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-	tcp_writestr(&tcpbuf, sock, "</div></div>");
-	// Updater Stats
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Updater Stats</h3><div class=stat-value>");
-	char metaout[512];
-	emu_readmeta(metaout, sizeof(metaout));
-	tcp_write(&tcpbuf, sock, metaout, strlen(metaout) );
-	tcp_writestr(&tcpbuf, sock, "</div></div></div>");
-
-	// Upload + add forms
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >SoftCam.Key Upload</h3><div class=stat-value><form id='softcamform' method='POST' enctype='multipart/form-data' action='/emulator' onsubmit='return uploadSoftcam(event)'><input type='file' name='softcamkey' accept='.key'>&nbsp;<input type='submit' value='Convert &amp; Load'>&nbsp;<span id='softcamstatus'></span></form><br><input type='button' class='sbutton' value='Update SoftCam.Key' title='Descarrega o SoftCam.Key mais recente e aplica; chaves manuais sao preservadas' onclick=\"btnrequest('/emulator?action=updatekey','keystatus')\">&nbsp;<input type='button' class='sbutton' value='Reload Keys' title='Rele o Softcam.cfg do disco' onclick=\"btnrequest('/emulator?action=applykeys','keystatus')\">&nbsp;<span id='keystatus'></span>&nbsp;<span style='font-size:11px;'>update: download + parse automatico do SoftCam.Key remoto (resultado no Debug Log)</span></div>");
-	tcp_writestr(&tcpbuf, sock, "</div>");
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Add BISS Key (CAID 2600)</h3><div class=stat-value><form method='GET' action='/emulator'><input type='hidden' name='action' value='add'><input type='hidden' name='addkey_type' value='biss'>SID: <input type='text' name='sid' placeholder='17ED' style='width:60px;margin-right:8px'>CW (16 or 32 hex): <input type='text' name='cw' placeholder='1A2B3C81...' style='width:280px;margin-right:8px'><input type='submit' value='Add BISS Key'></form></div>");
-	tcp_writestr(&tcpbuf, sock, "</div>");
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Add Generic CW Key</h3><div class=stat-value><form method='GET' action='/emulator'><input type='hidden' name='action' value='add'><input type='hidden' name='addkey_type' value='generic'>CAID: <input type='text' name='caid' placeholder='2600' style='width:60px;margin-right:8px'>Provider: <input type='text' name='provid' placeholder='000000' style='width:80px;margin-right:8px'>SID: <input type='text' name='sid' placeholder='17ED' style='width:60px;margin-right:8px'>CW (16 or 32 hex): <input type='text' name='cw' placeholder='1A2B3C81...' style='width:280px;margin-right:8px'><input type='submit' value='Add Key'></form></div>");
-	tcp_writestr(&tcpbuf, sock, "</div>");
-
-	// Loaded Keys
-	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Loaded Keys (%d)</h3>", emu_keycount);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-value><input type='text' id='keysearch' onkeyup='filterKeys()' placeholder='Search CAID, SID or channel...' style='width:280px;margin-bottom:8px'><div style='max-height:400px;overflow-y:auto'><table class=maintable id='keystable'><tr><th>CAID</th><th>Provider</th><th>SID</th><th>Channel Name</th><th>CW (32 hex)</th><th>Del</th></tr>");
-	struct emu_key_data *k = emu_keys;
-	char cwhex[40];
-	int i;
-	char *p;
-	while (k) {
-		p = cwhex;
-		for (i=0; i<16; i++) { sprintf(p,"%02X", k->cw[i]); p+=2; }
-		const char *chn = (k->name[0]) ? k->name : getchname(k->caid, k->provid, k->sid);
-		sprintf( http_buf, "<tr><td>%04x</td><td>%06x</td><td>%04x</td><td>%s</td><td class='cwcell'>%s</td><td><a href='/emulator?action=delete&caid=%04x&provid=%06x&sid=%04x' onclick=\"return confirm('Delete this key?')\" class='btn-del'>Delete</a></td></tr>",
-			k->caid, k->provid, k->sid, chn, cwhex, k->caid, k->provid, k->sid);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		k = k->next;
-	}
-	if (!emu_keycount)
-		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=6 style='text-align:center;color:#888'>No keys loaded. Upload a SoftCam.Key file or add entries to Softcam.cfg.</td></tr>");
-	tcp_writestr(&tcpbuf, sock, "</table></div></div></div>");
-
-	// Decrypted CW Log
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Decrypted CW Log</h3><div style='max-height:300px;overflow-y:auto'><table class=maintable><tr><th>Time</th><th>CAID</th><th>Provider</th><th>SID</th><th>CW (32 hex)</th></tr>");
-	int li;
-	int shown = 0;
-	struct emu_log_data logentry;
-	for (li=0; li<emu_logcount && shown<50; li++, shown++) {
-		if (!emu_log_get(li, &logentry)) break;
-		p = cwhex;
-		for (i=0; i<16; i++) { sprintf(p,"%02X", logentry.cw[i]); p+=2; }
-		sprintf( http_buf, "<tr><td>%us ago</td><td>%04x</td><td>%06x</td><td>%04x</td><td class='cwcell'>%s</td></tr>",
-			(GetTickCount()-logentry.time)/1000, logentry.caid, logentry.provid, logentry.sid, cwhex);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-	if (!emu_logcount)
-		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=5 style='text-align:center;color:#888'>No decrypted CWs yet</td></tr>");
-	tcp_writestr(&tcpbuf, sock, "</table></div></div>");
-
-	tcp_writestr(&tcpbuf, sock, "</div></body></html>");
-	tcp_flush(&tcpbuf, sock);
-}
 
 void http_send_iptables(int sock, http_request *req)
 {
@@ -5219,7 +4931,6 @@ void http_send_profile(int sock, http_request *req)
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECMRATELIMIT</td><td>sid:%dms max:%d/s</td></tr>", cs->option.ratelimit.sidtime, cs->option.ratelimit.maxecm ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE FALLBACK</td><td>%s</td></tr>", yesno(cs->option.fallback.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE TIMING</td><td>%s</td></tr>", yesno(cs->option.timing.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE EMULATOR BISS</td><td>%s</td></tr>", yesno(cs->option.fenableemu) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE LITE</td><td>%s (channels:%d)</td></tr>", yesno(cs->option.fenablelite), lite_count() ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE CACHE</td><td>%s</td></tr>", yesno(cs->option.fallowcache) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #ifdef CACHEEX
@@ -7595,7 +7306,7 @@ struct pkg_data {
 	const char *note;
 };
 static const struct pkg_data pkg_table[] = {
-	{ "Hispasat 30W", "Abertis TDT (BISS)", 0x2600, 0x000000, "chaves no Softcam.cfg" },
+	{ "Hispasat 30W", "Abertis TDT (BISS)", 0x2600, 0x000000, "" },
 	{ "Hispasat 30W", "MEO", 0x1814, 0x005211, "ident real" },
 	{ "Hispasat 30W", "MEO", 0x1814, 0x005221, "" },
 	{ "Hispasat 30W", "MEO", 0x1814, 0x000007, "ID_SAT" },
@@ -7901,7 +7612,6 @@ void http_send_editor(int sock, http_request *req, int index)
 		reread_config( &cfg );
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
-		emu_load();
 		lite_load();
 		ipblock_load();
 		mlogf(LOGINFO, DBG_HTTP, " http: config reread from disk\n");
@@ -8043,7 +7753,6 @@ void http_send_editor(int sock, http_request *req, int index)
 		reread_config( &cfg );
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
-		emu_load();
 		lite_load();
 		ipblock_load();
 	}
@@ -8112,7 +7821,7 @@ static const char *editor_extra_files[] = {
 	"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.providers","CCcam.lite",
 	"servidores.cfg","clientes_cccam.cfg","clientes_mgcamd.cfg",
 	"clientes_cache.cfg",
-	"Softcam.cfg","blocked_ips.cfg", NULL };
+	"blocked_ips.cfg", NULL };
 
 // o nome (basename) ja esta registado na lista do parse?
 static int editor_in_cfgfiles(const char *name)
@@ -8157,7 +7866,6 @@ static void resolve_cfg_path(const char *name, char *out, int outsz)
 	else if (!strcmp(name,"CCcam.channelinfo")) wanted = cfg.channelinfo_file;
 	else if (!strcmp(name,"CCcam.providers")) wanted = cfg.providers_file;
 	else if (!strcmp(name,"CCcam.lite")) wanted = cfg.lite_file;
-	else if (!strcmp(name,"Softcam.cfg")) wanted = cfg.constcw_file;
 	else if (!strcmp(name,"blocked_ips.cfg")) wanted = cfg.blockedip_file;
 	else if (!strcmp(name,"ip2country.csv")) wanted = cfg.ip2country_file;
 	else if (!strcmp(name,"multics.css")) wanted = cfg.stylesheet_file;
@@ -8358,7 +8066,6 @@ void http_send_configurations(int sock, http_request *req)
 		reread_config( &cfg );
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
-		emu_load();
 		lite_load();
 		ipblock_load();
 		mlogf(LOGINFO, DBG_HTTP, " http: config reread from disk\n");
@@ -8403,7 +8110,7 @@ void http_send_configurations(int sock, http_request *req)
 			"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.providers","CCcam.lite",
 			"servidores.cfg","clientes_cccam.cfg","clientes_mgcamd.cfg",
 			"clientes_cache.cfg",
-			"Softcam.cfg","blocked_ips.cfg", NULL };
+			"blocked_ips.cfg", NULL };
 		char *fnameparam = isset_get( req, "file");
 		int okname = 0;
 		if (fnameparam) {
@@ -8469,7 +8176,6 @@ void http_send_configurations(int sock, http_request *req)
 										reread_config( &cfg );
 										check_config( &cfg );
 										cfg_set_id_counters( &cfg );
-										emu_load();
 										lite_load();
 										ipblock_load();
 										// password do admin mudou? termina todas as sessoes
@@ -8499,7 +8205,6 @@ void http_send_configurations(int sock, http_request *req)
 													reread_config( &cfg );
 													check_config( &cfg );
 													cfg_set_id_counters( &cfg );
-													emu_load();
 													lite_load();
 													ipblock_load();
 													// ainda ha erros neste ficheiro?
@@ -8522,7 +8227,6 @@ void http_send_configurations(int sock, http_request *req)
 												reread_config( &cfg );
 												check_config( &cfg );
 												cfg_set_id_counters( &cfg );
-												emu_load();
 												lite_load();
 												ipblock_load();
 											}
@@ -8635,7 +8339,6 @@ void http_send_configurations(int sock, http_request *req)
 		reread_config( &cfg );
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
-		emu_load();
 		lite_load();
 		ipblock_load();
 		if ( strcmp(oldpass, cfg.http.pass) ) {
@@ -8675,7 +8378,6 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.channelinfo'>CCcam.channelinfo</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.providers'>CCcam.providers</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.lite'>CCcam.lite</option>");
-	tcp_writestr(&tcpbuf, sock, "<option value='Softcam.cfg'>Softcam.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='blocked_ips.cfg'>blocked_ips.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "</select>&nbsp; <input type='file' name='uploadfile'>&nbsp;<input type='submit' value='Upload'></form>");
 	tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;'>envia o teu ficheiro para o caminho real da config (onde o parse o le). Faz backup automatico do anterior. A config e recarregada apos o upload. Um ficheiro unico com todas as seccoes (servers, perfis, clientes) carrega-se como multics.cfg.</span></div>");
@@ -8881,9 +8583,6 @@ void *gererClient(struct connect_data *param)
 					http_send_cacheex(sock,&req);
 				}
 #endif
-				else if ( !memcmp(req.path,"/emulator",9) ) {
-					http_send_emulator(sock,&req);
-				}
 				else if (strcmp(req.path,"/configurations")==0) {
 					http_send_configurations(sock,&req);
 				}

@@ -306,9 +306,6 @@ struct ecm_request *store_ecmdata(struct cardserver_data *cs,uint8_t *ecm,int ec
 
 	new->period = 1; // First try
 
-	// Emulator: se existe chave constante, acorda ja o check_ecm
-	if (emu_has_constcw(caid, provid, sid)) new->checktime = 1;
-
 #ifdef CHECK_NEXTDCW
 	//checkfreeze_storeECM(new);
 #endif
