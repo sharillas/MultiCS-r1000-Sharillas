@@ -119,47 +119,8 @@ inline int get_cccam_cacheex_push(struct cache_data *pcache, uint8_t cw[16], uin
 	return 57+8;
 }
 
-inline int get_camd35_cacheex_push(struct cache_data *pcache, uint8_t cw[16], uint8_t *buf, uint8_t *nodeid )
-{
-	memset(buf, 0, 57+8 );
-	buf[0] = 0x3F;
-	buf[1] = 57+8-20;
-
-	buf[8] = pcache->sid>>8;
-	buf[9] = pcache->sid;
-
-	buf[10] = pcache->caid>>8;
-	buf[11] = pcache->caid;
-
-	buf[12] = pcache->provid>>24;
-	buf[13] = pcache->provid>>16;
-	buf[14] = pcache->provid>>8;
-	buf[15] = pcache->provid;
-
-	buf[19] = pcache->tag;
-
-	memcpy(buf+20, pcache->ecmd5, 16);
-	buf[36] = pcache->hash;
-	buf[37] = pcache->hash >> 8;
-	buf[38] = pcache->hash >> 16;
-	buf[39] = pcache->hash >> 24; 
-	memcpy(buf+40, cw, 16);
-	if (nodeid) {
-		buf[1] += 8;
-		buf[56] = 2;
-		memcpy(buf+57, cfg.nodeid, 8 );
-		memcpy(buf+57+8, nodeid, 8 );
-		return 57+8+8;
-	}
-	buf[56] = 1; // Uphops = 1 (local)
-	memcpy(buf+57, cfg.nodeid, 8 );
-	return 57+8;
-}
-
 inline void cacheex_push(struct cache_data *pcache, uint8_t cw[16], uint8_t *nodeid )
 {
-	uint8_t camd35buf[128];
-	int camd35len = get_camd35_cacheex_push( pcache, cw, camd35buf, nodeid );
 	uint8_t cccambuf[128];
 	int cccamlen = get_cccam_cacheex_push( pcache, cw, cccambuf, nodeid );
 
@@ -172,14 +133,6 @@ inline void cacheex_push(struct cache_data *pcache, uint8_t cw[16], uint8_t *nod
 			if (srv->type==TYPE_CCCAM) {
 				if ( !cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_CACHE_PUSH, cccamlen, cccambuf) ) disconnect_srv(srv);
 			}
-#ifdef CAMD35_CLI
-			else if (srv->type==TYPE_CAMD35) camd35_sendto( srv->handle, srv->host->ip, srv->port, &srv->encryptkey, srv->ucrc, camd35buf, camd35len);
-#endif
-#ifdef CS378X_CLI
-			else if (srv->type==TYPE_CS378X) {
-				if ( !cs378x_send( srv->handle, &srv->encryptkey, srv->ucrc, camd35buf, camd35len) )  disconnect_srv(srv);
-			}
-#endif
 			srv->cacheex.push[0]++;
 			if (nodeid) srv->cacheex.push[2]++; else srv->cacheex.push[1]++;
 		}
@@ -202,46 +155,6 @@ inline void cacheex_push(struct cache_data *pcache, uint8_t cw[16], uint8_t *nod
 			cli = cli->next;
 		}
 		cccam = cccam->next;
-	}
-#endif
-
-#ifdef CAMD35_SRV
-	// PUSH TO CAMD35 CLIENTS cacheex=2
-	struct camd35_server_data *camd35 = cfg.camd35.server;
-	while (camd35) {
-		struct camd35_client_data *cli = camd35->cacheexclient;
-		while (cli) {
-			if ( (cli->cacheex_mode==2) && (cli->connection.status>0) )
-			if ( !nodeid || memcmp(nodeid, cli->nodeid, 8) )
-			if ( acceptshare(cli->sharelimits, pcache->caid, pcache->provid) ) {
-				camd35_sendto( camd35->handle, cli->ip, cli->port, &cli->encryptkey, cli->ucrc, camd35buf, camd35len);
-				cli->cacheex.push[0]++;
-				if (nodeid) cli->cacheex.push[2]++; else cli->cacheex.push[1]++;
-				//mlogf(LOGDEBUG,getdbgflag(DBG_CACHEEX, 0, 0)," CACHEEX PUSH to client %04x:%06x:%04x:%08x\n",pcache->caid,pcache->provid,pcache->sid,pcache->hash);// debughex(req.cw,16);
-			}
-			cli = cli->next;
-		}
-		camd35 = camd35->next;
-	}
-#endif
-
-#ifdef CS378X_SRV
-	// PUSH TO CS378X CLIENTS cacheex=2
-	struct camd35_server_data *cs378x = cfg.cs378x.server;
-	while (cs378x) {
-		struct camd35_client_data *cli = cs378x->cacheexclient;
-		while (cli) {
-			if ( (cli->cacheex_mode==2) && (cli->connection.status>0) )
-			if ( !nodeid || memcmp(nodeid, cli->nodeid, 8) )
-			if ( acceptshare(cli->sharelimits, pcache->caid, pcache->provid) ) {
-				if ( !cs378x_send( cli->handle, &cli->encryptkey, cli->ucrc, camd35buf, camd35len) ) cs378x_disconnect_cli(cli);
-				cli->cacheex.push[0]++;
-				if (nodeid) cli->cacheex.push[2]++; else cli->cacheex.push[1]++;
-				//mlogf(LOGDEBUG,getdbgflag(DBG_CACHEEX, 0, 0)," CACHEEX PUSH to client %04x:%06x:%04x:%08x\n",pcache->caid,pcache->provid,pcache->sid,pcache->hash);// debughex(req.cw,16);
-			}
-			cli = cli->next;
-		}
-		cs378x = cs378x->next;
 	}
 #endif
 
@@ -395,12 +308,6 @@ void *cacheex_recvmsg_thread(void *param)
 				if ( (srv->ipoll>=0)&&(srv->handle==pfd[srv->ipoll].fd) ) {
 					if ( pfd[srv->ipoll].revents & (POLLIN|POLLPRI) ) {
 						if (srv->type==TYPE_CCCAM) cc_srv_recvmsg(srv);
-#ifdef CAMD35_CLI
-						else if (srv->type==TYPE_CAMD35) camd35_srv_recvmsg(srv);
-#endif
-#ifdef CS378X_CLI
-						else if (srv->type==TYPE_CS378X) cs378x_srv_recvmsg(srv);
-#endif
 					}
 				}
 				srv = srv->next;

@@ -34,10 +34,6 @@
 #ifdef CCCAM
 #include "msg-cccam.h"
 #endif
-#ifdef RADEGAST
-#include "msg-radegast.h"
-#endif
-
 #include "ecmdata.h"
 #include "parser.h"
 #include "config.h"
@@ -484,30 +480,15 @@ int pipe_send_cacheex_push_cache(struct cache_data *pcache, uint8_t *cw, uint8_t
 #include "cli-newcamd.c"
 #ifdef CCCAM_CLI
 #include "cli-cccam.c"
-#include "cli-ccam3.c"
-#include "ccam3_crypto.c"
 #endif
 
-
-#if defined(CAMD35_SRV) || defined(CAMD35_CLI) || defined(CS378X_SRV) || defined(CS378X_CLI)
 #include "crc32.c"
-#include "msg-camd35.c"
-#endif
-
-#ifdef CAMD35_CLI
-#include "cli-camd35.c"
-#endif
-#ifdef CS378X_CLI
-#include "cli-cs378x.c"
-#endif
-
 
 struct connect_cli_data {
 	void *server;
 	int sock;
 	uint32_t ip;
 };
-void forward_cs378x(ECM_DATA *ecm);
 
 
 #include "srv-newcamd.c"
@@ -517,27 +498,6 @@ void forward_cs378x(ECM_DATA *ecm);
 
 #ifdef CCCAM_SRV
 #include "srv-cccam.c"
-#include "srv-ccam3.c"
-#endif
-
-#ifdef FREECCCAM_SRV
-#include "srv-freecccam.c"
-#endif
-
-#ifdef RADEGAST_CLI
-#include "cli-radegast.c"
-#endif
-
-#ifdef RADEGAST_SRV
-#include "srv-radegast.c"
-#endif
-
-#ifdef CAMD35_SRV
-#include "srv-camd35.c"
-#endif
-
-#ifdef CS378X_SRV
-#include "srv-cs378x.c"
 #endif
 
 #ifdef CACHEEX
@@ -604,28 +564,6 @@ char *src2string(int srctype, int srcid, char *ret)
 				sprintf( ret,"Unknown CacheEx CCcam client (id=%d)", srcid);
 			return "CacheEx CCcam client";
 		}
-
-#ifdef CAMD35_SRV
-		else if (srcid&PEER_CAMD35_CLIENT) {
-			struct camd35_client_data *cli = getcamd35clientbyid(srcid&0xFFFF);
-			if (cli)
-				sprintf( ret,"CacheEx Camd35 client '%s'", cli->user);
-			else
-				sprintf( ret,"Unknown CacheEx Camd35 client (id=%d)", srcid);
-			return "CacheEx Camd35 client";
-		}
-#endif
-
-#ifdef CS378X_SRV
-		else if (srcid&PEER_CS378X_CLIENT) {
-			struct camd35_client_data *cli = getcs378xclientbyid(srcid&0xFFFF);
-			if (cli)
-				sprintf( ret,"CacheEx cs378x client '%s'", cli->user);
-			else
-				sprintf( ret,"Unknown CacheEx cs378x client (id=%d)", srcid);
-			return "CacheEx cs378x client";
-		}
-#endif
 
 		else if (srcid&PEER_CACHEEX_SERVER) {
 			struct server_data *srv = getcesrvbyid(srcid&0xFFFF);
@@ -709,19 +647,10 @@ void mainprocess()
 	pthread_mutex_init(&prg.locksrvcc, NULL); // CC Client connection
 	pthread_mutex_init(&prg.lockcccli, NULL);
 #endif
-#ifdef FREECCCAM_SRV
-	pthread_mutex_init(&prg.locksrvfreecc, NULL); // CC Client connection
-	pthread_mutex_init(&prg.lockfreecccli, NULL);
-#endif
 
 #ifdef MGCAMD_SRV
 	pthread_mutex_init(&prg.locksrvmg, NULL); // Client connection
 	pthread_mutex_init(&prg.lockclimg, NULL);
-#endif
-
-#ifdef RADEGAST_SRV
-	pthread_mutex_init(&prg.lockrdgdsrv, NULL); // Client connection
-	pthread_mutex_init(&prg.lockrdgdcli, NULL);
 #endif
 
 	// Main Loops(THREADS)
@@ -765,13 +694,6 @@ void mainprocess()
 	SetSoketNonBlocking(prg.pipe.cacheex[1]);
 #endif
 
-	if ( pipe(prg.pipe.cs378x) < 0 ) { perror("pipe()"); exit(1); }
-	SetSoketNonBlocking(prg.pipe.cs378x[0]);
-	SetSoketNonBlocking(prg.pipe.cs378x[1]);
-	if ( pipe(prg.pipe.cs378x_cex) < 0 ) { perror("pipe()"); exit(1); }
-	SetSoketNonBlocking(prg.pipe.cs378x_cex[0]);
-	SetSoketNonBlocking(prg.pipe.cs378x_cex[1]);
-
 	if ( pipe(prg.pipe.cccam) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(prg.pipe.cccam[0]);
 	SetSoketNonBlocking(prg.pipe.cccam[1]);
@@ -783,10 +705,6 @@ void mainprocess()
 	if ( pipe(prg.pipe.newcamd) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(prg.pipe.newcamd[0]);
 	SetSoketNonBlocking(prg.pipe.newcamd[1]);
-
-	if ( pipe(prg.pipe.freecccam) < 0 ) { perror("pipe()"); exit(1); }
-	SetSoketNonBlocking(prg.pipe.freecccam[0]);
-	SetSoketNonBlocking(prg.pipe.freecccam[1]);
 
 	if ( pipe(dcwpipe) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(dcwpipe[0]);
@@ -847,11 +765,6 @@ void mainprocess()
 
 	sleep(3);
 
-	pthread_t cli_tid;
-#ifdef RADEGAST_SRV
-	create_thread(&cli_tid, (threadfn)rdgd_connect_cli_thread, NULL); // Lock server
-#endif
-
 	start_thread_newcamd();
 
 #ifdef MGCAMD_SRV
@@ -860,18 +773,6 @@ void mainprocess()
 
 #ifdef CCCAM_SRV
 	start_thread_cccam();
-#endif
-
-#ifdef FREECCCAM_SRV
-	start_thread_freecccam();
-#endif
-
-#ifdef CS378X_SRV
-	start_thread_cs378x();
-#endif
-
-#ifdef CAMD35_SRV
-	start_thread_camd35();
 #endif
 
 	start_thread_http();
