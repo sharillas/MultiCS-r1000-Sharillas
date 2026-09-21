@@ -370,219 +370,6 @@ struct PACK cs_client_data
 };
 
 
-#ifdef RADEGAST_SRV
-
-struct PACK rdgd_client_data { // Connected Client
-	struct rdgd_client_data *next;
-	uint32_t flags;
-	uint32_t id; // unique id
-
-	// Share Limits
-	struct sharelimit_data sharelimits[100];
-	// Client Info Data
-	struct client_info_data *info;
-	char *realname;
-#ifdef EXPIREDATE
-	struct tm enddate;
-#endif
-	struct host_data *host;
-
-	//## Runtime Data (DYNAMIC)
-	uint32_t ip;
-	int handle;
-	int ipoll;
-	uint32_t chkrecvtime; // message recv time
-
-	// Connection time
-	uint32_t connected;
-	uint8_t type;
-	// ECM Stat
-	int ecmnb;	// ecm number requested by client
-	int ecmdenied;	// ecm number requested by client
-	int ecmok;	// dcw returned to client
-	int ecmoktime;
-	uint32_t lastactivity; // Last Received Packet
-	uint32_t lastecmtime; // Last ecm time, if it was more than 5mn so reconnect to client
-	uint32_t lastdcwtime; // last good dcw time sent to client
-	//
-	int freeze; //a freeze: is a decode failed to a channel opened last time within 3mn
-	int zap;
-	int nblogin; // Total Number of logins
-	int nbloginerror; // Total Number of logins
-	int nbdiffip; // Total Number of logins with different IP's
-
-	struct {
-		int busy; // if ecmbusy dont process anyother ecm until that current ecm was finished
-		sendstatus_type status; // answer was sent to client?
-		// Ecm Data
-		uint32_t recvtime; // ECM Receive Time in ms
-		int id;
-		//Last Used Share Saved data
-		uint16_t lastcaid;
-		uint32_t lastprov;
-		uint16_t lastsid;
-		int laststatus;
-		// DCW SOURCE
-		int lastdcwsrctype;
-		int lastdcwsrcid;
-		uint32_t lastcardid;
-		uint32_t lastdecodetime;
-		char *statmsg; // DCW Status Message
-	} ecm;
-};
-
-#endif
-
-
-#if defined(CAMD35_SRV) || defined(CS378X_SRV) || defined(CAMD35_CLI) || defined(CS378X_CLI)
-#include "aes.h"
-#endif
-
-
-#if defined(CAMD35_SRV) || defined(CS378X_SRV)
-
-struct PACK camd35_client_data { // Connected Client
-	struct camd35_client_data *next;
-	uint32_t flags;
-	uint32_t id; // unique id
-
-	struct client_info_data *info;
-	char *realname;
-
-	// User/Pass
-	char user[64];
-	char pass[64];
-	uint32_t userhash;
-	// Card
-	struct cs_card_data card;
-	// AES KEYS
-	AES_KEY decryptkey;
-	AES_KEY encryptkey;
-	uint32_t ucrc;
-
-#ifdef CACHEEX
-	int cacheex_mode;
-	uint8_t nodeid[8];
-	//number of hits for each profile
-	struct {
-		int csid;
-		int hits;
-	} csporthit[MAX_CSPORTS];
-#endif
-	// Profiles
-	uint16_t csport[MAX_CSPORTS];
-	// Share Limits
-	struct sharelimit_data sharelimits[100];
-
-	//## Runtime Data (DYNAMIC)
-	unsigned int ip; // Client ip
-	int port; // Client port
-	int handle; // udp
-	int ipoll;
-//	uint32_t chkrecvtime; // message recv time
-
-	// Connection time
-	struct {
-		int status; // 0: not connected / -1: Connecting... / 1: Connected
-		uint32_t time; // Last connection time
-		uint32_t lastseen; // Last connected time
-		uint32_t uptime;
-	} connection;
-
-	unsigned char type;
-	// ECM Stat
-
-	int ecmnb;	// ecm number requested by client
-	int ecmdenied;	// ecm number requested by client
-	int ecmok;	// dcw returned to client
-	int ecmoktime;
-	unsigned int lastecmtime; // Last ecm time, if it was more than 5mn so reconnect to client
-	unsigned int lastdcwtime; // last good dcw time sent to client
-	unsigned int lastactivity;
-#ifdef CACHEEX
-	struct {
-		uint32_t push[10]; // Requests
-		uint32_t got[10]; // Replies
-		uint32_t badcw;
-		uint32_t csp; // Replies from csp cache
-		uint32_t hits; // ecm hits
-		uint32_t ihits; // instant hits
-		uint16_t lastcaid;
-		uint32_t lastprov;
-		uint16_t lastsid;
-		uint32_t lastdecodetime;
-	} cacheex;
-#endif
-
-#ifdef CHECK_NEXTDCW
-	int dcwcheck;
-#endif
-
-	int freeze; //a freeze: is a decode failed to a channel opened last time within 3mn
-	int zap;
-
-	struct {
-		int busy; // if ecmbusy dont process anyother ecm until that current ecm was finished
-		sendstatus_type status; // answer was sent to client?
-		// Ecm Data
-		uint32_t recvtime; // ECM Receive Time in ms
-		ECM_DATA *request;
-		uint32_t hash; // to check for ecm
-		int pin;
-	} ecm;
-
-	//Last Used Share Saved data
-	struct {
-		ECM_DATA *request;
-		uint16_t caid;
-		uint32_t prov;
-		uint16_t sid;
-		uint32_t hash;
-		uint8_t tag;
-		int status;
-		uint8_t dcw[16];
-		int dcwsrctype;
-		int dcwsrcid;
-		uint32_t cardid;
-		uint32_t decodetime;
-	} lastecm; // Last decoded ecm
-/*
-	struct {
-		int busy; // if ecmbusy dont process anyother ecm until that current ecm was finished
-		sendstatus_type status; // answer was sent to client?
-		// Ecm Data
-		uint32_t recvtime; // ECM Receive Time in ms
-		int id;
-		//Last Used Share Saved data
-		uint16_t lastcaid;
-		uint32_t lastprov;
-		uint16_t lastsid;
-		int laststatus;
-		// DCW SOURCE
-		int lastdcwsrctype;
-		int lastdcwsrcid;
-		uint32_t lastcardid;
-		uint32_t lastdecodetime;
-		char *statmsg; // DCW Status Message
-	} ecm;
-*/
-};
-
-
-struct camd35_server_data {
-	struct camd35_server_data *next;
-	uint32_t flags;
-	struct camd35_client_data *client; // clients
-	struct camd35_client_data *cacheexclient;
-	int totalclients;
-	int id;
-	int port;
-	int handle;
-	int ipoll;
-};
-
-#endif
-
 // cs : newcamd
 // cc : cccam
 
@@ -610,15 +397,6 @@ struct cardserver_data
 			int ipoll;
 		} clipfd;
 	} newcamd;
-#ifdef RADEGAST_SRV
-	struct {
-		struct rdgd_client_data *client;
-		uint32_t flags;
-		int port; // output port
-		SOCKET handle;
-		int ipoll;
-	} radegast;
-#endif
 
 	struct ecm_request *ecmdata;
 	int totalecm;
@@ -687,9 +465,6 @@ struct cardserver_data
 		// allow incoming dcw from...
 		int fallowcccam;	// Allow cccam server protocol to decode ecm
 		int fallownewcamd;	// Allow newcamd server protocol to decode ecm
-		int fallowradegast;
-		int fallowcamd35;
-		int fallowcs378x;
 		int fallowskipcwc;	// Skip Same CW (protecao cws fakes repetidas)
 		// CW Cycle Check (estilo OSCam module-cw-cycle-check)
 		struct {
@@ -811,9 +586,6 @@ struct cardserver_data
 		struct {
 			int newcamd; // Newcamd Retries
 			int cccam; // CCcam Retries
-#ifdef RADEGAST_CLI
-			int radegast; // Radegast Retries
-#endif
 		} retry;
 	} option;
 
@@ -883,10 +655,6 @@ struct cardserver_data
 #define TYPE_NEWCAMD    1
 #define TYPE_CCCAM      2
 #define TYPE_GBOX       3
-#define TYPE_RADEGAST   4
-#define TYPE_CAMD35     5
-#define TYPE_CS378X     6
-#define TYPE_CCAM3      7
 #define TYPE_MGCAMD     8
 #define TYPE_CACHE      9
 
@@ -943,9 +711,6 @@ struct PACK server_data
 	char version[32];
 	uint8_t sessionkey[16];
 	struct message_data msg;
-	// CCcam3 session (reader C3:)
-	uint8_t ccam3key[32];   // chave de sessao (20B legacy / 32B RSA_AES)
-	uint8_t ccam3crypt;     // modo de criptografia (C3_CRYPT_*)
 #ifdef CLI_CSCACHE
 	int cscached; // flag for newcamd cached servers
 #endif
@@ -957,13 +722,6 @@ struct PACK server_data
 	struct cc_crypt_block recvblock;	// crypto state block
 	uint8_t nodeid[8];
 	char build[32];
-#endif
-
-#if defined(CAMD35_CLI) || defined(CS378X_CLI)
-	// AES KEYS
-	AES_KEY decryptkey;
-	AES_KEY encryptkey;
-	uint32_t ucrc;
 #endif
 
 	//Connection Data
@@ -1064,10 +822,6 @@ struct PACK cc_client_data { // Connected Client
 
 	uint32_t id; // unique id
 	struct cccam_server_data *parent;
-	// CCcam3 session (cliente do protocolo CCcam3)
-	uint8_t isccam3;
-	uint8_t ccam3crypt;
-	uint8_t ccam3key[32];
 	//fline
 	char user[64];
 	char pass[64];
@@ -1217,9 +971,6 @@ struct cccam_server_data {
 	int handle;
 	int ipoll;
 	int port; // output port
-	int ccam3_port;   // porta do servidor CCcam3
-	int ccam3_handle; // socket do servidor CCcam3
-	pthread_t tid_ccam3;
 	struct ip_hacker_data *iplist;
 	// for faster poll()
 	struct {
@@ -1535,24 +1286,6 @@ struct config_data
 	} cccam;
 #endif
 
-#ifdef FREECCCAM_SRV
-	struct {
-		struct cccam_server_data server;
-		int clientid; // CCcam Clients
-		int serverid; // CCcam Servers
-		char version[32];
-		char build[32];
-		char user[64];
-		char pass[64];
-		int maxusers;
-		uint16_t csport[MAX_CSPORTS]; // default cards
-		pid_t pid_recvmsg;
-		pthread_t tid_recvmsg;
-		pid_t pid_connect;
-		pthread_t tid_connect;
-	} freecccam;
-#endif
-
 
 #ifdef MGCAMD_SRV
 	struct {
@@ -1570,32 +1303,6 @@ struct config_data
 	} mgcamd;
 #endif
 
-
-#ifdef CAMD35_SRV
-	struct {
-		struct camd35_server_data *server;
-		int totalservers;
-		int clientid;
-		int serverid;
-		pid_t pid_recvmsg;
-		pthread_t tid_recvmsg;
-		pid_t pid_connect;
-		pthread_t tid_connect;
-	} camd35;
-#endif
-#ifdef CS378X_SRV
-	struct {
-		struct camd35_server_data *server;
-		int totalservers;
-		int clientid;
-		int serverid;
-		int keepalive;
-		pid_t pid_recvmsg;
-		pthread_t tid_recvmsg;
-		pid_t pid_connect;
-		pthread_t tid_connect;
-	} cs378x;
-#endif
 
 	//WEBIF
 #ifdef HTTP_SRV
@@ -1651,8 +1358,6 @@ struct config_data
 		int max_cccam;
 		int max_newcamd;
 		int max_mgcamd;
-		int max_camd35;
-		int max_cs378x;
 		int max_cache;
 		uint32_t time; // janela de contagem (legado)
 		int count;
@@ -1731,12 +1436,6 @@ struct program_data
 	pthread_mutex_t lockcccli; // CCcam Clients data
 	pthread_mutex_t locksrvcc; // CCcam server
 #endif
-#ifdef FREECCCAM_SRV
-	pthread_mutex_t lockfreecccli; // FreeCCcam Clients data
-	pthread_mutex_t locksrvfreecc; // FreeCCcam server
-#endif
-	pthread_mutex_t lockrdgdcli; // Radegast Clients
-	pthread_mutex_t lockrdgdsrv; // Radegast Server
 
 #ifdef MGCAMD_SRV
 	pthread_mutex_t lockclimg;	// CCcam Clients data
@@ -1756,7 +1455,6 @@ struct program_data
 		int servers;
 		int cache; // 
 		int cccam;
-		int freecccam;
 		int mgcamd;
 		int newcamd;
 		int ecm;
@@ -1770,14 +1468,11 @@ struct program_data
 	struct {
 		int ecm[2];
 		int cccam[2];
-		int freecccam[2];
 		int cccam_cex[2];
 		int mgcamd[2];
 		int newcamd[2];
 		int cache[2];
 		int cacheex[2];
-		int cs378x[2];
-		int cs378x_cex[2];
 		struct {
 			int cccam[2];
 			int mgcamd[2];

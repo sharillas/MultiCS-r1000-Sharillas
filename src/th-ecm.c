@@ -87,15 +87,6 @@ void clients_check_sendcw(ECM_DATA *ecm)
 #ifdef CCCAM_SRV
 	cc_check_sendcw(ecm);
 #endif
-#ifdef FREECCCAM_SRV
-	freecccam_check_sendcw(ecm);
-#endif
-#ifdef CS378X_SRV
-	cs378x_check_sendcw(ecm);
-#endif
-#ifdef CAMD35_SRV
-	camd35_check_sendcw(ecm);
-#endif
 }
 
 
@@ -389,75 +380,12 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 							ecm_addsrvip(ecm, newsrv->host->ip);
 						}
 					}
-					else if (newsrv->type==TYPE_CCAM3) {
-						if (ccam3_sendecm_srv(newsrv, ecm)>0) {
-							ecm->lastsendtime = ticks;
-							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to CCcam3 server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
-							newsrv->lastecmtime = ticks;
-							newsrv->ecmnb++;
-							newsrv->busy=1;
-							newsrv->ecm.request = ecm;
-							newsrv->ecm.hash = ecm->hash;
-							newsrv->retry=0;
-							ecm_addsrv(ecm, newsrv->id);
-							ecm_addsrvip(ecm, newsrv->host->ip);
-						}
-					}
 #endif
 
-#ifdef RADEGAST_CLI
-					else if (newsrv->type==TYPE_RADEGAST) {
-						if (rdgd_sendecm_srv(newsrv, ecm)>0) {
-							ecm->lastsendtime = ticks;
-							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to Radegast server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
-							newsrv->lastecmtime = ticks;
-							newsrv->ecmnb++;
-							newsrv->busy=1;
-							newsrv->ecm.request = ecm;
-							newsrv->ecm.hash = ecm->hash;
-							newsrv->retry=0;
-							ecm_addsrv(ecm, newsrv->id);
-							ecm_addsrvip(ecm, newsrv->host->ip);
-						}
-					}
-#endif
-#ifdef CAMD35_CLI
-					else if (newsrv->type==TYPE_CAMD35) {
-						if (camd35_sendecm_srv(newsrv, ecm)>0) {
-							ecm->lastsendtime = ticks;
-							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to camd35 server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
-							newsrv->lastecmtime = ticks;
-							newsrv->ecmnb++;
-							newsrv->busy=1;
-							newsrv->ecm.request = ecm;
-							newsrv->ecm.hash = ecm->hash;
-							newsrv->retry=0;
-							ecm_addsrv(ecm, newsrv->id);
-							ecm_addsrvip(ecm, newsrv->host->ip);
-						}
-					}
-#endif
-#ifdef CS378X_CLI
-					else if (newsrv->type==TYPE_CS378X) {
-						if (cs378x_sendecm_srv(newsrv, ecm)>0) {
-							ecm->lastsendtime = ticks;
-							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to cs378x server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
-
-							newsrv->lastecmtime = ticks;
-							newsrv->ecmnb++;
-							newsrv->busy=1;
-							newsrv->ecm.request = ecm;
-							newsrv->ecm.hash = ecm->hash;
-							newsrv->retry=0;
-							ecm_addsrv(ecm, newsrv->id);
-							ecm_addsrvip(ecm, newsrv->host->ip);
-						}
-					}
-#endif
 					// CWFEED (estudo de CWs): registar envio ao server
 					if (newsrv) {
-						uint8_t fp = (newsrv->type==TYPE_CCCAM||newsrv->type==TYPE_CCAM3)?1:
-							(newsrv->type==TYPE_NEWCAMD)?2:(newsrv->type==TYPE_CAMD35)?4:(newsrv->type==TYPE_CS378X)?5:0;
+						uint8_t fp = (newsrv->type==TYPE_CCCAM)?1:
+							(newsrv->type==TYPE_NEWCAMD)?2:0;
 						cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, NULL, 0, 0, 0, fp, newsrv->id, 0);
 					}
 					ecm->statusmsg = "Waiting for servers...";
@@ -640,16 +568,6 @@ inline void srv_recvmsg( struct server_data *srv )
 	if (srv->type==TYPE_NEWCAMD) cs_srv_recvmsg(srv);
 #ifdef CCCAM_CLI
 	else if (srv->type==TYPE_CCCAM) cc_srv_recvmsg(srv);
-	else if (srv->type==TYPE_CCAM3) ccam3_srv_recvmsg(srv);
-#endif
-#ifdef RADEGAST_CLI
-	else if (srv->type==TYPE_RADEGAST) rdgd_srv_recvmsg(srv);
-#endif
-#ifdef CAMD35_CLI
-	else if (srv->type==TYPE_CAMD35) camd35_srv_recvmsg(srv);
-#endif
-#ifdef CS378X_CLI
-	else if (srv->type==TYPE_CS378X) cs378x_srv_recvmsg(srv);
 #endif
 }
 
@@ -815,25 +733,6 @@ void *thread_keepalive(void *param)
 						if ( !cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_KEEPALIVE, 0, NULL) ) disconnect_srv( srv );
 					}
 				}
-
-#ifdef CAMD35_CLI
-				else if (srv->type==TYPE_CAMD35) {
-					if ( !srv->keepalive.status && ((srv->keepalive.time+30000)<ticks) ) {
-						camd35_send_keepalive(srv);
-						srv->keepalive.status = 1; // Sent and waiting for reply
-						srv->keepalive.time = ticks;
-					}
-					else if ( (srv->keepalive.status==1) && ((srv->keepalive.time+10000)<ticks) ) {
-						camd35_send_keepalive(srv);
-						srv->keepalive.status = 2;
-						srv->keepalive.time = ticks;
-					}
-					else if ( (srv->keepalive.status>1) && ((srv->keepalive.time+10000)<ticks) ) {
-						mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," ??? no keepalive response from camd35 server (%s:%d)\n",srv->host->name,srv->port);
-						disconnect_srv( srv );
-					}
-				}
-#endif
 			}
 			srv = srv->next;
 		}
@@ -850,48 +749,9 @@ void *thread_keepalive(void *param)
 						if ( !cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_KEEPALIVE, 0, NULL) ) disconnect_srv( srv );
 					}
 				}
-
-#ifdef CAMD35_CLI
-				else if (srv->type==TYPE_CAMD35) {
-					if ( !srv->keepalive.status && ((srv->keepalive.time+30000)<ticks) ) {
-						camd35_send_keepalive(srv);
-						srv->keepalive.status = 1; // Sent and waiting for reply
-						srv->keepalive.time = ticks;
-					}
-					else if ( (srv->keepalive.status==1) && ((srv->keepalive.time+10000)<ticks) ) {
-						camd35_send_keepalive(srv);
-						srv->keepalive.status = 2;
-						srv->keepalive.time = ticks;
-					}
-					else if ( (srv->keepalive.status>1) && ((srv->keepalive.time+10000)<ticks) ) {
-						mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," ??? no keepalive response from camd35 server (%s:%d)\n",srv->host->name,srv->port);
-						disconnect_srv( srv );
-					}
-				}
-#endif
 			}
 			srv = srv->next;
 		}
-
-
-#ifdef CAMD35_SRV
-		sleep(1);
-		// Check camd35 Clients
-		ticks = GetTickCount();
-		struct camd35_server_data *camd35 = cfg.camd35.server;
-		while (camd35) {
-			struct camd35_client_data *cli = camd35->client;
-			while (cli) {
-				if (cli->connection.status>0) {
-					if ( (cli->lastactivity+300000) < ticks) {
-						camd35_disconnect_cli(cli);
-					}
-				}
-				cli = cli->next;
-			}
-			camd35 = camd35->next;
-		}
-#endif
 
 	}
 }

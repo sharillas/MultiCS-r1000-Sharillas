@@ -9,14 +9,6 @@
 #endif
 #endif
 
-#ifdef RADEGAST_SRV
-#define RADEGAST
-#else
-#ifdef RADEGAST_CLI
-#define RADEGAST
-#endif
-#endif
-
 #define REVISION    1000
 #define REVISION_STR  "1000"
 

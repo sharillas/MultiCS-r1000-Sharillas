@@ -15,7 +15,7 @@ struct cwfeed_event {
 	int      hascw;      // 0=nenhuma 1=parcial 2=completa
 	uint16_t ms;
 	uint8_t  status;     // 0 WAIT, 1 OK, 2 NOK
-	uint8_t  proto;      // 1 cccam, 2 newcamd, 3 mgcamd, 4 camd35, 5 cs378x, 6 cache
+	uint8_t  proto;      // 1 cccam, 2 newcamd, 3 mgcamd, 6 cache
 	int      srv;        // server id (0 = nenhum)
 	int      cli;        // client id (0 = nenhum)
 };

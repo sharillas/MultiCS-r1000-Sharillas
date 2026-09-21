@@ -10,8 +10,6 @@
 #define DBG_CACHEEX     0x08
 #endif
 #define DBG_ERROR       0x09
-#define DBG_CAMD35      0x10
-#define DBG_CS378X      0x11
 
 //#define LOGCRITICAL 0
 //#define LOGERROR 1

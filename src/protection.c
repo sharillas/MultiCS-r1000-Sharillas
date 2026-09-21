@@ -300,8 +300,6 @@ void failban_bad(uint32_t ip, int proto, char *reason, uint8_t *badcw)
 		case TYPE_CCCAM:    max = cfg.failban.max_cccam; break;
 		case TYPE_NEWCAMD:  max = cfg.failban.max_newcamd; break;
 		case TYPE_MGCAMD:   max = cfg.failban.max_mgcamd; break;
-		case TYPE_CAMD35:   max = cfg.failban.max_camd35; break;
-		case TYPE_CS378X:   max = cfg.failban.max_cs378x; break;
 		case TYPE_CACHE:    max = cfg.failban.max_cache; break;
 		default: max = 0;
 	}

@@ -117,8 +117,6 @@ int peer_doublecheck(struct cacheserver_data *cache, struct cachepeer_data *xpee
 
 #define PEER_CSP            0x010000
 #define PEER_CCCAM_CLIENT   0x020000
-#define PEER_CAMD35_CLIENT	0x040000
-#define PEER_CS378X_CLIENT	0x080000
 #define PEER_CACHEEX_SERVER	0x100000
 
 #ifdef PEERLIST

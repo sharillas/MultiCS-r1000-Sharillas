@@ -566,9 +566,6 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 						else ecm->checktime = 1; // Check NOW
 						pipe_wakeup( prg.pipe.ecm[1] );
 
-#if defined(CACHEEX) && defined(CS378X_SRV)
-						forward_cs378x(ecm);
-#endif
 
 #ifdef TESTCHANNEL
 						int testchannel = ( (ecm->caid==cfg.testchn.caid)&&(ecm->provid==cfg.testchn.provid)&&(!cfg.testchn.sid||(ecm->sid==cfg.testchn.sid)) );

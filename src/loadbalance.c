@@ -81,7 +81,7 @@ int sidata_getval(struct server_data *srv, struct cardserver_data *cs, uint16_t 
 	struct cs_card_data *card = NULL;
 
 	*selcard = NULL;
-	if ( (srv->type==TYPE_NEWCAMD) || (srv->type==TYPE_RADEGAST) || (srv->type==TYPE_CAMD35) || (srv->type==TYPE_CS378X) ) {
+	if (srv->type==TYPE_NEWCAMD) {
 		card = srv->card;
 		while (card) {
 			if ( match_card(caid,prov,card) ) break;
@@ -137,11 +137,6 @@ int sidata_getval(struct server_data *srv, struct cardserver_data *cs, uint16_t 
 			card = card->next;
 		}
 		return selsidvalue;
-	}
-	else if (srv->type==TYPE_CCAM3) {
-		// CCcam3: carta sintetica (o protocolo nao envia lista de cards)
-		*selcard = srv->card;
-		return 0;
 	}
 #endif
 	return 0;
@@ -282,10 +277,7 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		if ( !IS_DISABLED(srv->flags)&&(srv->connection.status>0) )
 		if (
 			( cs->option.fallownewcamd && (srv->type==TYPE_NEWCAMD) )
-			|| ( cs->option.fallowcccam && ( (srv->type==TYPE_CCCAM) || (srv->type==TYPE_CCAM3) ) )
-			|| ( cs->option.fallowradegast && (srv->type==TYPE_RADEGAST) )
-			|| ( cs->option.fallowcamd35 && (srv->type==TYPE_CAMD35) )
-			|| ( cs->option.fallowcs378x && (srv->type==TYPE_CS378X) )
+			|| ( cs->option.fallowcccam && (srv->type==TYPE_CCCAM) )
 		)
 		// Remove Circular request: check for client ip & srv ip
 		if ( srv->nocheck || (srv->host->ip==0x0100007F) || ( !ecm_checkip(ecm, srv->host->ip) && !ecm_checksrvip(ecm, srv->host->ip) ) )

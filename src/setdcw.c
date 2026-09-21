@@ -35,42 +35,6 @@ inline void cacheex_cccam_hitprofile( struct cc_client_data *cli, int csid )
 	}
 }
 
-#ifdef CAMD35_SRV
-inline void cacheex_camd35_hitprofile( struct camd35_client_data *cli, int csid )
-{
-	int i;
-	for(i=0; i<MAX_CSPORTS; i++) {
-		if (!cli->csporthit[i].csid) {
-			cli->csporthit[i].csid = csid;
-			cli->csporthit[i].hits = 1;
-			break;
-		}
-		else if (cli->csporthit[i].csid==csid) {
-			cli->csporthit[i].hits++;
-			break;
-		}
-	}
-}
-#endif
-
-#ifdef CS378X_SRV
-inline void cacheex_cs378x_hitprofile( struct camd35_client_data *cli, int csid )
-{
-	int i;
-	for(i=0; i<MAX_CSPORTS; i++) {
-		if (!cli->csporthit[i].csid) {
-			cli->csporthit[i].csid = csid;
-			cli->csporthit[i].hits = 1;
-			break;
-		}
-		else if (cli->csporthit[i].csid==csid) {
-			cli->csporthit[i].hits++;
-			break;
-		}
-	}
-}
-#endif
-
 inline void cacheex_server_hitprofile( struct server_data *srv, int csid )
 {
 	int i;
@@ -596,56 +560,6 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 			}
 			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
 		}
-
-#ifdef CAMD35_SRV
-		//PEERID_CAMD35
-		else if (srcid&PEER_CAMD35_CLIENT) {
-			struct camd35_client_data *cli = getcamd35clientbyid(srcid&0xffff);
-			if (cli) {
-				// setup client last used cache
-				cli->cacheex.lastcaid = ecm->caid;
-				cli->cacheex.lastprov = ecm->provid;
-				cli->cacheex.lastsid = ecm->sid;
-				cli->cacheex.lastdecodetime = ecmtime;
-				// add to profiles hits
-				cacheex_camd35_hitprofile( cli, cs->id );
-				cli->cacheex.hits++;
-				cs->hits.cacheex++;
-				cfg.cacheex.hits++;
-				if (instant) {
-					cfg.cacheex.ihits++;
-					cs->hits.instant.cacheex++;
-					cli->cacheex.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
-		}
-#endif
-
-#ifdef CS378X_SRV
-		//PEERID_CS378X
-		else if (srcid&PEER_CS378X_CLIENT) {
-			struct camd35_client_data *cli = getcs378xclientbyid(srcid&0xffff);
-			if (cli) {
-				// setup client last used cache
-				cli->cacheex.lastcaid = ecm->caid;
-				cli->cacheex.lastprov = ecm->provid;
-				cli->cacheex.lastsid = ecm->sid;
-				cli->cacheex.lastdecodetime = ecmtime;
-				// add to profiles hits
-				cacheex_cs378x_hitprofile( cli, cs->id );
-				cli->cacheex.hits++;
-				cs->hits.cacheex++;
-				cfg.cacheex.hits++;
-				if (instant) {
-					cfg.cacheex.ihits++;
-					cs->hits.instant.cacheex++;
-					cli->cacheex.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
-		}
-#endif
 
 		else if (srcid&PEER_CACHEEX_SERVER) {
 			struct server_data *srv = getcesrvbyid( srcid&0xffff );
