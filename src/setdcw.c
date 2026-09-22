@@ -272,17 +272,6 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		dcw_cak7_apply(dcw);
 	}
 
-	// DCW FILTER: blacklist CWPK (cartoes marcados / fakes)
-	if ( dcw_filter_check(cs, dcw) ) {
-		ecm->lastdecode.error++;
-		if (srctype==DCW_SOURCE_SERVER) {
-			struct server_data *s = getsrvbyid(srcid&0xffff);
-			if (s) { s->cwbad++; s->cwbad_time = GetTickCount(); }
-		}
-		mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: CW rejeitada (DROP) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
-		return;
-	}
-
 	// DCW LOG: ficheiro de aprendizagem (canal + CW) quando o perfil tem DCW LOG: YES
 	if (cs->option.dcw.dcwlog) {
 		FILE *fp = fopen("/var/log/multics-cw.log", "a");
@@ -358,7 +347,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		&& !checksumDCW(dcw)) {
 		if (srctype==DCW_SOURCE_SERVER) {
 			struct server_data *s = getsrvbyid(srcid&0xffff);
-			if (s) { srv_nok_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
+			if (s) { srv_nok_record(s, ecm->caid, ecm->sid); srv_bad_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
 		}
 		mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cwlr: CW lixo (checksum) ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
 			ecm->caid, ecm->provid, ecm->sid, srctype);
@@ -377,7 +366,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 				if (!ecm->stalehold) {
 					ecm->stalehold = 1;
 					struct server_data *s = getsrvbyid(srcid&0xffff);
-					if (s) { srv_nok_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
+					if (s) { srv_nok_record(s, ecm->caid, ecm->sid); srv_bad_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
 					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: STALE hold ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
 						ecm->caid, ecm->provid, ecm->sid, srctype);
 					pthread_mutex_unlock(&prg.lockecm);

@@ -442,6 +442,7 @@ struct cardserver_data
 			uint8_t dcwlog;    // DCW LOG: regista as CWs em hex no debug (aprendizagem CAK7)
 			uint8_t lastcwon_nok; // DCW LASTCWONNOK: em NOK reenvia a ultima CW valida do canal
 			uint8_t cycleengine; // v1.40 DCW CYCLE ENGINE: motor unico de ciclo (aprende cadencia + alternancia)
+			uint32_t badcwttl;  // v1.40 DCW BADCW TTL: minutos que um reader e saltado num canal com CW ma (0=10)
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
@@ -491,20 +492,6 @@ struct cardserver_data
 				uint32_t vals[16]; // PREFIX: (nbytes<<24)|b0<<16|b1<<8|b2 ; LEN: comprimento
 			} rules[16];
 		} ecmfilter;
-		// DCW FILTER: blacklist de CWs (CWPK/cartoes marcados/fake)
-		struct {
-			int enable;
-			int mode;    // 0=LOGONLY 1=DROP 2=AUTO (auto-ativa no 1o hit)
-			int learn;   // CWPK LEARNING: aplicar regras aprendidas em runtime
-			int auto_active; // AUTO: ja ativado (estado runtime)
-			int nrules;
-			struct {
-				uint8_t type;    // 1=EXACT 2=MASK 3=ALLEQUAL
-				uint8_t n;       // EXACT: numero de CWs (ate 8 por regra)
-				uint8_t cw[8][16]; // EXACT: lista de CWs; MASK: cw[0] + mask
-				uint8_t mask[16];
-			} rules[16];
-		} dcwfilter;
 		// ECMRATELIMIT: protecao do cartao fisico
 		struct {
 			int sidtime;  // ms entre ECMs do mesmo SID (0=off)
@@ -687,6 +674,14 @@ struct PACK server_data
 	uint16_t nok_caid[NOK_CACHE_MAX];
 	uint16_t nok_sid[NOK_CACHE_MAX];
 	int nok_idx;
+	// BAD CW cache (v1.40): canais onde este reader entregou CW ma (lixo/checksum/stale)
+	// - salta o reader so nesse canal durante o TTL (o reader continua a servir o resto)
+	#define BADCW_CACHE_MAX 64
+	uint32_t bad_time[BADCW_CACHE_MAX];
+	uint16_t bad_caid[BADCW_CACHE_MAX];
+	uint16_t bad_sid[BADCW_CACHE_MAX];
+	int bad_idx;
+	uint32_t badchannels; // nr de canais distintos flaggados (para quarentena global)
 	// Share Limits
 	struct sharelimit_data sharelimits[100];
 	// ACCEPTED SIDs

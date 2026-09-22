@@ -264,6 +264,7 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.dcw.check = 0; // default: off
 	cs->option.dcw.lastcwon_nok = 0; // v1.29: opt-in por perfil
 	cs->option.dcw.cycleengine = 0; // v1.40: opt-in por perfil (motor unico de ciclo)
+	cs->option.dcw.badcwttl = 10;  // v1.40: 10 minutos por defeito
 	// Shares
 	cs->option.fsharecccam = 1;
 	cs->option.fsharenewcamd = 1;
@@ -1634,6 +1635,22 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.dcw.cycleengine = parse_boolean();
+				}
+				else if (!strcmp(str,"BADCW")) {
+					// v1.40 DCW BADCW TTL: minutos que um reader e saltado num canal com CW ma
+					parse_name(str);
+					uppercase(str);
+					if (!strcmp(str,"TTL")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							continue;
+						} else iparser++;
+						parse_int(str);
+						defaultcs.option.dcw.badcwttl = atoi(str);
+						if (defaultcs.option.dcw.badcwttl<1) defaultcs.option.dcw.badcwttl=1;
+						else if (defaultcs.option.dcw.badcwttl>1440) defaultcs.option.dcw.badcwttl=1440;
+					}
 				}
 				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 					parse_spaces();
@@ -3428,6 +3445,22 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.dcw.cycleengine = parse_boolean();
 			}
+			else if (!strcmp(str,"BADCW")) {
+				// v1.40 DCW BADCW TTL: minutos que um reader e saltado num canal com CW ma
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"TTL")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					cardserver->option.dcw.badcwttl = atoi(str);
+					if (cardserver->option.dcw.badcwttl<1) cardserver->option.dcw.badcwttl=1;
+					else if (cardserver->option.dcw.badcwttl>1440) cardserver->option.dcw.badcwttl=1440;
+				}
+			}
 			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3509,80 +3542,6 @@ link_mgcamd_user:
 			} else iparser++;
 			cardserver->option.dcw.lastcwon_nok = parse_boolean();
 		}
-			else if (!strcmp(str,"FILTER")) {
-				// DCW FILTER: YES | DCW FILTER MODE: DROP/LOGONLY | DCW FILTER RULES: n
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					parse_name(str);
-					uppercase(str);
-					if (!strcmp(str,"MODE")) {
-						parse_spaces();
-						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-							continue;
-						} else iparser++;
-						parse_name(str);
-						uppercase(str);
-						if (!strcmp(str,"LOGONLY")) cardserver->option.dcwfilter.mode = 0;
-						else if (!strcmp(str,"DROP")) cardserver->option.dcwfilter.mode = 1;
-						else if (!strcmp(str,"AUTO")) cardserver->option.dcwfilter.mode = 2;
-					}
-					else if (!strcmp(str,"LEARN")) {
-						parse_spaces();
-						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-							continue;
-						} else iparser++;
-						cardserver->option.dcwfilter.learn = parse_boolean();
-					}
-					continue;
-				}
-				iparser++;
-				cardserver->option.dcwfilter.enable = parse_boolean();
-			}
-			else if (!strcmp(str,"RULE")) {
-				// DCW RULE n: EXACT <hex32> | MASK <hex32> <hex32> | ALLEQUAL
-				parse_int(str);
-				int n = atoi(str);
-				if ((n<1)||(n>16)) continue;
-				parse_spaces();
-				if (*iparser==':') iparser++;
-				parse_name(str);
-				uppercase(str);
-				if (!strcmp(str,"EXACT")) {
-					cardserver->option.dcwfilter.rules[n-1].type = 1;
-					int x = 0;
-					while (x<8) {
-						int j, ok = 1;
-						for (j=0; j<16; j++) {
-							if ( parse_hex(str)!=2 ) { ok = 0; break; }
-							cardserver->option.dcwfilter.rules[n-1].cw[x][j] = hex2int(str);
-						}
-						if (!ok) break;
-						x++;
-						parse_spaces();
-						if (*iparser==',') iparser++;
-					}
-					cardserver->option.dcwfilter.rules[n-1].n = x;
-				}
-				else if (!strcmp(str,"MASK")) {
-					cardserver->option.dcwfilter.rules[n-1].type = 2;
-					int j;
-					for (j=0; j<16; j++) {
-						if ( parse_hex(str)!=2 ) break;
-						cardserver->option.dcwfilter.rules[n-1].cw[0][j] = hex2int(str);
-					}
-					for (j=0; j<16; j++) {
-						if ( parse_hex(str)!=2 ) break;
-						cardserver->option.dcwfilter.rules[n-1].mask[j] = hex2int(str);
-					}
-				}
-				else if (!strcmp(str,"ALLEQUAL")) {
-					cardserver->option.dcwfilter.rules[n-1].type = 3;
-				}
-				else continue;
-				if (cardserver->option.dcwfilter.nrules<n) cardserver->option.dcwfilter.nrules = n;
-			}
 		}
 
 		else if (!strcmp(str,"HEALTH")) {
