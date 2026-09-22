@@ -46,7 +46,6 @@
 #include "cacheex.h"
 
 #include "main.h"
-#include "cwc.h"
 #include "chnbudget.h"
 #include "nagra.h"
 #include "ipblock.h"
@@ -512,7 +511,6 @@ struct connect_cli_data {
 #ifdef EXPIREDATE
 #include "th-date.c"
 #endif
-#include "cwc.c"   // CW Cycle Check (estilo OSCam)
 #include "chnbudget.c" // Timing budget por canal (cryptoperiod adaptativo)
 #include "nagra.c" // NAGRA protection (18xx/19xx)
 #include "lite.c"  // BUILD LITE: filtro de canais CCcam.lite

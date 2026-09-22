@@ -236,9 +236,7 @@ void init_cardserver(struct cardserver_data *cs)
 	// NAGRA protection defaults (ativada por perfil com ENABLE NAGRA: 1)
 	cs->option.nagra.chk = 1;        // checksum das 4 quads
 	cs->option.nagra.prov = 0;       // provider na lista do perfil
-	cs->option.nagra.cycle = 1;      // ciclo + similaridade por canal
 	cs->option.nagra.onbad = 0;      // LOG ONLY por defeito (v1.28: drop so se o perfil pedir NAGRA ONBAD: YES - false positives cortavam CWs legitimas)
-	cs->option.nagra.sensitive = 4;  // bytes iguais a CW anterior
 
 	// Flags
 	cs->option.faccept0caid = 1;
@@ -264,9 +262,8 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.cssendsid = 1;
 	memcpy( cs->newcamd.key, defdeskey, 14);
 	cs->option.dcw.check = 0; // default: off
-	cs->option.dcw.cyclecheck = 0; // v1.29: default off (no circuito multi-hop as metades chegam fora de ordem)
 	cs->option.dcw.lastcwon_nok = 0; // v1.29: opt-in por perfil
-	cs->option.dcw.stalecheck = 0; // v1.30: opt-in por perfil
+	cs->option.dcw.cycleengine = 0; // v1.40: opt-in por perfil (motor unico de ciclo)
 	// Shares
 	cs->option.fsharecccam = 1;
 	cs->option.fsharenewcamd = 1;
@@ -1629,24 +1626,14 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.dcw.silentnok = parse_boolean();
 				}
-				else if (!strcmp(str,"CYCLE_CHECK")) {
+				else if (!strcmp(str,"CYCLE_ENGINE")) {
+					// v1.40 DCW CYCLE ENGINE: motor unico de ciclo (substitui MINTIME/CYCLE_CHECK/CWC/STALE_CHECK/NAGRA CYCLE)
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
 						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
 						continue;
 					} else iparser++;
-					defaultcs.option.dcw.cyclecheck = parse_boolean();
-				}
-				else if (!strcmp(str,"MINTIME")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					parse_int(str);
-					defaultcs.option.dcw.mintime = atoi(str);
-					if (defaultcs.option.dcw.mintime<0) defaultcs.option.dcw.mintime=0;
-					else if (defaultcs.option.dcw.mintime>60000) defaultcs.option.dcw.mintime=60000;
+					defaultcs.option.dcw.cycleengine = parse_boolean();
 				}
 				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 					parse_spaces();
@@ -1849,14 +1836,6 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.nagra.prov = parse_boolean();
 				}
-				else if (!strcmp(str,"CYCLE")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.nagra.cycle = parse_boolean();
-				}
 				else if (!strcmp(str,"ONBAD")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -1864,17 +1843,6 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.onbad = parse_boolean();
-				}
-				else if (!strcmp(str,"SENSITIVE")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					parse_int(str);
-					defaultcs.option.nagra.sensitive = atoi(str);
-					if (defaultcs.option.nagra.sensitive<0) defaultcs.option.nagra.sensitive=0;
-					else if (defaultcs.option.nagra.sensitive>8) defaultcs.option.nagra.sensitive=8;
 				}
 			}
 			else if ( !strcmp(str,"SERVER") ) {
@@ -2088,64 +2056,6 @@ sid accept:
 					defaultcs.option.cachesendrep = parse_boolean();
 				}
 			}
-			else if ( !strcmp(str,"CWC") ) {
-				parse_name(str);
-				uppercase(str);
-				if (!str[0]) { // DEFAULT CWC: 1
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.cwc.enable = parse_boolean();
-				}
-				else if (!strcmp(str,"ENABLE")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.cwc.enable = parse_boolean();
-				}
-				else if (!strcmp(str,"SENSITIVE")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					parse_int(str);
-					defaultcs.option.cwc.sensitive = atoi(str);
-					if (defaultcs.option.cwc.sensitive<0) defaultcs.option.cwc.sensitive=0;
-					else if (defaultcs.option.cwc.sensitive>8) defaultcs.option.cwc.sensitive=8;
-				}
-				else if (!strcmp(str,"DROPOLD")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.cwc.dropold = parse_boolean();
-				}
-				else if (!strcmp(str,"DROPBAD") || !strcmp(str,"ONBAD")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.cwc.dropbad = parse_boolean();
-				}
-				else if (!strcmp(str,"KEEPCYCLETIME")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					parse_int(str);
-					defaultcs.option.cwc.keepcycletime = atoi(str);
-					if (defaultcs.option.cwc.keepcycletime<0) defaultcs.option.cwc.keepcycletime=0;
-					else if (defaultcs.option.cwc.keepcycletime>600) defaultcs.option.cwc.keepcycletime=600;
-				}
-			}
 			else if ( !strcmp(str,"ACCEPT") ) {
 				parse_name(str);
 				uppercase(str);
@@ -2258,14 +2168,6 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowskipcwc = parse_boolean();
-				}
-				else if (!strcmp(str,"CWC")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.cwc.enable = parse_boolean();
 				}
 		else if (!strcmp(str,"ECMRATELIMIT")) {
 			if (!cardserver) {
@@ -3517,24 +3419,14 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.dcw.silentnok = parse_boolean();
 			}
-			else if (!strcmp(str,"CYCLE_CHECK")) {
+			else if (!strcmp(str,"CYCLE_ENGINE")) {
+				// v1.40 DCW CYCLE ENGINE: motor unico de ciclo (substitui MINTIME/CYCLE_CHECK/CWC/STALE_CHECK/NAGRA CYCLE)
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
 					continue;
 				} else iparser++;
-				cardserver->option.dcw.cyclecheck = parse_boolean();
-			}
-			else if (!strcmp(str,"MINTIME")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				parse_int(str);
-				cardserver->option.dcw.mintime = atoi(str);
-				if (cardserver->option.dcw.mintime<0) cardserver->option.dcw.mintime=0;
-				else if (cardserver->option.dcw.mintime>60000) cardserver->option.dcw.mintime=60000;
+				cardserver->option.dcw.cycleengine = parse_boolean();
 			}
 			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 				parse_spaces();
@@ -3616,16 +3508,6 @@ link_mgcamd_user:
 				continue;
 			} else iparser++;
 			cardserver->option.dcw.lastcwon_nok = parse_boolean();
-		}
-		else if (!strcmp(str,"STALE_CHECK")) {
-			// v1.30 DCW STALE_CHECK: YES - hash novo com CW igual as ultimas 2 entregues = stale
-			// (segura 1x por fonte e pede outra; na 2a vez entrega para nao prender o canal)
-			parse_spaces();
-			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-				continue;
-			} else iparser++;
-			cardserver->option.dcw.stalecheck = parse_boolean();
 		}
 			else if (!strcmp(str,"FILTER")) {
 				// DCW FILTER: YES | DCW FILTER MODE: DROP/LOGONLY | DCW FILTER RULES: n
@@ -3887,14 +3769,6 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.nagra.prov = parse_boolean();
 			}
-			else if (!strcmp(str,"CYCLE")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.nagra.cycle = parse_boolean();
-			}
 			else if (!strcmp(str,"ONBAD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3902,17 +3776,6 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cardserver->option.nagra.onbad = parse_boolean();
-			}
-			else if (!strcmp(str,"SENSITIVE")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				parse_int(str);
-				cardserver->option.nagra.sensitive = atoi(str);
-				if (cardserver->option.nagra.sensitive<0) cardserver->option.nagra.sensitive=0;
-				else if (cardserver->option.nagra.sensitive>8) cardserver->option.nagra.sensitive=8;
 			}
 		}
 
@@ -4215,14 +4078,6 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fallowskipcwc = parse_boolean();
 			}
-			else if (!strcmp(str,"CWC")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.cwc.enable = parse_boolean();
-			}
 			else if (!strcmp(str,"HEALTH")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -4275,65 +4130,6 @@ link_mgcamd_user:
 #endif
 		}
 
-
-			else if (!strcmp(str,"CWC")) {
-				parse_name(str);
-				uppercase(str);
-				if (!str[0]) { // CWC: 1
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					cardserver->option.cwc.enable = parse_boolean();
-				}
-			else if (!strcmp(str,"ENABLE")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.cwc.enable = parse_boolean();
-			}
-			else if (!strcmp(str,"SENSITIVE")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				parse_int(str);
-				cardserver->option.cwc.sensitive = atoi(str);
-				if (cardserver->option.cwc.sensitive<0) cardserver->option.cwc.sensitive=0;
-				else if (cardserver->option.cwc.sensitive>8) cardserver->option.cwc.sensitive=8;
-			}
-			else if (!strcmp(str,"DROPOLD")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.cwc.dropold = parse_boolean();
-			}
-			else if (!strcmp(str,"DROPBAD") || !strcmp(str,"ONBAD")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.cwc.dropbad = parse_boolean();
-			}
-			else if (!strcmp(str,"KEEPCYCLETIME")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				parse_int(str);
-				cardserver->option.cwc.keepcycletime = atoi(str);
-				if (cardserver->option.cwc.keepcycletime<0) cardserver->option.cwc.keepcycletime=0;
-				else if (cardserver->option.cwc.keepcycletime>600) cardserver->option.cwc.keepcycletime=600;
-			}
-		}
 
 		else if (!strcmp(str,"SHARE")) {
 			if (!cardserver) {

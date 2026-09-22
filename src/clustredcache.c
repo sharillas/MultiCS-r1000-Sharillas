@@ -1494,11 +1494,6 @@ int cache_setdcw( struct cache_data *req, uint8_t cw[16], cwcycle_t cwcycle, int
 			mlogf(LOGTRACE,getdbgflag(DBG_CACHE,0,0)," cache: non cs non CAID 0500 accept recv cw from peer %d: %04x:%06x:%04x - %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n", peerid ,req->caid, req->provid, req->sid, cw[0],cw[1],cw[2],cw[3],cw[4],cw[5],cw[6],cw[7],cw[8],cw[9],cw[10],cw[11],cw[12],cw[13],cw[14],cw[15] );
 	}
 
-	// CWC: CW Cycle Check (estilo OSCam) - protege contra cws fakes/replay
-	if (cwc_check( req, cw, peerid )<0) {
-		return DCW_ERROR | DCW_SKIP;
-	}
-
 	// Search for Cache data
 	struct cw_cache_data *cwdata = NULL;
 	struct cache_data *pcache = cache_fetch( req );
