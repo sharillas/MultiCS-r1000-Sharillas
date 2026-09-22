@@ -1,6 +1,6 @@
 # MultiCS r1000 v1.30 — Tutorial Plug & Play
 
-> Cardserver proxy multiprotocolo (CCcam / Newcamd / Mgcamd / Camd35 / cs378x / Radegast / Cache / CacheEX) com tema "Stats Tiles" e painéis de estudo de CWs.
+> Cardserver proxy multiprotocolo (CCcam / Newcamd / Mgcamd) Cache / CacheEX) com tema "Stats Tiles" e painéis de estudo de CWs.
 > **Importante**: NUNCA colocar IPs, utilizadores, passwords ou linhas reais na repo — usa este tutorial com valores fictícios e guarda os teus segredos localmente (`deploy.secrets.ps1` está no .gitignore).
 
 ---
@@ -75,15 +75,13 @@ USER: cliente1 senha1 { name="Box cliente" }
 | `DCW CHECK: NO` | NO | validação anti-fake de CW (opt-in) |
 | `DCW HALFNULLED: NO` | NO | aceita CW half-null (NDS) |
 | `DCW SWAP: YES` | NO | troca CW0/CW1 (NDS) |
-| `DCW MINTIME: 0` | 0 | tempo mínimo entre mudanças (ms) |
-| `DCW CYCLE_CHECK: NO` | **NO (v1.29)** | exige alternância de metades — **desligado por omissão**: no circuito multi-hop as metades chegam fora de ordem e isto cortava CWs verdadeiras |
 | `DCW SILENT_NOK: YES` | NO | atrasa o NOK 2.5s (não pára o descrambler do cliente) |
 | `DCW LASTCWONNOK: YES` | NO | em NOK/timeout reenvia a última CW válida do canal (janela de 2) — **anti-freeze do circuito** |
-| `DCW STALE_CHECK: YES` | NO | **(v1.30)** hash novo + CW igual às últimas 2 entregues = stale → segura 1x por fonte e pede outra (na 2ª entrega). **Só usar se a fonte NÃO repete CWs**: no cartão MEO fica OFF (repete metades legitimamente) |
-| `DCW RETRY: 2` | 3 | **(v1.30)** nº de retries do pedido — cadeia mais curta = fallback mais rápido no circuito |
-| `DCW LOG: YES` | NO | regista as CWs em hex em `/var/log/multics-cw.log` (estudo CAK7) |
+| `DCW CYCLE ENGINE: YES` | NO | **(v1.40)** motor único de ciclo por canal: aprende a cadência e a alternância CW0/CW1; segura CWs stale (hold 1x) e marca anomalias na fonte (cwbad + bad-cw cache). Substitui MINTIME/CYCLE_CHECK/CWC/STALE_CHECK/TIMING |
+| `DCW BADCW TTL: 10` | 10 | **(v1.40)** minutos que um reader é saltado num canal onde entregou CW má (continua a servir os outros canais) |
+| `DCW LOG: YES` | NO | regista as CWs em hex em `/var/log/multics-cw.log` com o id da fonte (`srv N`) |
 | `DCW CAK7: YES` | NO | transformação CAK7 Merlin (canais que exigem) |
-| `DCW FILTER: NO` | **NO (v1.29)** | filtro CWPK de cartões marcados — **standby** até o estudo CAK7 avançar |
+| `SERVERS: 1,5` | (todos) | **(v1.40)** lista explícita de readers que o perfil pode usar — fim do "saco de relé" |
 
 ### 3.2 Opções ECM (aceitação do pedido)
 
@@ -106,27 +104,29 @@ SID FILE: CHANNELINFO     # aceitar só os canais do CCcam.channelinfo
 | Opção | Default | O que faz |
 |---|---|---|
 | `CACHE TIMEOUT: 6000` | 2000 | janela de validade da cache (ms) — v1.29 subiu para 6000 |
-| `CACHE STATIC: YES` | NO | a última CW do canal responde na hora a ECMs repetidos (keep CW) |
 | `CACHE SENDREQ/SENDREP` | YES | participar no anel de cache |
 
 ### 3.5 NAGRA protection (18xx)
 
 | Opção | Default | O que faz |
 |---|---|---|
-| `ENABLE NAGRA: YES` | YES | máquina de estados por canal (log) |
-| `NAGRA SENSITIVE: 4` | 4 | bytes iguais à CW anterior = suspeito |
+| `ENABLE NAGRA: YES` | YES | validação estrutural (checksum + provider) |
 | `NAGRA ONBAD: NO` | **NO (v1.29)** | **log only por omissão** — `YES` = drop (modo agressivo, opt-in) |
 | checksum gate (v1.29) | automático | CW com checksum inválido **não é entregue** — espera outra fonte |
 
-### 3.6 TIMING / HEALTH / FALLBACK
+### 3.6 HEALTH / FALLBACK
 
 ```ini
-ENABLE TIMING: NO       # budget por criptoperíodo (opt-in)
-ENABLE HEALTH: YES      # score por reader (sucesso/latência/estabilidade)
+ENABLE HEALTH: YES      # score por reader (sucesso/latência/estabilidade + cwbad)
 HEALTH DROPOFF: 200     # readers abaixo disto ficam fora do pedido
-FALLBACK ORDER: NEWCAMD CCCAM CS378X CAMD35 RADEGAST
+FALLBACK ORDER: NEWCAMD CCCAM MGCAMD
 FALLBACK TIMEOUT: 800   # ms antes de abrir aos protocolos seguintes
 ```
+
+> **v1.40/v1.41**: o anti-fake agora tem 2 camadas — a validação estrutural sempre-on + a
+> **reputação por fonte** (cwbad + bad-cw cache por canal + feedback do cliente: hash repetido
+> após entrega = a CW não abriu). Os readers podem ser marcados com `hop=1` (directa) / `hop=N`
+> (circuito) e o load-balance prefere a directa.
 
 ### 3.7 Protecções do servidor (não afectam a entrega)
 
@@ -181,8 +181,8 @@ Formato: `CAID:PROVID:SID "NOME [PACOTE 30W]"` — alimenta o feed, o last-used-
 
 | Sintoma | Causa provável | Acção |
 |---|---|---|
-| Canal abre e congela | fonte a entregar CWs erradas/stale | activar `DCW LASTCWONNOK` + `DCW STALE_CHECK` + `DCW SILENT_NOK` (v1.30); NÃO usar `CACHE STATIC` — responde com CW velha e descarta a fresca |
-| Canal não abre | CW lixo da fonte | ver o feed: `cwlr: CW lixo (checksum)` no debug = a nossa build segurou a CW má |
+| Canal abre e congela | fonte a entregar CWs erradas/stale | activar `DCW LASTCWONNOK` + `DCW CYCLE ENGINE` + `DCW SILENT_NOK` — o motor marca a fonte (cwbad) e salta-a no canal (bad-cw cache) |
+| Canal não abre | CW lixo da fonte | ver o debug: `cwlr: CW lixo (checksum)` ou `cyc:` — a build segura/marca a CW má e a fonte perde prioridade |
 | "Channel denied" | SID DENYLIST mal ordenado | `SID LIST` primeiro, `SID DENYLIST: YES` DEPOIS |
 | Botões não respondem | cache do browser | Ctrl+F5 (customjs tem versão no URL) |
 | Flag de país errada | lista ip2country estragada em memória | restart (carrega o ficheiro de novo) |
