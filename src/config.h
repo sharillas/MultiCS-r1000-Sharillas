@@ -523,14 +523,6 @@ struct cardserver_data
 			uint8_t order[8];   // FALLBACK ORDER: tipos por ordem (0=end)
 			int timeout;        // FALLBACK TIMEOUT (ms)
 		} fallback;
-		// Timing budget por canal: usa o cryptoperiod estimado para
-		// falhar cedo (decode failed dentro do periodo) e dar tempo ao
-		// cliente de pedir o proximo ECM no mesmo ciclo
-		struct {
-			int enable;     // TIMING ENABLE
-			int fraction;   // TIMING FRACTION (% do cryptoperiod como budget)
-			int minperiod;  // TIMING MINPERIOD (ms minimo para aplicar)
-		} timing;
 		int fallowcache;
 #ifdef CACHEEX
 		int fallowcacheex;
@@ -544,7 +536,6 @@ struct cardserver_data
 		int cachesendreq;
 		int cacheresendreq;
 		int cachesendrep;
-		int cachestatic; // Static/dynamic Timeout 
 
 		int fmaxuphops; // allowed cards distance to decode ecm
 		int cssendcaid; // flag send caid to servers
@@ -792,6 +783,7 @@ struct PACK server_data
 // (loadbalance.c e incluido via th-ecm.c; cli-*.c chamam estas funcoes)
 void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
 int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
+uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid);
 // filtro de satelites: CAID com perfil no projeto? (main.c)
 int caid_in_profiles(uint16_t caid);
 

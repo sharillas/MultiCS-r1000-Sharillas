@@ -4928,7 +4928,6 @@ void http_send_profile(int sock, http_request *req)
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CYCLE ENGINE</td><td>%s (badcw ttl:%dm)</td></tr>", yesno(cs->option.dcw.cycleengine), cs->option.dcw.badcwttl ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECMRATELIMIT</td><td>sid:%dms max:%d/s</td></tr>", cs->option.ratelimit.sidtime, cs->option.ratelimit.maxecm ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE FALLBACK</td><td>%s</td></tr>", yesno(cs->option.fallback.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE TIMING</td><td>%s</td></tr>", yesno(cs->option.timing.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE LITE</td><td>%s (channels:%d)</td></tr>", yesno(cs->option.fenablelite), lite_count() ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE CACHE</td><td>%s</td></tr>", yesno(cs->option.fallowcache) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #ifdef CACHEEX
@@ -4943,7 +4942,6 @@ void http_send_profile(int sock, http_request *req)
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE SENDREQ</td><td>%s</td></tr>", yesno(cs->option.cachesendreq) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	//sprintf( http_buf,"<tr><td>CACHE RESENDREQ</td><td>%s</td></tr>", yesno(cs->option.cacheresendreq) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE SENDREP</td><td>%s</td></tr>", yesno(cs->option.cachesendrep) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE STATIC</td><td>%s</td></tr>", yesno(cs->option.cachestatic) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf, "</table></span></div><br><br>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "<div style=\"clear:both\"></div>" );
 

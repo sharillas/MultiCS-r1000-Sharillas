@@ -209,6 +209,23 @@ int dcwchan_engine(ECM_DATA *ecm, uint8_t dcw[16])
 	return ret;
 }
 
+// cadencia aprendida do canal (ms) - 0 se ainda nao aprendeu
+uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid)
+{
+	uint32_t cad = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==caid && e->provid==provid && e->sid==sid) {
+			cad = e->cad_ema>>16;
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return cad;
+}
+
 // ultima CW valida do canal (para DCW LASTCWONNOK) - 1 se existe
 int dcwchan_getlast(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw[16])
 {
@@ -444,8 +461,6 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	sid_newecm(ecm);
 	memcpy( ecm->cw, dcw, 16 );
 
-	// TIMING BUDGET: observar mudanca de CW para estimar o cryptoperiod
-	chnbudget_observe( ecm->caid, ecm->provid, ecm->sid, dcw );
 
 	// DEDUP: entregar o CW aos followers deste leader (mesma chave ECM)
 	ECM_DATA *flist[128];

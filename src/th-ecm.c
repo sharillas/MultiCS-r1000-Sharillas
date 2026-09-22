@@ -1,14 +1,14 @@
 
-// TIMING BUDGET: timeout efetivo do ECM = min(dcw.timeout*period,
-// cryptoperiod estimado * fraction/100) quando TIMING ativo no perfil
+// TIMING BUDGET (v1.40): timeout efetivo do ECM = min(dcw.timeout*period,
+// cadencia aprendida pelo CYCLE ENGINE / 2) quando o motor esta activo no perfil
 uint32_t dcwtimeout(struct cardserver_data *cs, ECM_DATA *ecm)
 {
 	uint32_t t = cs->option.dcw.timeout*ecm->period;
 	if (t<1) t = 1;
-	if (!cs->option.timing.enable) return t;
-	int period = chnbudget_getperiod( ecm->caid, ecm->provid, ecm->sid );
-	if ( period>0 && (cs->option.timing.minperiod>0) && (period >= cs->option.timing.minperiod) ) {
-		uint32_t budget = ((uint32_t)period * cs->option.timing.fraction)/100;
+	if (!cs->option.dcw.cycleengine) return t;
+	uint32_t cad = dcwchan_getcadence( ecm->caid, ecm->provid, ecm->sid );
+	if ( cad >= 8000 ) {
+		uint32_t budget = cad/2;
 		if ( (budget>0) && (budget < t) ) return budget;
 	}
 	return t;
@@ -458,7 +458,6 @@ void recv_ecm_pipe()
 					if (ecm) {
 						if ( (ecm->caid==req.caid)&&(ecm->hash==req.hash)&&(ecm->sid==req.sid)&&(ecm->dcwstatus==STAT_DCW_WAITCACHE) ) {
 							struct cardserver_data *cs = ecm->cs;
-							if ( cs && (!cs->option.cachestatic) )
 							ecm->dcwstatus = STAT_DCW_WAIT;
 							ecm->checktime = ecm->recvtime;
 						}
