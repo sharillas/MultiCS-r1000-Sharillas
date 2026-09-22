@@ -69,6 +69,19 @@ int srv_bad_check(struct server_data *srv, uint16_t caid, uint16_t sid, uint32_t
 	return 0;
 }
 
+// v1.41 FEEDBACK DO CLIENTE: marca a fonte que entregou uma CW que a box nao
+// conseguiu usar (o cliente repetiu o mesmo hash logo apos a entrega).
+void dcw_badmark(int srcid, uint16_t caid, uint16_t sid)
+{
+	struct server_data *s = getsrvbyid(srcid&0xffff);
+	if (!s) return;
+	s->cwbad++;
+	s->cwbad_time = GetTickCount();
+	srv_bad_record(s, caid, sid);
+	mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,s->id)," badmark: fonte %d marcada (feedback do cliente) ch %04x:%04x (cwbad=%d)\n",
+		s->id, caid, sid, s->cwbad);
+}
+
 // 0: different ; 1:~equivalent
 int cs_cmp_card( struct cs_card_data *card, struct cardserver_data *cs){
 	int i,j,found;

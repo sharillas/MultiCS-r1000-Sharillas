@@ -784,6 +784,7 @@ struct PACK server_data
 void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
 int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
 uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid);
+void dcw_badmark(int srcid, uint16_t caid, uint16_t sid);
 // filtro de satelites: CAID com perfil no projeto? (main.c)
 int caid_in_profiles(uint16_t caid);
 

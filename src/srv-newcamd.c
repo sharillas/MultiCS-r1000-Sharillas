@@ -527,6 +527,11 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 							}
 							// Check for Success/Timeout
 							if (!ecm->checktime) {
+								// v1.41 FEEDBACK: hash repetido apos entrega com sucesso => a CW nao abriu
+								if ( (cli->lastecm.status==1) && (cli->lastecm.dcwsrctype==DCW_SOURCE_SERVER)
+									&& ((ticks - cli->lastdcwtime) < 15000) ) {
+									dcw_badmark( cli->lastecm.dcwsrcid, clicd.caid, clicd.sid );
+								}
 								pthread_mutex_unlock(&prg.lockecm);
 								cs_senddcw_cli(cli);
 								break;
