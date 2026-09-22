@@ -465,6 +465,11 @@ struct cardserver_data
 		int fallowcccam;	// Allow cccam server protocol to decode ecm
 		int fallownewcamd;	// Allow newcamd server protocol to decode ecm
 		int fallowskipcwc;	// Skip Same CW (protecao cws fakes repetidas)
+		// v1.40 SERVERS: lista explicita de readers que este perfil pode usar
+		// (0 entradas = comportamento classico: todos os readers que batem no CAID/PROV/SID)
+		#define MAX_PROFILE_SERVERS 32
+		uint16_t servers[MAX_PROFILE_SERVERS];
+		int nbservers;
 		// NAGRA protection (caid 18xx/19xx): checksum + provider
 		// (o ciclo passou para o CYCLE ENGINE v1.40)
 		struct {
@@ -666,6 +671,8 @@ struct PACK server_data
 	uint16_t csport[MAX_CSPORTS];
 	// Server Priority
 	int priority; // Priority Server
+	// v1.40: hop da fonte (1 = directa/limpa, N = circuito multi-hop). 0 = desconhecido.
+	uint8_t hop;
 	// Nao aplicar a protecao anti-loop (cliente e reader no mesmo IP externo)
 	uint8_t nocheck;
 	// NOK cache: ultimos NOK por canal (evita martelar o reader em zappings)
