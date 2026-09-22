@@ -63,3 +63,12 @@ Todas as alteraÃ§Ãµes notÃ¡veis desde a v1.20, por versÃ£o.
 - FIX STALE_CHECK no [MEO]: o cartao MEO repete metades legitimamente (15% dos pedidos) - o hold congelava 1 ciclo por repeticao; STALE_CHECK fica OFF no MEO e ON no NOS
 - Perfil [SkyDE-098D] ICAM activado (cartao Sky DE no circuito, porta 15052)
 - Resultado no circuito: RTP 1 HD NOS (1802:0097) de freezes permanentes para entrega continua
+## v1.40 (2026-09-22)
+- LIMPEZA: protocolos radegast/camd35/cs378x/freecccam/ccam3 removidos (codigo+GUI+flags+exemplos); Softcam/emu removido; codigo morto removido (PUBLIC 99 blocos, WIN32, MONOTHREAD_ACCEPT, ~80 blocos de macros, setdcw duplicado)
+- CYCLE ENGINE (unico): substitui DCW MINTIME/CYCLE_CHECK/CWC/NAGRA CYCLE/STALE_CHECK - aprende cadencia + alternancia CW0/CW1 por canal; STALE hold; anomalias marcadas na fonte (cwbad)
+- Anti-fake 2 camadas: validacao estrutural sempre-on + BAD-CW CACHE por reader+CANAL (DCW BADCW TTL - o reader e saltado so no canal mau; quarentena global so se falhar em muitos)
+- TIMING absorvido pelo cycle engine (chnbudget removido); CACHE STATIC removido; CWPK (DCW FILTER/LEARN/RULES) removido
+- Load-balance: SERVERS: id1,id2 explicito no perfil; hop=1/hopN nos readers (directa preferida); health + badcw integrados
+- GUI: paginas dos protocolos removidos e Softcam removidas; httpstyle.c editado directamente (gerador fora da repo)
+- Binario -15% (1.34MB -> 1.13MB)
+

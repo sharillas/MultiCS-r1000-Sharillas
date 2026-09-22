@@ -1,25 +1,25 @@
-MultiCS r1000 v1.30 - by Sharillas@2026
+﻿MultiCS r1000 v1.40 - by Sharillas@2026
 ==========================================
 
-Pacote de release (última build estável)
+Pacote de release (Ãºltima build estÃ¡vel)
 
-CONTÉM:
-  bin/multics.x64        binário 64-bit (estático musl - corre em qualquer
-                         Debian/Ubuntu x86_64 sem dependências)
-  bin/multics.x32        binário 32-bit
+CONTÃ‰M:
+  bin/multics.x64        binÃ¡rio 64-bit (estÃ¡tico musl - corre em qualquer
+                         Debian/Ubuntu x86_64 sem dependÃªncias)
+  bin/multics.x32        binÃ¡rio 32-bit
   bin/tools_update_*.py  ferramentas (Update Channel Info + Update SoftCam.Key
-                         + Update Ip2Country diário)
+                         + Update Ip2Country diÃ¡rio)
   configs/               multics.cfg, profiles.cfg, CSS, ip2country.csv, etc.
-  install.sh             instalador (SEM GIT: copia só binários + configs para
-                         a VPS, cria serviço systemd, e no fim mostra um GUIA
+  install.sh             instalador (SEM GIT: copia sÃ³ binÃ¡rios + configs para
+                         a VPS, cria serviÃ§o systemd, e no fim mostra um GUIA
                          completo do projeto para quem instala)
 
-INSTALAÇÃO NA VPS (Debian/Ubuntu, como root - SEM git clone):
-  cd /tmp && tar xzf multics-r1000-v1.30.tar.gz && cd multics-r1000
+INSTALAÃ‡ÃƒO NA VPS (Debian/Ubuntu, como root - SEM git clone):
+  cd /tmp && tar xzf multics-r1000-v1.40.tar.gz && cd multics-r1000
   bash install.sh /opt/multics
   systemctl start multics
 
-  (o install.sh no fim explica ONDE ESTÃO os ficheiros de config,
+  (o install.sh no fim explica ONDE ESTÃƒO os ficheiros de config,
    COMO funciona o projeto e os PRIMEIROS PASSOS - para leigos)
 
 WEB UI:  http://IP:5500   (user: admin / pass: admin - mudar no multics.cfg)
@@ -28,18 +28,18 @@ WEB UI:  http://IP:5500   (user: admin / pass: admin - mudar no multics.cfg)
 Portas: HTTP 5500, Telnet 5600, CCcam 16000, CCcam3 16001, MGcamd 21000,
         camd35 7502, cs378x 8600, cache 5599, perfis newcamd 15000+
 
-PRINCIPAIS CARACTERÍSTICAS (v1.30):
+PRINCIPAIS CARACTERÃSTICAS (v1.30):
 
 NOVO v1.30 (anti-freeze real do circuito):
-  - FIX LASTCWONNOK: reenvio da última CW válida em NOK/timeout funciona
-    sempre (antes só com DCW MINTIME/CYCLE_CHECK activos tinha CWs)
+  - FIX LASTCWONNOK: reenvio da Ãºltima CW vÃ¡lida em NOK/timeout funciona
+    sempre (antes sÃ³ com DCW MINTIME/CYCLE_CHECK activos tinha CWs)
   - FIX CACHE STATIC: revertido para NO (respondia com CW velha e
-    descartava a fresca do cartão - congelava até restart)
+    descartava a fresca do cartÃ£o - congelava atÃ© restart)
   - DCW STALE_CHECK: hash novo + CW repetida = stale -> segura 1x por
     fonte e pede outra (anti-freeze para fontes atrasadas)
   - DCW RETRY 2 nos perfis [MEO]/[NOS] + perfil [SkyDE-098D] ICAM ativo
   - Resultado no circuito: RTP 1 HD NOS (1802:0097) de freezes
-    permanentes para entrega contínua
+    permanentes para entrega contÃ­nua
 
 NOVO v1.29:
   - ESTRUTURA DE FICHEIROS PT: perfis.cfg (perfis + users newcamd),
@@ -48,41 +48,42 @@ NOVO v1.29:
   - Manter tudo no multics.cfg continua a funcionar (compatibilidade)
   - install.sh sem git clone + guia final para leigos
 
-NOVO v1.25 (pacote anti-"cartões marcados" - análise do MultiCS r120):
-  - DCW FILTER (CWPK): blacklist de CWs de cartões marcados (35 valores);
-    modo AUTO = desligado por defeito, ativa-se SOZINHO no 1º hit e passa
-    a bloquear (sem ninguém ver o log); modos LOGONLY e DROP manuais;
+NOVO v1.25 (pacote anti-"cartÃµes marcados" - anÃ¡lise do MultiCS r120):
+  - DCW FILTER (CWPK): blacklist de CWs de cartÃµes marcados (35 valores);
+    modo AUTO = desligado por defeito, ativa-se SOZINHO no 1Âº hit e passa
+    a bloquear (sem ninguÃ©m ver o log); modos LOGONLY e DROP manuais;
     regras EXACT/MASK/ALLEQUAL
   - ECM FILTER (rule engine): PREFIX / LEN multi / BYTE <pos> INMASK <mask64>
-    (a validação iCAM é config: BYTE 21 INMASK 1300010012)
-  - FAILBAN: ban automático de IPs por eventos maus, por protocolo
+    (a validaÃ§Ã£o iCAM Ã© config: BYTE 21 INMASK 1300010012)
+  - FAILBAN: ban automÃ¡tico de IPs por eventos maus, por protocolo
   - ANTICASCADE: anti-reshare por zapping excessivo
-  - ECMRATELIMIT: proteção do cartão físico (SIDTIME/MAXECM)
-  - DCW CAK7 (CAK7 Merlin): transformação iCAM da CW (Sky DE 098D / MEO / NOS) com
+  - ECMRATELIMIT: proteÃ§Ã£o do cartÃ£o fÃ­sico (SIDTIME/MAXECM)
+  - DCW CAK7 (CAK7 Merlin): transformaÃ§Ã£o iCAM da CW (Sky DE 098D / MEO / NOS) com
     perfil [SkyDE-098D] de exemplo comentado
-  - Estado de tudo visível na GUI (página do perfil + botão DBG)
+  - Estado de tudo visÃ­vel na GUI (pÃ¡gina do perfil + botÃ£o DBG)
 
 NOVO v1.24:
   - SILENT NOK adiado (2.5s): responde antes do timeout da box do cliente -
-    elimina reconexões e storms de retries (todos os protocolos)
+    elimina reconexÃµes e storms de retries (todos os protocolos)
 
-JÁ EXISTIA (v1.23 e anteriores):
+JÃ EXISTIA (v1.23 e anteriores):
   - GUI completa (dark/light, responsiva): Dashboard, Servers, Cache,
     CacheEX, Newcamd, Mgcamd, CCcam, Cs358x/Camd35, Profiles, Packages,
     Softcam, Configs
-  - Packages: dashboard por satélite (30W/13E/19.2E)
-  - Test Channel configurável pela GUI
-  - Servers: coluna Cards com ident a 6 dígitos + nomes, cores, ECM Dedup
+  - Packages: dashboard por satÃ©lite (30W/13E/19.2E)
+  - Test Channel configurÃ¡vel pela GUI
+  - Servers: coluna Cards com ident a 6 dÃ­gitos + nomes, cores, ECM Dedup
   - DEDUP de ECMs + NOK cache por reader+canal
-  - Proteções: SKIPCWC, CWC, NAGRA protection, DCW MINTIME/CYCLE_CHECK,
+  - ProteÃ§Ãµes: SKIPCWC, CWC, NAGRA protection, DCW MINTIME/CYCLE_CHECK,
     anti-fake XOR 0xF0 + nano e0, BUILD LITE
-  - Login guard anti brute-force + sessões persistentes + cookie seguro
-  - Upload Configs com validação (comenta erros, rollback) - nunca crasha
+  - Login guard anti brute-force + sessÃµes persistentes + cookie seguro
+  - Upload Configs com validaÃ§Ã£o (comenta erros, rollback) - nunca crasha
   - Editor AJAX de todos os ficheiros
   - Softcam: upload/update/reload; Update Channel Info (KingOfSat)
-  - ip2country diário com bandeiras na GUI
-  - Log em ficheiro com rotação + crash-report com core dumps
-  - Identificações CAID oficiais dos 3 satélites (30W/13E/19.2E)
+  - ip2country diÃ¡rio com bandeiras na GUI
+  - Log em ficheiro com rotaÃ§Ã£o + crash-report com core dumps
+  - IdentificaÃ§Ãµes CAID oficiais dos 3 satÃ©lites (30W/13E/19.2E)
 
-Documentação: README.md, docs/CONFIGS.md, docs/IMPLEMENTACAO.md,
-configs_exemplos/ (todos os ficheiros com opções comentadas em PT)
+DocumentaÃ§Ã£o: README.md, docs/CONFIGS.md, docs/IMPLEMENTACAO.md,
+configs_exemplos/ (todos os ficheiros com opÃ§Ãµes comentadas em PT)
+
