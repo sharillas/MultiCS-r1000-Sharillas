@@ -78,3 +78,10 @@ Todas as alteraÃ§Ãµes notÃ¡veis desde a v1.20, por versÃ£o.
 - Pagina Vigia na GUI (/watchdog): reputacao dos readers (hop/health/cwbad/canais marcados), bad-cw cache activo, cycle engine por canal (cadencia aprendida + anomalias)
 - Monitor v140_monitor.py na VPS (cron 30min)
 
+
+## v1.42 (2026-09-22)
+- FIX: MINECMS default 10 - readers sem amostras participam no load-balance ate ganharem historial (o default 0 excluia-os para sempre no filtro de dropoff - ovo-e-galinha; a MGcamd do circuito nunca recebia pedidos apesar de online com 4 cartoes)
+- FIX: Vigia "canais marcados" mostra contagem ACTIVA (o contador de badchannels era monotonico e nunca expirava)
+- getchname com fallback prov 0 (wildcard): nomes de canais sem ident exacto no channelinfo passam a aparecer na Vigia/last-share; channelinfo de producao fundido com nomes do lamedb da VU (SDT real do satelite, ~27k linhas)
+
+
