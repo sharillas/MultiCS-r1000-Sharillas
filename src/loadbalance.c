@@ -32,6 +32,43 @@ int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid)
 	return 0;
 }
 
+// BAD CW CACHE (v1.40): regista que o reader entregou CW ma neste canal.
+// O reader e saltado SO neste canal durante o TTL do perfil (minutos).
+void srv_bad_record(struct server_data *srv, uint16_t caid, uint16_t sid)
+{
+	if (!srv) return;
+	uint32_t ticks = GetTickCount();
+	// evita recontar o mesmo canal repetidamente
+	int i;
+	for (i=0; i<BADCW_CACHE_MAX; i++) {
+		if (!srv->bad_time[i]) continue;
+		if ( (uint32_t)(ticks - srv->bad_time[i]) < 60000 && (srv->bad_caid[i]==caid) && (srv->bad_sid[i]==sid) ) {
+			srv->bad_time[i] = ticks; // renova o TTL sem recontar
+			return;
+		}
+	}
+	i = srv->bad_idx;
+	srv->bad_time[i] = ticks;
+	srv->bad_caid[i] = caid;
+	srv->bad_sid[i] = sid;
+	srv->bad_idx = (srv->bad_idx + 1) % BADCW_CACHE_MAX;
+	srv->badchannels++;
+}
+
+// 1 = o reader tem registo activo de CW ma neste canal (TTL em ms)
+int srv_bad_check(struct server_data *srv, uint16_t caid, uint16_t sid, uint32_t ttl)
+{
+	if (!srv) return 0;
+	uint32_t ticks = GetTickCount();
+	int i;
+	for (i=0; i<BADCW_CACHE_MAX; i++) {
+		if (!srv->bad_time[i]) continue;
+		if ( (uint32_t)(ticks - srv->bad_time[i]) > ttl ) { srv->bad_time[i] = 0; continue; }
+		if ( (srv->bad_caid[i]==caid) && (srv->bad_sid[i]==sid) ) return 1;
+	}
+	return 0;
+}
+
 // 0: different ; 1:~equivalent
 int cs_cmp_card( struct cs_card_data *card, struct cardserver_data *cs){
 	int i,j,found;
@@ -453,6 +490,26 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 			i=0;
 			for(j=0; j<nbsrv; j++) {
 				if ( !srv_nok_check(psrvlist[j]->srv, ecm->caid, ecm->sid) ) {
+					if (i<j) psrvlist[i] = psrvlist[j];
+					i++;
+				}
+			}
+			psrvlist[i] = NULL;
+			nbsrv = i;
+		}
+	}
+
+	// BAD CW CACHE (v1.40): saltar readers que entregaram CW ma NESTE canal
+	// durante o TTL do perfil (o reader continua a servir os outros canais).
+	{
+		uint32_t ttl = (uint32_t)cs->option.dcw.badcwttl * 60000;
+		int bad = 0;
+		for(j=0; j<nbsrv; j++)
+			if ( srv_bad_check(psrvlist[j]->srv, ecm->caid, ecm->sid, ttl) ) bad++;
+		if (bad && (bad<nbsrv)) {
+			i=0;
+			for(j=0; j<nbsrv; j++) {
+				if ( !srv_bad_check(psrvlist[j]->srv, ecm->caid, ecm->sid, ttl) ) {
 					if (i<j) psrvlist[i] = psrvlist[j];
 					i++;
 				}

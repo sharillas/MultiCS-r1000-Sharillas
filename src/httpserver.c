@@ -1415,11 +1415,10 @@ void http_send_index(int sock, http_request *req)
 		sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Protecoes &amp; Eventos</h3>"
 			"<table class=maintable><tr><th>Metric</th><th>Value</th></tr>"
 			"<tr><td>Uptime do processo</td><td>%02dd %02d:%02d:%02d</td></tr>"
-			"<tr><td>ECMs totais</td><td>%d (OK: %d | NOK: %d)</td></tr>"
-			"<tr><td>Regras CWPK aprendidas</td><td>%d</td></tr></table>"
+			"<tr><td>ECMs totais</td><td>%d (OK: %d | NOK: %d)</td></tr></table>"
 			"<div style='margin-top:8px;max-height:220px;overflow-y:auto;font-size:12px;'>",
 			up/(3600*24), (up/3600)%24, (up/60)%60, up%60,
-			gecm, gok, gnok, dcw_filter_learned_count());
+			gecm, gok, gnok);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		int evn = 0;
 		uint32_t age = 0;
@@ -4839,7 +4838,7 @@ void http_send_profile(int sock, http_request *req)
 			IS_DISABLED(cs->flags)?" | DISABLED":"",
 			cs->option.dcw.cak7?" | CAK7: ON":"",
 			cs->option.ecmfilter.enable? (cs->option.ecmfilter.mode?" | ECM FILTER: DROP":" | ECM FILTER: LOGONLY"):"",
-			cs->option.dcwfilter.enable? (cs->option.dcwfilter.mode==2?(cs->option.dcwfilter.auto_active?" | DCW FILTER: AUTO (ATIVO)":" | DCW FILTER: AUTO"):(cs->option.dcwfilter.mode?" | DCW FILTER: DROP":" | DCW FILTER: LOGONLY")):"",
+			cs->option.dcw.cycleengine?" | CYCLE ENGINE: ON":"",
 			cs->option.ratelimit.sidtime||cs->option.ratelimit.maxecm?" | RATELIMIT: ON":"");
 		http_send_text(sock, dbg);
 		return;
@@ -4923,11 +4922,10 @@ void http_send_profile(int sock, http_request *req)
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE NEWCAMD</td><td>%s</td></tr>", yesno(cs->option.fallownewcamd) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE SKIPCWC</td><td>%s</td></tr>", yesno(cs->option.fallowskipcwc) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE NAGRA</td><td>%s (chk:%s prov:%s onbad:%s)</td></tr>", yesno(cs->option.nagra.enable), yesno(cs->option.nagra.chk), yesno(cs->option.nagra.prov), yesno(cs->option.nagra.onbad) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CYCLE ENGINE</td><td>%s</td></tr>", yesno(cs->option.dcw.cycleengine) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE HEALTH</td><td>%s</td></tr>", yesno(cs->option.health.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CAK7</td><td>%s</td></tr>", yesno(cs->option.dcw.cak7) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM FILTER</td><td>%s (%d regras)</td></tr>", cs->option.ecmfilter.enable?(cs->option.ecmfilter.mode?"DROP":"LOGONLY"):"OFF", cs->option.ecmfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW FILTER</td><td>%s (%d regras)</td></tr>", cs->option.dcwfilter.enable?(cs->option.dcwfilter.mode==2?(cs->option.dcwfilter.auto_active?"AUTO (ATIVO)":"AUTO"):(cs->option.dcwfilter.mode?"DROP":"LOGONLY")):"OFF", cs->option.dcwfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CYCLE ENGINE</td><td>%s (badcw ttl:%dm)</td></tr>", yesno(cs->option.dcw.cycleengine), cs->option.dcw.badcwttl ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECMRATELIMIT</td><td>sid:%dms max:%d/s</td></tr>", cs->option.ratelimit.sidtime, cs->option.ratelimit.maxecm ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE FALLBACK</td><td>%s</td></tr>", yesno(cs->option.fallback.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE TIMING</td><td>%s</td></tr>", yesno(cs->option.timing.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -7440,12 +7438,7 @@ void http_send_packages(int sock, http_request *req)
 			else sprintf( okcell, "--");
 			char b[256] = "";
 			if (cs->option.dcw.cak7) strcat(b, " <span class='badge-blue'>CAK7</span>");
-			if (cs->option.dcwfilter.enable) {
-				if (cs->option.dcwfilter.mode==2) strcat(b, cs->option.dcwfilter.auto_active?" <span class='badge-green'>CWPK ATIVO</span>":" <span class='badge-gray'>CWPK AUTO</span>");
-				else if (cs->option.dcwfilter.mode==1) strcat(b, " <span class='badge-green'>CWPK DROP</span>");
-				else strcat(b, " <span class='badge-gray'>CWPK LOGONLY</span>");
-				if (cs->option.dcwfilter.learn) strcat(b, " <span class='badge-blue'>LEARN</span>");
-			}
+			if (cs->option.dcw.cycleengine) strcat(b, " <span class='badge-green'>CYCLE ENGINE</span>");
 			if (cs->option.ecmfilter.enable) strcat(b, cs->option.ecmfilter.mode?" <span class='badge-green'>ECM DROP</span>":" <span class='badge-gray'>ECM LOGONLY</span>");
 			sprintf( filtcell, "%s", b[0]?b:" <span class='badge-gray'>sem filtros</span>");
 		}
