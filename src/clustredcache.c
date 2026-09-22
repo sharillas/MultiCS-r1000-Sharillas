@@ -475,8 +475,8 @@ struct cache_data *cache_new( struct cache_data *newdata )
 	pcache = cachetab[index];
 	//pcache->status = CACHE_STAT_WAIT; // 0:Wait; 1: dcw received
 	pcache->recvtime = ticks;
-	// TTL adaptativo: validade = cryptoperiod estimado do canal (quando conhecido)
-	pcache->validtime = cfg.cache.adaptivettl ? (uint32_t)chnbudget_getperiod(newdata->caid, newdata->provid, newdata->sid) : 0;
+	// TTL adaptativo: validade = cadencia aprendida do canal (CYCLE ENGINE)
+	pcache->validtime = cfg.cache.adaptivettl ? dcwchan_getcadence(newdata->caid, newdata->provid, newdata->sid) : 0;
 	pcache->tag = newdata->tag;
 	pcache->sid = newdata->sid;
 	pcache->onid = newdata->onid;

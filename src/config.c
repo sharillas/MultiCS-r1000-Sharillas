@@ -1796,40 +1796,6 @@ sid accept:
 					else if (defaultcs.option.fallback.timeout>10000) defaultcs.option.fallback.timeout=10000;
 				}
 			}
-			else if (!strcmp(str,"TIMING")) {
-				parse_name(str);
-				uppercase(str);
-				if (!strcmp(str,"ENABLE")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.timing.enable = parse_boolean();
-				}
-				else if (!strcmp(str,"FRACTION")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					parse_int(str);
-					defaultcs.option.timing.fraction = atoi(str);
-					if (defaultcs.option.timing.fraction<10) defaultcs.option.timing.fraction=10;
-					else if (defaultcs.option.timing.fraction>100) defaultcs.option.timing.fraction=100;
-				}
-				else if (!strcmp(str,"MINPERIOD")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					parse_int(str);
-					defaultcs.option.timing.minperiod = atoi(str);
-					if (defaultcs.option.timing.minperiod<1000) defaultcs.option.timing.minperiod=1000;
-					else if (defaultcs.option.timing.minperiod>60000) defaultcs.option.timing.minperiod=60000;
-				}
-			}
 			else if (!strcmp(str,"NAGRA")) {
 				parse_name(str);
 				uppercase(str);
@@ -2052,14 +2018,6 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.cachesendreq = parse_boolean();
 				}
-				else if (!strcmp(str,"STATIC")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue; 
-					} else iparser++;
-					defaultcs.option.cachestatic = parse_boolean();
-				}
 				else if (!strcmp(str,"RESENDREQ")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2236,14 +2194,6 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.fallback.enable = parse_boolean();
-				}
-				else if (!strcmp(str,"TIMING")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					defaultcs.option.timing.enable = parse_boolean();
 				}
 				else if (!strcmp(str,"NAGRA")) {
 					parse_spaces();
@@ -3026,21 +2976,6 @@ link_mgcamd_user:
 				else if (!strcmp(str,"YES")) cardserver->option.cachesendreq = 1;
 			}
 
-			else if (!strcmp(str,"STATIC")) {
-				if (!cardserver) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip CACHE STATIC, undefined profile\n",file->nbline,iparser-currentline);
-					continue;
-				}
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue; 
-				} else iparser++;
-				parse_name(str);
-				uppercase(str);
-				if (!strcmp(str,"NO")) cardserver->option.cachestatic = 0;
-				else if (!strcmp(str,"YES")) cardserver->option.cachestatic = 1;
-			}
 			else if (!strcmp(str,"RESENDREQ")) {
 				if (!cardserver) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip CACHE RESENDREQ, undefined profile\n",file->nbline,iparser-currentline);
@@ -3681,45 +3616,6 @@ link_mgcamd_user:
 			}
 		}
 
-		else if (!strcmp(str,"TIMING")) {
-			if (!cardserver) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip TIMING, undefined profile\n",file->nbline,iparser-currentline);
-				continue;
-			}
-			parse_name(str);
-			uppercase(str);
-			if (!strcmp(str,"ENABLE")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.timing.enable = parse_boolean();
-			}
-			else if (!strcmp(str,"FRACTION")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				parse_int(str);
-				cardserver->option.timing.fraction = atoi(str);
-				if (cardserver->option.timing.fraction<10) cardserver->option.timing.fraction=10;
-				else if (cardserver->option.timing.fraction>100) cardserver->option.timing.fraction=100;
-			}
-			else if (!strcmp(str,"MINPERIOD")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				parse_int(str);
-				cardserver->option.timing.minperiod = atoi(str);
-				if (cardserver->option.timing.minperiod<1000) cardserver->option.timing.minperiod=1000;
-				else if (cardserver->option.timing.minperiod>60000) cardserver->option.timing.minperiod=60000;
-			}
-		}
-
 		else if (!strcmp(str,"NAGRA")) {
 			if (!cardserver) {
 				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip NAGRA, undefined profile\n",file->nbline,iparser-currentline);
@@ -4075,14 +3971,6 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cardserver->option.fallback.enable = parse_boolean();
-			}
-			else if (!strcmp(str,"TIMING")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cardserver->option.timing.enable = parse_boolean();
 			}
 			else if (!strcmp(str,"NAGRA")) {
 				parse_spaces();
