@@ -275,6 +275,15 @@ inline int health_better(struct srvtab_data *a, struct srvtab_data *b)
 	return 0;
 }
 
+// v1.40: directa (hop 1) antes de circuito (hop>1); hop 0 = desconhecido (neutro)
+inline int hop_better(struct srvtab_data *a, struct srvtab_data *b)
+{
+	if (a->srv->hop==1 && b->srv->hop!=1) return 1;
+	if (b->srv->hop==1 && a->srv->hop!=1) return 0;
+	if (a->srv->hop && b->srv->hop && (a->srv->hop != b->srv->hop)) return a->srv->hop > b->srv->hop;
+	return 0;
+}
+
 
 // score para a GUI: usa os pesos do primeiro perfil com HEALTH que usa este server
 int srv_healthscore_gui(struct server_data *srv, int *enabled)
@@ -319,6 +328,14 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		// Remove Circular request: check for client ip & srv ip
 		if ( srv->nocheck || (srv->host->ip==0x0100007F) || ( !ecm_checkip(ecm, srv->host->ip) && !ecm_checksrvip(ecm, srv->host->ip) ) )
 		{
+			// v1.40 SERVERS: lista explicita de readers do perfil (0 = comportamento classico)
+			if ( cs->option.nbservers>0 ) {
+				int ok = 0;
+				for(i=0; i<cs->option.nbservers; i++) {
+					if (cs->option.servers[i]==srv->id) { ok = 1; break; }
+				}
+				if (!ok) { srv = srv->next; continue; }
+			}
 			// Check for CS PORTS
 			for(i=0; i<MAX_CSPORTS; i++ ) {
 				if (!srv->csport[i]) break;
@@ -592,6 +609,11 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
 						}
+						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
 						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
@@ -616,6 +638,11 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
 						}
+						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
 						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
@@ -636,6 +663,11 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 					}
 					else {
 						if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
@@ -673,6 +705,11 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
 						}
+						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
 						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
@@ -693,6 +730,11 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 					}
 					else if (psrvlist[j]->val==0) {
 						if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
+							srvtemp = psrvlist[i];
+							psrvlist[i] = psrvlist[j];
+							psrvlist[j] = srvtemp;
+						}
+						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;

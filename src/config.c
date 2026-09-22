@@ -418,9 +418,13 @@ void parse_server_data( struct server_data *tsrv )
 					sids->chid = 0;
 				}
 				else if (!strcmp(str,"shares")) parse_option_shares( tsrv->sharelimits );
-			else if (!strcmp(str,"priority")) {
-				if (parse_int(str)) tsrv->priority = atoi(str);
-			}
+		else if (!strcmp(str,"priority")) {
+			if (parse_int(str)) tsrv->priority = atoi(str);
+		}
+		else if (!strcmp(str,"hop")) {
+			// v1.40: hop da fonte (1 = directa, N = circuito) - preferido no load-balance
+			if (parse_int(str)) tsrv->hop = (uint8_t)atoi(str);
+		}
 			else if (!strcmp(str,"name")) {
 				// nome do reader para a GUI ("from" do last used share) - o '=' ja foi consumido
 				parse_spaces();
@@ -3444,6 +3448,25 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cardserver->option.dcw.cycleengine = parse_boolean();
+			}
+			else if (!strcmp(str,"SERVERS")) {
+				// v1.40 SERVERS: lista explicita de readers (ids) que este perfil pode usar
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				int x = 0;
+				while (x<MAX_PROFILE_SERVERS) {
+					parse_spaces();
+					if ( parse_int(str)>0 ) {
+						cardserver->option.servers[x] = (uint16_t)atoi(str);
+						x++;
+					}
+					else break;
+					if (*iparser==',') iparser++;
+				}
+				cardserver->option.nbservers = x;
 			}
 			else if (!strcmp(str,"BADCW")) {
 				// v1.40 DCW BADCW TTL: minutos que um reader e saltado num canal com CW ma
