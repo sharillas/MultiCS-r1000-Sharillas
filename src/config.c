@@ -241,7 +241,7 @@ void init_cardserver(struct cardserver_data *cs)
 	// Flags
 	cs->option.faccept0caid = 1;
 	cs->option.faccept0provider = 1;
-	cs->option.faccept0sid = 1; // v1.29: relé transparente - aceitar SID vazio (boxes/ferramentas do circuito)
+	cs->option.faccept0sid = 1; // v1.29: rel?? transparente - aceitar SID vazio (boxes/ferramentas do circuito)
 	cs->option.fallownewcamd = 1;  // Allow newcamd server protocol to decode ecm
 	cs->option.fallowcccam = 1;    // Allow cccam server protocol to decode ecm
 	cs->option.fallowskipcwc = 1; // default ON: ignorar cws repetidas
@@ -265,6 +265,7 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.dcw.lastcwon_nok = 0; // v1.29: opt-in por perfil
 	cs->option.dcw.cycleengine = 0; // v1.40: opt-in por perfil (motor unico de ciclo)
 	cs->option.dcw.badcwttl = 10;  // v1.40: 10 minutos por defeito
+	cs->option.health.minecms = 10; // v1.41-fix: readers sem amostras participam ate ganharem historial (fix ovo-e-galinha)
 	// Shares
 	cs->option.fsharecccam = 1;
 	cs->option.fsharenewcamd = 1;
@@ -6529,3 +6530,4 @@ int done_config(struct config_data *cfg)
 
 
 // check if any profile updated for caid:provider
+
