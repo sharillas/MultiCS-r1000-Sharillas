@@ -937,6 +937,12 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 					}
 					// Check for Success/Timeout
 					if (!ecm->checktime) {
+						// v1.41 FEEDBACK: o cliente repetiu o hash que ja recebeu com sucesso
+						// => a CW entregue nao abriu na box => marca a fonte
+						if ( (cli->lastecm.status==1) && (cli->lastecm.dcwsrctype==DCW_SOURCE_SERVER)
+							&& ((ticks - cli->lastdcwtime) < 15000) ) {
+							dcw_badmark( cli->lastecm.dcwsrcid, caid, sid );
+						}
 						cc_senddcw_cli(cli);
 						pthread_mutex_unlock(&prg.lockecm);
 						break;
