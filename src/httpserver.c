@@ -1548,9 +1548,9 @@ void http_send_watchdog(int sock, http_request *req)
 		for (i=0; i<BADCW_CACHE_MAX; i++) {
 			if (!srv->bad_time[i]) continue;
 			if ( (uint32_t)(ticks - srv->bad_time[i]) > 3600000 ) { srv->bad_time[i] = 0; continue; }
-			sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%04x:%04x</td><td>%us</td></tr>",
+			sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s <span class='muted'>%04x:%04x</span></td><td>%us</td></tr>",
 				srv->name[0]?srv->name:"-", srv->host->name, srv->port,
-				srv->bad_caid[i], srv->bad_sid[i], (ticks - srv->bad_time[i])/1000 );
+				getchname(srv->bad_caid[i], 0, srv->bad_sid[i]), srv->bad_caid[i], srv->bad_sid[i], (ticks - srv->bad_time[i])/1000 );
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			anybad = 1;
 		}
@@ -1571,8 +1571,8 @@ void http_send_watchdog(int sock, http_request *req)
 			if (info[k].cadence) snprintf(cadbuf, sizeof(cadbuf), "%dms", info[k].cadence);
 			else strcpy(cadbuf, "-");
 			snprintf(anobuf, sizeof(anobuf), "%d", info[k].anomalies);
-			sprintf( http_buf, "<tr><td>%04x:%06x:%04x</td><td>%s</td><td>%d</td><td>%s</td></tr>",
-				info[k].caid, info[k].provid, info[k].sid, cadbuf, info[k].samples, anobuf );
+			sprintf( http_buf, "<tr><td>%s <span class='muted'>%04x:%06x:%04x</span></td><td>%s</td><td>%d</td><td>%s</td></tr>",
+				getchname(info[k].caid, info[k].provid, info[k].sid), info[k].caid, info[k].provid, info[k].sid, cadbuf, info[k].samples, anobuf );
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
 		if (!n) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='4'>O motor ainda nao tem canais aprendidos (o DCW CYCLE ENGINE aprende com o trafego).</td></tr>");
