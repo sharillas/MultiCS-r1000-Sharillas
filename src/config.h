@@ -785,6 +785,17 @@ void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
 int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
 uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid);
 void dcw_badmark(int srcid, uint16_t caid, uint16_t sid);
+
+// v1.41 pagina Vigia (GUI): estado do cycle engine por canal
+struct dcwchan_info {
+	uint16_t caid;
+	uint32_t provid;
+	uint16_t sid;
+	uint32_t cadence;   // ms aprendidos (0 = ainda nao aprendeu)
+	uint8_t samples;
+	uint32_t anomalies;
+};
+int dcwchan_stats(struct dcwchan_info *out, int max); // devolve o nr de entradas
 // filtro de satelites: CAID com perfil no projeto? (main.c)
 int caid_in_profiles(uint16_t caid);
 

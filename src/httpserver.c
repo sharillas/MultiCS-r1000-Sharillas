@@ -736,6 +736,7 @@ char http_javascript[] = "<script src=\"/customjs.js?v=1202\"></script>\n";
 #define PAGE_IPTABLES  16
 #define PAGE_CONFIGURATIONS 17
 #define PAGE_PACKAGES  18
+#define PAGE_WATCHDOG  19
 
 
 char *yesno( int a )
@@ -842,6 +843,11 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	{
 		if (selected==PAGE_PACKAGES) class = cSelected; else class = cNormal;
 		sprintf( buf, class, "/packages", "Packages"); tcp_writestr(tcpbuf, sock, buf);
+	}
+	// Vigia (reputacao das fontes + cycle engine - v1.41)
+	{
+		if (selected==PAGE_WATCHDOG) class = cSelected; else class = cNormal;
+		sprintf( buf, class, "/watchdog", "Vigia"); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Configurations (Iptables + Edit Config)
 	{
@@ -1494,6 +1500,87 @@ void http_send_cwfeed(int sock, http_request *req)
 	len += cwfeed_render(buf + len, sizeof(buf) - len - 64, srv, cli, (uint16_t)caid);
 	len += snprintf(buf + len, sizeof(buf) - len, "</div>");
 	http_send_text(sock, buf);
+}
+
+void http_send_watchdog(int sock, http_request *req)
+{
+	char http_buf[4096];
+	struct tcp_buffer_data tcpbuf;
+
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+	sprintf( http_buf, html_title, cfg.http.title, "Vigia"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>\nfunction start() { }\n</script>\n");
+	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
+	tcp_write_menu(&tcpbuf, sock, PAGE_WATCHDOG);
+	tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+
+	// === 1. Readers: reputacao + bad-cw cache activo ===
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Readers (reputacao)</h3>"
+		"<table class='maintable'><tr><th>Reader</th><th>Hop</th><th>Health</th><th>cwbad</th><th>Canais marcados</th><th>OK/total</th></tr>");
+	struct server_data *srv = cfg.server;
+	while (srv) {
+		int h = 0, hen = 0;
+		h = srv_healthscore_gui(srv, &hen);
+		sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s</td><td>%d%s</td><td>%d</td><td>%d</td><td>%d/%d</td></tr>",
+			srv->name[0]?srv->name:"-", srv->host->name, srv->port,
+			srv->hop==1?"<span class='badge-green'>directa</span>":(srv->hop>1?"circuito":"?"),
+			h, hen?"":" (off)", srv->cwbad, srv->badchannels, srv->ecmok, srv->ecmnb );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		srv = srv->next;
+	}
+	tcp_writestr(&tcpbuf, sock, "</table></div>");
+
+	// === 2. Bad-cw cache activo (por reader) ===
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Bad-CW cache activo (canais a saltar por reader)</h3>"
+		"<table class='maintable'><tr><th>Reader</th><th>Canal</th><th>Marcado ha</th></tr>");
+	int anybad = 0;
+	srv = cfg.server;
+	while (srv) {
+		uint32_t ticks = GetTickCount();
+		int i;
+		for (i=0; i<BADCW_CACHE_MAX; i++) {
+			if (!srv->bad_time[i]) continue;
+			if ( (uint32_t)(ticks - srv->bad_time[i]) > 3600000 ) { srv->bad_time[i] = 0; continue; }
+			sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%04x:%04x</td><td>%us</td></tr>",
+				srv->name[0]?srv->name:"-", srv->host->name, srv->port,
+				srv->bad_caid[i], srv->bad_sid[i], (ticks - srv->bad_time[i])/1000 );
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			anybad = 1;
+		}
+		srv = srv->next;
+	}
+	if (!anybad) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='3'>Sem registos activos - nenhuma fonte marcada.</td></tr>");
+	tcp_writestr(&tcpbuf, sock, "</table></div>");
+
+	// === 3. Cycle engine: canais aprendidos ===
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Cycle engine (canais aprendidos, anomalias)</h3>"
+		"<table class='maintable'><tr><th>Canal</th><th>Cadencia aprendida</th><th>Amostras</th><th>Anomalias</th></tr>");
+	{
+		struct dcwchan_info info[128];
+		int n = dcwchan_stats(info, 128);
+		int k;
+		for (k=0; k<n; k++) {
+			char cadbuf[32], anobuf[32];
+			if (info[k].cadence) snprintf(cadbuf, sizeof(cadbuf), "%dms", info[k].cadence);
+			else strcpy(cadbuf, "-");
+			snprintf(anobuf, sizeof(anobuf), "%d", info[k].anomalies);
+			sprintf( http_buf, "<tr><td>%04x:%06x:%04x</td><td>%s</td><td>%d</td><td>%s</td></tr>",
+				info[k].caid, info[k].provid, info[k].sid, cadbuf, info[k].samples, anobuf );
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		if (!n) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='4'>O motor ainda nao tem canais aprendidos (o DCW CYCLE ENGINE aprende com o trafego).</td></tr>");
+	}
+	tcp_writestr(&tcpbuf, sock, "</table></div>");
+
+	tcp_writestr(&tcpbuf, sock, "</div></body></html>");
+	tcp_flush(&tcpbuf, sock);
 }
 
 void http_send_debug(int sock, http_request *req)
@@ -8536,6 +8623,9 @@ void *gererClient(struct connect_data *param)
 				}
 				else if (strcmp(req.path,"/cwfeed")==0) {
 					http_send_cwfeed(sock,&req);
+				}
+				else if (strcmp(req.path,"/watchdog")==0) {
+					http_send_watchdog(sock,&req);
 				}
 				else if (strcmp(req.path,"/profiles")==0) {
 					if (!cfg.http.show.noprofiles) http_send_profiles(sock,&req);
