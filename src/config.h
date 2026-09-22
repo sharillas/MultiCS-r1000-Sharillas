@@ -432,8 +432,6 @@ struct cardserver_data
 #ifdef CHECK_NEXTDCW
 			uint8_t check;
 			uint8_t halfnulled;
-			uint8_t cyclecheck;   // DCW CYCLE_CHECK: validar alternancia CW0/CW1
-			uint32_t mintime;     // DCW MINTIME: tempo minimo entre CWs (ms, 0=off)
 #ifdef DCWSWAP
 			uint8_t swap;
 #endif
@@ -443,7 +441,7 @@ struct cardserver_data
 			uint8_t cak7;      // DCW CAK7: transformacao CAK7 Merlin da CW (NDS/Nagra 09xx/1802/1814)
 			uint8_t dcwlog;    // DCW LOG: regista as CWs em hex no debug (aprendizagem CAK7)
 			uint8_t lastcwon_nok; // DCW LASTCWONNOK: em NOK reenvia a ultima CW valida do canal
-			uint8_t stalecheck; // v1.30 DCW STALE_CHECK: hash novo + CW igual as ultimas 2 = stale (hold 1x por fonte)
+			uint8_t cycleengine; // v1.40 DCW CYCLE ENGINE: motor unico de ciclo (aprende cadencia + alternancia)
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
@@ -466,24 +464,13 @@ struct cardserver_data
 		int fallowcccam;	// Allow cccam server protocol to decode ecm
 		int fallownewcamd;	// Allow newcamd server protocol to decode ecm
 		int fallowskipcwc;	// Skip Same CW (protecao cws fakes repetidas)
-		// CW Cycle Check (estilo OSCam module-cw-cycle-check)
-		struct {
-			int enable;        // ENABLE CWC
-			int sensitive;     // CWC SENSITIVE (bytes iguais na metade fixa, 0=off)
-			int dropold;       // CWC DROPOLD (drop ECM antigo/replay e same CW fora de janela)
-			int dropbad;       // CWC DROPBAD (drop bad CW cycle)
-			int keepcycletime; // CWC KEEPCYCLETIME (minutos, 0=off)
-		} cwc;
-		// NAGRA protection (caid 18xx/19xx): checksum, provider, ciclo de
-		// CW por canal (aprendizagem 6 amostras), similaridade (sensitive),
-		// dcw duplicado/conflicting/fake half
+		// NAGRA protection (caid 18xx/19xx): checksum + provider
+		// (o ciclo passou para o CYCLE ENGINE v1.40)
 		struct {
 			int enable;     // ENABLE NAGRA
 			int chk;        // NAGRA CHK (checksum das 4 quads)
 			int prov;       // NAGRA PROV (provider na lista do perfil)
-			int cycle;      // NAGRA CYCLE (ciclo + similaridade por canal)
 			int onbad;      // NAGRA ONBAD (1=drop, 0=so log)
-			int sensitive;  // NAGRA SENSITIVE (bytes iguais a anterior, 0=off)
 		} nagra;
 		// SKIPCWC exclusions por SID (por perfil)
 		struct {

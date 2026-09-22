@@ -91,14 +91,10 @@ inline int dcwcheck_nds( ECM_DATA *ecm, uint8_t dcw[16], int swap )
 #endif
 		else return 0;
 	}
-	
 }
 
 
-
-
-
-// Per-channel DCW state: DCW MINTIME + DCW CYCLE_CHECK (por perfil)
+// Per-channel DCW state: CYCLE ENGINE v1.40 (motor unico de ciclo)
 struct dcwchan_data {
 	struct dcwchan_data *next;
 	uint16_t caid;
@@ -106,20 +102,28 @@ struct dcwchan_data {
 	uint16_t sid;
 	uint8_t cw[16];
 	uint8_t cw2[16]; // CW anterior (janela de 2 para LASTCWONNOK)
-	uint32_t lasthash; // hash da ultima CW aceite (v1.30 STALE_CHECK)
-	uint32_t lasttime;
+	uint32_t lasthash; // hash da ultima CW aceite
+	uint32_t lasttime; // tempo da ultima CW aceite
 	uint8_t lasthalf; // 0 = metade0 mudou por ultimo, 1 = metade1, 2 = ambas/desconhecido
+	uint32_t cad_ema; // EMA da cadencia em ms (16.16 fixed point)
+	uint8_t samples;  // nr de mudancas aprendidas
+	uint32_t anomalies; // total de anomalias (para a GUI)
 };
 
 static struct dcwchan_data *dcwchan_list = NULL;
 static pthread_mutex_t dcwchan_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// 0 = ok, 1 = rejeitar
-int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
+// CYCLE ENGINE v1.40: um unico motor de ciclo por canal.
+// Retorno: 0 = ok, 1 = STALE (par completo repetido com hash novo),
+//          2 = violacao do padrao (metade repetida / par completo quando alternava),
+//          3 = mudanca demasiado rapida.
+// A janela (cw/cw2) e SEMPRE actualizada (alimenta o LASTCWONNOK);
+// o caller decide a accao das anomalias conforme a opcao do perfil.
+int dcwchan_engine(ECM_DATA *ecm, uint8_t dcw[16])
 {
 	char nullcw[8] = "\0\0\0\0\0\0\0\0";
 	uint32_t now = GetTickCount();
-	int reject = 0;
+	int ret = 0;
 
 	pthread_mutex_lock(&dcwchan_mutex);
 	struct dcwchan_data *e = dcwchan_list;
@@ -134,6 +138,7 @@ int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
 		e->provid = ecm->provid;
 		e->sid = ecm->sid;
 		memcpy(e->cw, dcw, 16);
+		e->lasthash = ecm->hash;
 		e->lasttime = now;
 		e->lasthalf = 2;
 		e->next = dcwchan_list;
@@ -142,58 +147,66 @@ int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
 		return 0;
 	}
 
-	if (memcmp(e->cw, dcw, 16)) {
-		// DCW MINTIME: mudanca demasiado rapida
-		if (cs->option.dcw.mintime && ((uint32_t)(now - e->lasttime) < (uint32_t)cs->option.dcw.mintime)) {
-			mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: mintime reject ch %04x:%06x:%04x (%ums < %ums)\n",
-				ecm->caid, ecm->provid, ecm->sid, now - e->lasttime, cs->option.dcw.mintime);
-			reject = 1;
+	int r0 = memcmp(e->cw, dcw, 8)!=0;
+	int r1 = memcmp(e->cw+8, dcw+8, 8)!=0;
+	uint32_t delta = now - e->lasttime;
+
+	if (!r0 && !r1) {
+		// par completo repetido
+		if (e->lasthash && (e->lasthash != ecm->hash)) {
+			e->anomalies++;
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: STALE (par repetido, hash novo) ch %04x:%06x:%04x cad~%ums\n",
+				ecm->caid, ecm->provid, ecm->sid, e->cad_ema>>16);
+			ret = 1;
 		}
-		else if (cs->option.dcw.cyclecheck) {
-			// DCW CYCLE_CHECK: a metade que muda tem de alternar
-			if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) {
-				// half-null (NDS): metade preenchida tem de alternar
-				int half = dcwcmp8(dcw,nullcw) ? 0 : 1;
-				if (e->lasthalf==half) {
-					mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half %d repetida)\n",
-						ecm->caid, ecm->provid, ecm->sid, half);
-					reject = 1;
-				}
-				else e->lasthalf = half;
-			}
-			else {
-				int r0 = memcmp(e->cw, dcw, 8)!=0;
-				int r1 = memcmp(e->cw+8, dcw+8, 8)!=0;
-				if (r0 && !r1) {
-					if (e->lasthalf==0) {
-						mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half 0 repetida)\n",
-							ecm->caid, ecm->provid, ecm->sid);
-						reject = 1;
-					}
-					else e->lasthalf = 0;
-				}
-				else if (!r0 && r1) {
-					if (e->lasthalf==1) {
-						mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half 1 repetida)\n",
-							ecm->caid, ecm->provid, ecm->sid);
-						reject = 1;
-					}
-					else e->lasthalf = 1;
-				}
-				else e->lasthalf = 2;
-			}
+	}
+	else if (r0 && r1) {
+		// ambas as metades mudaram: anomalia apenas se a fonte alternava antes
+		if (e->samples >= 6 && (e->lasthalf==0 || e->lasthalf==1)) {
+			e->anomalies++;
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: par completo novo (fonte nao alterna) ch %04x:%06x:%04x cad~%ums\n",
+				ecm->caid, ecm->provid, ecm->sid, e->cad_ema>>16);
+			ret = 2;
 		}
+		e->lasthalf = 2;
+	}
+	else {
+		// uma metade mudou (half-null: a metade preenchida conta)
+		int half = r0 ? 0 : 1;
+		if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) half = dcwcmp8(dcw,nullcw) ? 0 : 1;
+		if (e->samples >= 6 && e->lasthalf==half) {
+			e->anomalies++;
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: metade %d repetida (violacao de alternancia) ch %04x:%06x:%04x\n",
+				half, ecm->caid, ecm->provid, ecm->sid);
+			ret = 2;
+		}
+		e->lasthalf = half;
 	}
 
-	if (!reject) {
-		memcpy(e->cw2, e->cw, 16); // janela de 2 CWs
-		memcpy(e->cw, dcw, 16);
-		e->lasthash = ecm->hash; // v1.30: hash da ultima CW aceite (STALE_CHECK)
-		e->lasttime = now;
+	// guarda de velocidade minima
+	if (delta && delta < 3000) {
+		e->anomalies++;
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: mudanca demasiado rapida (%ums) ch %04x:%06x:%04x\n",
+			delta, ecm->caid, ecm->provid, ecm->sid);
+		if (!ret) ret = 3;
 	}
+
+	// aprendizagem da cadencia (EMA 16.16)
+	if (delta >= 3000) {
+		uint32_t cad = delta<<16;
+		if (!e->cad_ema) e->cad_ema = cad;
+		else e->cad_ema = ((e->cad_ema>>2)*3) + (cad>>2); // EMA ~0.25
+		if (e->samples < 255) e->samples++;
+	}
+
+	// janela (alimenta o LASTCWONNOK)
+	memcpy(e->cw2, e->cw, 16);
+	memcpy(e->cw, dcw, 16);
+	e->lasthash = ecm->hash;
+	e->lasttime = now;
 
 	pthread_mutex_unlock(&dcwchan_mutex);
-	return reject;
+	return ret;
 }
 
 // ultima CW valida do canal (para DCW LASTCWONNOK) - 1 se existe
@@ -236,30 +249,6 @@ int dcwchan_getlast2(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw1[1
 	pthread_mutex_unlock(&dcwchan_mutex);
 	return found;
 }
-
-// v1.30 STALE CHECK: hash NOVO com CW igual a ultima aceite = stale.
-// (a fonte atrasada repete a CW do ciclo anterior - nao desencripta o hash novo)
-// v1.30.1: so compara com a CW IMEDIATAMENTE anterior - o padrao real do circuito
-// reaproveita uma metade de ciclos anteriores (cadeia NAGRA), so o par completo
-// repetido e suspeito.
-int dcwchan_stale(ECM_DATA *ecm, uint8_t dcw[16])
-{
-	int stale = 0;
-	pthread_mutex_lock(&dcwchan_mutex);
-	struct dcwchan_data *e = dcwchan_list;
-	while (e) {
-		if (e->caid==ecm->caid && e->provid==ecm->provid && e->sid==ecm->sid) {
-			if (e->lasthash && (e->lasthash != ecm->hash)) {
-				if (!memcmp(e->cw, dcw, 16)) stale = 1;
-			}
-			break;
-		}
-		e = e->next;
-	}
-	pthread_mutex_unlock(&dcwchan_mutex);
-	return stale;
-}
-
 
 
 void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
@@ -377,28 +366,32 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		return;
 	}
 
-	// STALE CHECK (v1.30): hash novo com CW igual as ultimas 2 entregues = stale
-	// (fonte atrasada a repetir a CW do ciclo anterior). Segura 1x por fonte e
-	// deixa o ECM a espera de outra fonte; na 2a vez entrega (evita prender o canal).
-	if (cs->option.dcw.stalecheck && (srctype==DCW_SOURCE_SERVER) && dcwchan_stale( ecm, dcw )) {
-		if (!ecm->stalehold) {
-			ecm->stalehold = 1;
-			struct server_data *s = getsrvbyid(srcid&0xffff);
-			if (s) { srv_nok_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
-			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," stalecw: CW stale (hash novo, CW repetida) ch %04x:%06x:%04x src %d - hold, a espera de outra fonte\n",
-				ecm->caid, ecm->provid, ecm->sid, srctype);
-			pthread_mutex_unlock(&prg.lockecm);
-			return;
+	// CYCLE ENGINE (v1.40): janela + motor unico de ciclo por canal.
+	// A janela e SEMPRE actualizada (alimenta o LASTCWONNOK); as anomalias
+	// actuam conforme a opcao DCW CYCLE ENGINE do perfil.
+	{
+		int anom = dcwchan_engine( ecm, dcw );
+		if (anom && cs->option.dcw.cycleengine) {
+			if (anom==1 && (srctype==DCW_SOURCE_SERVER)) {
+				// STALE: segura 1x por fonte e deixa o ECM a espera de outra fonte
+				if (!ecm->stalehold) {
+					ecm->stalehold = 1;
+					struct server_data *s = getsrvbyid(srcid&0xffff);
+					if (s) { srv_nok_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
+					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: STALE hold ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
+						ecm->caid, ecm->provid, ecm->sid, srctype);
+					pthread_mutex_unlock(&prg.lockecm);
+					return;
+				}
+				mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: 2a stale da mesma fonte ch %04x:%06x:%04x - entregar\n",
+					ecm->caid, ecm->provid, ecm->sid);
+			}
+			else if (anom!=1 && (srctype==DCW_SOURCE_SERVER)) {
+				// violacao de padrao/rapidez: marca a fonte (reputacao), entrega a CW
+				struct server_data *s = getsrvbyid(srcid&0xffff);
+				if (s) { s->cwbad++; s->cwbad_time = GetTickCount(); }
+			}
 		}
-		mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," stalecw: 2a stale da mesma fonte ch %04x:%06x:%04x - entregar\n",
-			ecm->caid, ecm->provid, ecm->sid);
-	}
-
-	// DCW MINTIME + DCW CYCLE_CHECK (por canal) + janela LASTCWONNOK
-	// (v1.29-fix: janela atualizada SEMPRE - sem MINTIME/CYCLE_CHECK o LASTCWONNOK ficava sem CWs)
-	if (dcwchan_check( ecm, dcw, cs )) {
-		pthread_mutex_unlock(&prg.lockecm);
-		return;
 	}
 
 	// filter non-nds halfnulled cw (v1.29: NAGRA 18xx half-null passa - half-cycle legitimo no circuito)
