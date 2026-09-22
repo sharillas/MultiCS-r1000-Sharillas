@@ -226,6 +226,37 @@ uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid)
 	return cad;
 }
 
+// v1.41 pagina Vigia: copia o estado do motor por canal (ordenado por anomalias desc)
+int dcwchan_stats(struct dcwchan_info *out, int max)
+{
+	int n = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e && n<max) {
+		if (e->samples || e->anomalies) {
+			out[n].caid = e->caid;
+			out[n].provid = e->provid;
+			out[n].sid = e->sid;
+			out[n].cadence = e->cad_ema>>16;
+			out[n].samples = e->samples;
+			out[n].anomalies = e->anomalies;
+			n++;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	// ordena por anomalias desc (bolha simples, listas pequenas)
+	int i, j;
+	for (i=0; i<n-1; i++)
+		for (j=i+1; j<n; j++)
+			if (out[j].anomalies > out[i].anomalies) {
+				struct dcwchan_info t = out[i];
+				out[i] = out[j];
+				out[j] = t;
+			}
+	return n;
+}
+
 // ultima CW valida do canal (para DCW LASTCWONNOK) - 1 se existe
 int dcwchan_getlast(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw[16])
 {
