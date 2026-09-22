@@ -72,3 +72,9 @@ Todas as alteraÃ§Ãµes notÃ¡veis desde a v1.20, por versÃ£o.
 - GUI: paginas dos protocolos removidos e Softcam removidas; httpstyle.c editado directamente (gerador fora da repo)
 - Binario -15% (1.34MB -> 1.13MB)
 
+
+## v1.41 (2026-09-22)
+- Feedback do cliente: hash repetido apos entrega com sucesso marca a fonte (cwbad + bad-cw cache) nos 3 protocolos - a box do cliente e o sensor
+- Pagina Vigia na GUI (/watchdog): reputacao dos readers (hop/health/cwbad/canais marcados), bad-cw cache activo, cycle engine por canal (cadencia aprendida + anomalias)
+- Monitor v140_monitor.py na VPS (cron 30min)
+

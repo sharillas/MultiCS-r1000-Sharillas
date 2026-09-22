@@ -1,4 +1,4 @@
-﻿MultiCS r1000 v1.40 - by Sharillas@2026
+﻿MultiCS r1000 v1.41 - by Sharillas@2026
 ==========================================
 
 Pacote de release (Ãºltima build estÃ¡vel)
@@ -15,7 +15,7 @@ CONTÃ‰M:
                          completo do projeto para quem instala)
 
 INSTALAÃ‡ÃƒO NA VPS (Debian/Ubuntu, como root - SEM git clone):
-  cd /tmp && tar xzf multics-r1000-v1.40.tar.gz && cd multics-r1000
+  cd /tmp && tar xzf multics-r1000-v1.41.tar.gz && cd multics-r1000
   bash install.sh /opt/multics
   systemctl start multics
 
@@ -86,4 +86,5 @@ JÃ EXISTIA (v1.23 e anteriores):
 
 DocumentaÃ§Ã£o: README.md, docs/CONFIGS.md, docs/IMPLEMENTACAO.md,
 configs_exemplos/ (todos os ficheiros com opÃ§Ãµes comentadas em PT)
+
 
