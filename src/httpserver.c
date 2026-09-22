@@ -458,6 +458,12 @@ char *getchname(uint16_t caid, uint32_t prov, uint16_t sid )
 		if ( (chn->caid==caid)&&(chn->prov==prov)&&(chn->sid==sid) ) return chn->name;
 		chn = chn->next;
 	}
+	// v1.41: fallback prov 0 (wildcard) - cobre canais sem ident conhecido no channelinfo
+	chn= cfg.chninfo;
+	while (chn) {
+		if ( (chn->caid==caid)&&(chn->prov==0)&&(chn->sid==sid) ) return chn->name;
+		chn = chn->next;
+	}
 	sprintf(channelname, "%04X:%06X:%04X", caid, prov, sid );
 	return channelname;
 }
