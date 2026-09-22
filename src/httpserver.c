@@ -1534,10 +1534,21 @@ void http_send_watchdog(int sock, http_request *req)
 	while (srv) {
 		int h = 0, hen = 0;
 		h = srv_healthscore_gui(srv, &hen);
+		// canais marcados ACTIVOS (entradas nao expiradas)
+		int nactive = 0;
+		{
+			uint32_t ticks = GetTickCount();
+			int i;
+			for (i=0; i<BADCW_CACHE_MAX; i++) {
+				if (!srv->bad_time[i]) continue;
+				if ( (uint32_t)(ticks - srv->bad_time[i]) > 3600000 ) continue;
+				nactive++;
+			}
+		}
 		sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s</td><td>%d%s</td><td>%d</td><td>%d</td><td>%d/%d</td></tr>",
 			srv->name[0]?srv->name:"-", srv->host->name, srv->port,
 			srv->hop==1?"<span class='badge-green'>directa</span>":(srv->hop>1?"circuito":"?"),
-			h, hen?"":" (off)", srv->cwbad, srv->badchannels, srv->ecmok, srv->ecmnb );
+			h, hen?"":" (off)", srv->cwbad, nactive, srv->ecmok, srv->ecmnb );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		srv = srv->next;
 	}
