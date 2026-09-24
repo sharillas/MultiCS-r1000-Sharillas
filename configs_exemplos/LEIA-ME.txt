@@ -1,5 +1,5 @@
 ﻿# ============================================================
-# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.20)
+# LEIA-ME - Pasta de configuracao exemplo (MultiCS r1000 v1.43)
 # ============================================================
 
 Ficheiros e funcao de cada um (todos com explicacoes detalhadas
@@ -11,13 +11,13 @@ comentadas dentro do proprio ficheiro):
                           Pode conter tudo (perfis, users, F/N/C-lines)
                           num ficheiro so - como mestre carrega tudo.
   profiles.cfg         -> PERFIS de saida (portas virtuais) com todas as
-                          opcoes por protocolo (DCW, SERVER, CACHE,
-                          CACHEEX, SKIPCWC, SID lists, CWC, NAGRA, HEALTH,
-                          FALLBACK, TIMING, LITE...).
+                          opcoes por protocolo (DCW CYCLE ENGINE, BADCW,
+                          SERVERS, CACHE, CACHEEX, SKIPCWC, SID lists,
+                          NAGRA, HEALTH + MINECMS, FALLBACK, LITE...).
                           Usa [DEFAULT] + [NOME]. Perfis desactivados com
                           #[NOME] aparecem na GUI com botao ON.
-  Cache.cfg            -> PEERS de cache (partilha de CWs entre servers):
-                          CACHE: host porta user pass { opcoes }
+  Cache.cfg            -> PEERS de cache (protocolo UDP, troca de CWs
+                          entre servers): CACHE PEER: host porta 0
   CacheEX.cfg          -> PEERS CacheEX: C: host porta user pass
                           { cacheex_mode=3 ... }
   1-Clients.cfg        -> F-LINES (clientes CCcam) com todas as opcoes.
@@ -25,9 +25,10 @@ comentadas dentro do proprio ficheiro):
   users.cfg            -> Utilizadores globais (valem para todos os
                           profiles; INCLUDE antes do profiles.cfg).
   Mgcamd.cfg           -> Utilizadores MGcamd.
-  Camd35.cfg           -> Utilizadores Camd35 (UDP) e CS378x (TCP).
   blocked_ips.cfg      -> IPs bloqueados (gerido na pagina Configs).
   CCcam.channelinfo    -> Nomes de canais para a GUI (editavel na Configs).
+                          Inclui os nomes do lamedb da VU (SDT real do
+                          satelite) com ident CAID:000000:SID (wildcard).
   CCcam.providers      -> Nomes de providers para a GUI.
   CCcam.lite           -> BUILD LITE: lista de canais activos
                           (CAID:PROVID:SID, FFFE = qualquer CAID).
@@ -37,25 +38,15 @@ comentadas dentro do proprio ficheiro):
                           a completa vai no pacote da build).
   multics.css          -> Tema externo (copiar de ../Configs/).
 
+Notas:
+  - Os protocolos camd35/cs378x/radegast/freecccam/ccam3 foram
+    REMOVIDOS na v1.40 (codigo + paginas GUI + ficheiros de clientes).
+  - A pagina de estado das fontes chama-se CW Monitoring (/watchdog):
+    reputacao dos readers, bad-cw cache activo, cycle engine por canal
+    e grafico de 24h por reader.
+
 Instalacao na VPS (Debian/Ubuntu):
   mkdir -p /var/etc
   copiar todos os ficheiros para /var/etc/
   chmod -R 775 /var/etc/
   executar: ./multics.x64 -b -C /var/etc/multics.cfg
-
-Notas:
-  - O multics.cfg e o ficheiro MESTRE: todos os ficheiros que o parse
-    deve ler tem de estar la descritos (FILE ... ou INCLUDE "...").
-  - Alteracoes nos cfgs sao detectadas automaticamente (inotify).
-  - A pagina "Configs" da GUI tem 3 seccoes:
-      * Upload Configs: envia qualquer um dos ficheiros acima para
-        /var/etc (backup automatico .bak-<timestamp>). Se o ficheiro
-        tiver erros, as linhas mas sao comentadas automaticamente e as
-        opcoes default ficam ativas; se nao der para corrigir, o upload
-        e rejeitado e o anterior e reposto (nunca crasha/fica sem arrancar).
-      * Blocked IPs: bloquear/desbloquear IPs (com pais e tempo de
-        bloqueio em formato DD:HH:MM:SS).
-      * Edit Config: edicao de TODOS os ficheiros acima (dropdown) com
-        save sem restart, e os botoes Update Channel Info (KingOfSat),
-        Load Channel Info e Reload Main Config.
-  - Mudar sempre HTTP USER/PASS e TELNET USER/PASS antes de expor na net.
