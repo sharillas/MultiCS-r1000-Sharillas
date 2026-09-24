@@ -853,7 +853,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	// Vigia (reputacao das fontes + cycle engine - v1.41)
 	{
 		if (selected==PAGE_WATCHDOG) class = cSelected; else class = cNormal;
-		sprintf( buf, class, "/watchdog", "Vigia"); tcp_writestr(tcpbuf, sock, buf);
+ sprintf( buf, class, "/watchdog", "CW Monitoring"); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Configurations (Iptables + Edit Config)
 	{
@@ -1517,7 +1517,7 @@ void http_send_watchdog(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
 	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
 	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-	sprintf( http_buf, html_title, cfg.http.title, "Vigia"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	 sprintf( http_buf, html_title, cfg.http.title, "CW Monitoring"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
 	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
 	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
@@ -1529,7 +1529,7 @@ void http_send_watchdog(int sock, http_request *req)
 
 	// === 1. Readers: reputacao + bad-cw cache activo ===
 	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Readers (reputacao)</h3>"
-		"<table class='maintable'><tr><th>Reader</th><th>Hop</th><th>Health</th><th>cwbad</th><th>Canais marcados</th><th>OK/total</th></tr>");
+		"<table class='maintable'><tr><th>Reader</th><th>Hop</th><th>Health</th><th>cwbad</th><th>Canais marcados</th><th>OK/total</th><th>Ultimas 24h (15min/barra)</th></tr>");
 	struct server_data *srv = cfg.server;
 	while (srv) {
 		int h = 0, hen = 0;
@@ -1545,11 +1545,37 @@ void http_send_watchdog(int sock, http_request *req)
 				nactive++;
 			}
 		}
-		sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s</td><td>%d%s</td><td>%d</td><td>%d</td><td>%d/%d</td></tr>",
+		// cwbad efectivo (decai como no health: >1800s->0, >600s->metade)
+		int cwbad_eff = (int)srv->cwbad;
+		if (srv->cwbad_time) {
+			uint32_t el = (GetTickCount() - srv->cwbad_time) / 1000;
+			if (el > 1800) cwbad_eff = 0;
+			else if (el > 600) cwbad_eff = cwbad_eff / 2;
+		}
+		sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s</td><td>%d%s</td><td>%d</td><td>%d</td><td>%d/%d</td>",
 			srv->name[0]?srv->name:"-", srv->host->name, srv->port,
 			srv->hop==1?"<span class='badge-green'>directa</span>":(srv->hop>1?"circuito":"?"),
-			h, hen?"":" (off)", srv->cwbad, nactive, srv->ecmok, srv->ecmnb );
+			h, hen?"":" (off)", cwbad_eff, nactive, srv->ecmok, srv->ecmnb );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		// v1.43: grafico 24h - verde = ok/nb, cinzento = timeouts, vermelho = cwbad
+		tcp_writestr(&tcpbuf, sock, "<td><svg width='200' height='26'>");
+		{
+			int i, pos = srv->hist_idx;
+			for (i=0; i<HIST_MAX; i++) {
+				int s = (pos + i) % HIST_MAX;
+				int nb = srv->hist_nb[s];
+				if (!nb) continue;
+				int h = (srv->hist_ok[s]*20)/nb;
+				sprintf( http_buf, "<rect x='%d' y='%d' width='1.6' height='%d' fill='%s'/>",
+					i*2, 20-h, h?h:1, h?"#2e7d32":"#616161" );
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				if (srv->hist_cwbad[s]) {
+					sprintf( http_buf, "<rect x='%d' y='22' width='1.6' height='3' fill='#c62828'/>", i*2 );
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				}
+			}
+		}
+		tcp_writestr(&tcpbuf, sock, "</svg></td></tr>");
 		srv = srv->next;
 	}
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
@@ -2374,7 +2400,7 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 
 static struct { unsigned short caid; char *name; } caid_pkg_table[] = {
 	{ 0x1814, "MEO ID (30W Portugal)" },
-	{ 0x1813, "Canal+ Pol�nia nc+ (13E)" },
+	{ 0x1813, "Canal+ Pol???nia nc+ (13E)" },
 	{ 0x1802, "NOS ID (30W Portugal)" },
 	{ 0x1880, "Digi TV (0.8W Hungria)" },
 	{ 0x1810, "Movistar+ (19.2E Espanha)" },
@@ -2403,7 +2429,7 @@ static struct { unsigned short caid; char *name; } caid_pkg_table[] = {
 	{ 0x0B01, "NC+ Conax (13E Polonia)" },
 	{ 0x1870, "Polsat Box (13E Polonia)" },
 	{ 0x0B02, "Focus Sat (0.8W Romenia)" },
-	{ 0x1884, "Canal+ Pol�nia (13E Polonia)" },
+	{ 0x1884, "Canal+ Pol???nia (13E Polonia)" },
 	{ 0x0100, "SECA/Mediaguard (13E)" },
 	{ 0x1803, "Polsat Box (13E Polonia)" },
 	{ 0x1861, "Polsat Box (13E Polonia)" },
@@ -2464,7 +2490,7 @@ void getservercells(struct server_data *srv, char cell[8][16384] )
 	// CELL2
 	if (srv->type==TYPE_NEWCAMD) {
 		if (srv->progname) {
-			if (srv->version) sprintf( cell[2],"%s %s", srv->progname, srv->version);
+			if (srv->version[0]) sprintf( cell[2],"%s %s", srv->progname, srv->version);
 			else strcpy( cell[2], srv->progname);
 		}
 		else sprintf( cell[2],"Newcamd v6.06");
@@ -4636,8 +4662,8 @@ void http_send_newcamd_client(int sock, http_request *req)
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->nblogin, cli->nbloginerror, cli->nbdiffip,
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
-			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
-			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0,
+			(int)(cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0),
+			(int)(cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0),
 			cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, cli->lastecm.decodetime,
 			(cli->lastecm.status==2)?" <span class=nok-yellow>NOK (BISS EMU)</span>":"",
 			cli->type, cli->flags, cli->cs?cli->cs->name:"-");
@@ -6271,8 +6297,8 @@ void http_send_cccam_client(int sock, http_request *req)
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
-			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
-			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0);
+			(int)(cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0),
+			(int)(cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0));
 		http_send_text(sock, dbg);
 		return;
 	}	else if (get_action==ACTION_STATUS) {
@@ -7051,8 +7077,8 @@ void http_send_mgcamd_client(int sock, http_request *req)
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
-			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
-			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0);
+			(int)(cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0),
+			(int)(cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0));
 		http_send_text(sock, dbg);
 		return;
 	}
@@ -8866,6 +8892,7 @@ int start_thread_http()
 	create_thread(&http_tid, http_thread, NULL);
 	return 0;
 }
+
 
 
 

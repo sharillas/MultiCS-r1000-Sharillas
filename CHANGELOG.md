@@ -85,3 +85,13 @@ Todas as alterações notáveis desde a v1.20, por versão.
 - getchname com fallback prov 0 (wildcard): nomes de canais sem ident exacto no channelinfo passam a aparecer na Vigia/last-share; channelinfo de producao fundido com nomes do lamedb da VU (SDT real do satelite, ~27k linhas)
 
 
+## v1.43 (2026-09-23)
+- FIX formato: %d vs uint64_t no httpserver (Last ECM/DCW errados no x64), srv->version sempre-true, declaracao de malloc no ecmdata.c
+- FIX cwbad: a coluna da CW Monitoring mostra o valor EFECTIVO com decay (igual ao health: 0 apos 30min, metade apos 10min)
+- Graficos 24h na CW Monitoring: anel de 96 amostras (15min) por reader - barras verdes (ok%), cinzento (timeouts), vermelho (cwbad)
+- CACHE: ADAPTIVETTL (entradas expiram pela cadencia aprendida do cycle engine) + ALIVETIME 10s; CACHE PEER do circuito em producao
+- Renomeacao: pagina Vigia -> CW Monitoring
+- Docs: mojibake corrigido no README/CHANGELOG/LEIA-ME (acentos e cedilhas restaurados)
+
+
+

@@ -764,8 +764,25 @@ void mainprocess()
 
 	start_thread_http();
 
+	// v1.43: amostrador do historico para a CW Monitoring (janela 15min, anel 24h)
+	uint32_t lasthist = GetTickCount();
 	while (!prg.restart) {
 		sleep(5);
+		if ( (uint32_t)(GetTickCount() - lasthist) >= 900000 ) {
+			lasthist = GetTickCount();
+			struct server_data *hs = cfg.server;
+			while (hs) {
+				uint8_t hidx = hs->hist_idx;
+				hs->hist_nb[hidx]    = (hs->ecmnb > hs->hist_prevnb) ? (hs->ecmnb - hs->hist_prevnb) : 0;
+				hs->hist_ok[hidx]    = (hs->ecmok > hs->hist_prevok) ? (hs->ecmok - hs->hist_prevok) : 0;
+				hs->hist_cwbad[hidx] = (hs->cwbad > hs->hist_prevcwbad) ? (hs->cwbad - hs->hist_prevcwbad) : 0;
+				hs->hist_prevnb  = hs->ecmnb;
+				hs->hist_prevok  = hs->ecmok;
+				hs->hist_prevcwbad = hs->cwbad;
+				hs->hist_idx = (hidx+1) % HIST_MAX;
+				hs = hs->next;
+			}
+		}
 	}
 
 }

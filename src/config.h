@@ -737,6 +737,15 @@ struct PACK server_data
 	int ecmperhr;
 	int hits;
 
+	// v1.43: historico 24h para a CW Monitoring (amostra 15min, anel 96)
+	#define HIST_MAX 96
+	uint32_t hist_nb[HIST_MAX];    // ECMs pedidos na janela de 15min
+	uint32_t hist_ok[HIST_MAX];    // entregues com sucesso
+	uint32_t hist_cwbad[HIST_MAX]; // cwbad (lixo) na janela
+	uint8_t  hist_idx;             // proxima posicao do anel
+	int hist_prevnb, hist_prevok;
+	uint32_t hist_prevcwbad;
+
 #ifdef CACHEEX
 	struct {
 		uint32_t push[10]; // Requests

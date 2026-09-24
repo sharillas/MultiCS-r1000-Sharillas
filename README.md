@@ -1,8 +1,8 @@
-﻿# MultiCS r1000 v1.42 - by Sharillas
+﻿# MultiCS r1000 v1.43 - by Sharillas
 
 Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruído e muito expandido: GUI web moderna, Softcam BISS/CW, proteções contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs**, login guard anti brute-force, NOK cache, validação de uploads sem crash, **SILENT NOK adiado** (v1.24), e o pacote anti-“cartões marcados” (v1.29): **ECM FILTER rule engine**, **DCW FILTER CWPK** com modo AUTO, **FAILBAN**, **ANTICASCADE**, **ECMRATELIMIT** e **DCW CAK7** (Sky DE 098D / MEO / NOS).
 
-> **Versão:** v1.42 | **Licença:** Sharillas@2026
+> **Versão:** v1.43 | **Licença:** Sharillas@2026
 
 ---
 ## Instalação (qualquer VPS Linux x86/x64)
@@ -13,9 +13,9 @@ Os binários são **estáticos musl** — correm em Debian, Ubuntu, CentOS, Rock
 
 ```bash
 # 1. descarrega o pacote da release (exemplo v1.30)
-wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.42/multics-r1000-v1.42.tar.gz
+wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.43/multics-r1000-v1.43.tar.gz
 # 2. extrai e instala
-tar xzf multics-r1000-v1.42.tar.gz
+tar xzf multics-r1000-v1.43.tar.gz
 cd multics-r1000
 sudo bash install.sh            # ou: sudo bash install.sh /meu/caminho
 ```
@@ -78,7 +78,7 @@ Fluxo mínimo para funcionar:
 
 ---
 
-## Features desta build (v1.42)
+## Features desta build (v1.43)
 
 ### Novo na v1.30 — anti-freeze real do circuito (LASTCW + STALE_CHECK)
 - **FIX LASTCWONNOK**: a janela de CWs por canal é agora sempre actualizada — o reenvio da última CW em NOK/timeout funciona mesmo sem `DCW MINTIME`/`CYCLE_CHECK` (antes o NOK ia sempre ao cliente)
