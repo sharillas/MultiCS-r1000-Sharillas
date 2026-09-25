@@ -443,6 +443,7 @@ struct cardserver_data
 			uint8_t lastcwon_nok; // DCW LASTCWONNOK: em NOK reenvia a ultima CW valida do canal
 			uint8_t cycleengine; // v1.40 DCW CYCLE ENGINE: motor unico de ciclo (aprende cadencia + alternancia)
 			uint32_t badcwttl;  // v1.40 DCW BADCW TTL: minutos que um reader e saltado num canal com CW ma (0=10)
+		int badcwrecon; // v1.44 DCW BADCW RECONNECT: cwbad efectivas que forcam reconexao do reader (0=off)
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
@@ -680,6 +681,7 @@ struct PACK server_data
 	uint16_t bad_sid[BADCW_CACHE_MAX];
 	int bad_idx;
 	uint32_t badchannels; // nr de canais distintos flaggados (para quarentena global)
+	uint32_t badcw_lastrecon; // v1.44: ultima reconexao forcada por cwbad (cooldown 15min)
 	// Share Limits
 	struct sharelimit_data sharelimits[100];
 	// ACCEPTED SIDs
@@ -793,7 +795,9 @@ struct PACK server_data
 void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
 int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
 uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid);
+int dcwchan_stale_hold(uint16_t caid, uint32_t provid, uint16_t sid); // v1.44 gate do stale-hold
 void dcw_badmark(int srcid, uint16_t caid, uint16_t sid);
+int cfg_default_badcwrecon(void); // v1.44 DCW BADCW RECONNECT do DEFAULT section
 
 // v1.41 pagina Vigia (GUI): estado do cycle engine por canal
 struct dcwchan_info {

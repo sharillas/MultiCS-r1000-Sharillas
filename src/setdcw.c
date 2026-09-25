@@ -108,6 +108,8 @@ struct dcwchan_data {
 	uint32_t cad_ema; // EMA da cadencia em ms (16.16 fixed point)
 	uint8_t samples;  // nr de mudancas aprendidas
 	uint32_t anomalies; // total de anomalias (para a GUI)
+	uint8_t stale_cnt; // v1.44: stales recentes (janela de 60s) - gate do stale-hold
+	uint32_t stale_t0; // v1.44: inicio da janela de stales
 };
 
 static struct dcwchan_data *dcwchan_list = NULL;
@@ -158,6 +160,9 @@ int dcwchan_engine(ECM_DATA *ecm, uint8_t dcw[16])
 			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: STALE (par repetido, hash novo) ch %04x:%06x:%04x cad~%ums\n",
 				ecm->caid, ecm->provid, ecm->sid, e->cad_ema>>16);
 			ret = 1;
+			// v1.44: janela de stales (60s) - o hold so actua com stales persistentes
+			if ( (uint32_t)(now - e->stale_t0) > 60000 ) { e->stale_cnt = 0; e->stale_t0 = now; }
+			if (e->stale_cnt < 255) e->stale_cnt++;
 		}
 	}
 	else if (r0 && r1) {
@@ -193,7 +198,16 @@ int dcwchan_engine(ECM_DATA *ecm, uint8_t dcw[16])
 
 	// aprendizagem da cadencia (EMA 16.16)
 	if (delta >= 3000) {
-		uint32_t cad = delta<<16;
+		// v1.44: clamp da amostra ao periodo real por familia de CAID.
+		// A malha estica as cadencia para 20-45s; sem clamp o EMA aprende
+		// lixo e o stale-hold/budget actuam fora do ritmo (freezes periodicos).
+		uint32_t d = delta;
+		if ( (ecm->caid>>8)==0x18 ) { // MEO/NOS 30W: periodo real 15s, alternancia 7.5s
+			if (d < 11000) d = 7500;
+			else d = 15000;
+		}
+		else if (d > 45000) d = 45000; // outras familias: nao deixar esticar sem limite
+		uint32_t cad = d<<16;
 		if (!e->cad_ema) e->cad_ema = cad;
 		else e->cad_ema = ((e->cad_ema>>2)*3) + (cad>>2); // EMA ~0.25
 		if (e->samples < 255) e->samples++;
@@ -224,6 +238,25 @@ uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid)
 	}
 	pthread_mutex_unlock(&dcwchan_mutex);
 	return cad;
+}
+
+// v1.44: gate do stale-hold - so actua com stales persistentes (>=3 em 60s).
+// A repeticao legitima de pares do MEO (1-2 stales esporadicos) passa limpa;
+// a tempestade de desync (>=3) e que dispara o hold.
+int dcwchan_stale_hold(uint16_t caid, uint32_t provid, uint16_t sid)
+{
+	int hold = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==caid && e->provid==provid && e->sid==sid) {
+			hold = (e->stale_cnt >= 3) ? 1 : 0;
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return hold;
 }
 
 // v1.41 pagina Vigia: copia o estado do motor por canal (ordenado por anomalias desc)
@@ -410,18 +443,25 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		int anom = dcwchan_engine( ecm, dcw );
 		if (anom && cs->option.dcw.cycleengine) {
 			if (anom==1 && (srctype==DCW_SOURCE_SERVER)) {
-				// STALE: segura 1x por fonte e deixa o ECM a espera de outra fonte
-				if (!ecm->stalehold) {
-					ecm->stalehold = 1;
-					struct server_data *s = getsrvbyid(srcid&0xffff);
-					if (s) { srv_nok_record(s, ecm->caid, ecm->sid); srv_bad_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
-					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: STALE hold ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
-						ecm->caid, ecm->provid, ecm->sid, srctype);
-					pthread_mutex_unlock(&prg.lockecm);
-					return;
+				// v1.44: STALE so segura com stales persistentes (gate 3/60s)
+				if (dcwchan_stale_hold(ecm->caid, ecm->provid, ecm->sid)) {
+					// segura 1x por fonte e deixa o ECM a espera de outra fonte
+					if (!ecm->stalehold) {
+						ecm->stalehold = 1;
+						struct server_data *s = getsrvbyid(srcid&0xffff);
+						if (s) { srv_nok_record(s, ecm->caid, ecm->sid); srv_bad_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
+						mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: STALE hold ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
+							ecm->caid, ecm->provid, ecm->sid, srctype);
+						pthread_mutex_unlock(&prg.lockecm);
+						return;
+					}
+					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: 2a stale da mesma fonte ch %04x:%06x:%04x - entregar\n",
+						ecm->caid, ecm->provid, ecm->sid);
 				}
-				mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: 2a stale da mesma fonte ch %04x:%06x:%04x - entregar\n",
-					ecm->caid, ecm->provid, ecm->sid);
+				else {
+					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: stale esporadico (gate) ch %04x:%06x:%04x - entregar\n",
+						ecm->caid, ecm->provid, ecm->sid);
+				}
 			}
 			else if (anom!=1 && (srctype==DCW_SOURCE_SERVER)) {
 				// violacao de padrao/rapidez: marca a fonte (reputacao), entrega a CW

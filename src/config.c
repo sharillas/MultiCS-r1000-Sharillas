@@ -219,6 +219,10 @@ void init_config(struct config_data *cfg)
 }
 
 
+// v1.44 DCW BADCW RECONNECT: valor do DEFAULT (partilhado com o loadbalance)
+static int g_badcwrecon_default = 15;
+int cfg_default_badcwrecon(void) { return g_badcwrecon_default; }
+
 void init_cardserver(struct cardserver_data *cs)
 {
 	memset( cs, 0, sizeof(struct cardserver_data) );
@@ -265,6 +269,7 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.dcw.lastcwon_nok = 0; // v1.29: opt-in por perfil
 	cs->option.dcw.cycleengine = 0; // v1.40: opt-in por perfil (motor unico de ciclo)
 	cs->option.dcw.badcwttl = 10;  // v1.40: 10 minutos por defeito
+	cs->option.dcw.badcwrecon = 15; // v1.44: 15 cwbad efectivas forcam reconexao da fonte (0=off)
 	cs->option.health.minecms = 10; // v1.41-fix: readers sem amostras participam ate ganharem historial (fix ovo-e-galinha)
 	// Shares
 	cs->option.fsharecccam = 1;
@@ -1655,6 +1660,19 @@ sid accept:
 						defaultcs.option.dcw.badcwttl = atoi(str);
 						if (defaultcs.option.dcw.badcwttl<1) defaultcs.option.dcw.badcwttl=1;
 						else if (defaultcs.option.dcw.badcwttl>1440) defaultcs.option.dcw.badcwttl=1440;
+					}
+					// v1.44 DCW BADCW RECONNECT: cwbad efectivas que forcam reconexao da fonte
+					else if (!strcmp(str,"RECONNECT")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							continue;
+						} else iparser++;
+						parse_int(str);
+						defaultcs.option.dcw.badcwrecon = atoi(str);
+						if (defaultcs.option.dcw.badcwrecon<0) defaultcs.option.dcw.badcwrecon=0;
+						else if (defaultcs.option.dcw.badcwrecon>100) defaultcs.option.dcw.badcwrecon=100;
+						g_badcwrecon_default = defaultcs.option.dcw.badcwrecon;
 					}
 				}
 				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
@@ -3418,6 +3436,18 @@ link_mgcamd_user:
 					cardserver->option.dcw.badcwttl = atoi(str);
 					if (cardserver->option.dcw.badcwttl<1) cardserver->option.dcw.badcwttl=1;
 					else if (cardserver->option.dcw.badcwttl>1440) cardserver->option.dcw.badcwttl=1440;
+				}
+				// v1.44 DCW BADCW RECONNECT: cwbad efectivas que forcam reconexao da fonte
+				else if (!strcmp(str,"RECONNECT")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					cardserver->option.dcw.badcwrecon = atoi(str);
+					if (cardserver->option.dcw.badcwrecon<0) cardserver->option.dcw.badcwrecon=0;
+					else if (cardserver->option.dcw.badcwrecon>100) cardserver->option.dcw.badcwrecon=100;
 				}
 			}
 			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {

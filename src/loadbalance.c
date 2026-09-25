@@ -80,6 +80,31 @@ void dcw_badmark(int srcid, uint16_t caid, uint16_t sid)
 	srv_bad_record(s, caid, sid);
 	mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,s->id)," badmark: fonte %d marcada (feedback do cliente) ch %04x:%04x (cwbad=%d)\n",
 		s->id, caid, sid, s->cwbad);
+
+	// v1.44: reconexao forcada quando a fonte acumula CWs mas (auto-recuperacao)
+	// - cwbad efectivo (decay como no health) acima do limite -> desconectar o
+	//   reader (a thread reconecta de novo, sessao limpa junto do servidor remoto)
+	// - cooldown de 15min para nao entrar em loop de reconexoes
+	int recon = cfg_default_badcwrecon();
+	if (recon>0) {
+		int cwbad_eff = (int)s->cwbad;
+		if (s->cwbad_time) {
+			uint32_t el = (GetTickCount() - s->cwbad_time) / 1000;
+			if (el > 1800) cwbad_eff = 0;
+			else if (el > 600) cwbad_eff = cwbad_eff / 2;
+		}
+		if (cwbad_eff >= recon) {
+			uint32_t ticks = GetTickCount();
+			if ( (!s->badcw_lastrecon) || ((uint32_t)(ticks - s->badcw_lastrecon) > 900000) ) {
+				s->badcw_lastrecon = ticks;
+				mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,s->id)," badcw: fonte (%s:%d) com %d cws mas - reconexao forcada\n",
+					s->host->name, s->port, cwbad_eff);
+				disconnect_srv(s);
+				s->cwbad = 0;
+				s->cwbad_time = 0;
+			}
+		}
+	}
 }
 
 // 0: different ; 1:~equivalent

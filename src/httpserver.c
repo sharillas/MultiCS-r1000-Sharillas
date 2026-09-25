@@ -3393,11 +3393,11 @@ void http_send_cache(int sock, http_request *req)
 		// Info de servidores (acima da div principal)
 		{
 			tcp_writestr(&tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
-			sprintf( http_buf, "<h3 class=stitle>Cache Servers (%d)</h3>", cfg.cache.totalservers);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Active Peers</th></tr>");
 			int itotal, iactive;
 			total_cache_peers( &itotal, &iactive );
+			sprintf( http_buf, "<h3 class=stitle>Cache Servers (%d) - Peers: %d activos / %d</h3>", cfg.cache.totalservers, iactive, itotal);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Active Peers</th></tr>");
 			sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iactive, itotal);
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			sprintf( http_buf, "<tr><td class=left>AliveTime</td><td class=right colspan=2>%ds</td><td class=right>Auto-Add: %s | Filter: %s</td></tr>", cfg.cache.alivetime/1000, yesno(cfg.cache.autoadd), onoff(cfg.cache.filter));

@@ -94,4 +94,15 @@ Todas as alterações notáveis desde a v1.20, por versão.
 - Docs: mojibake corrigido no README/CHANGELOG/LEIA-ME (acentos e cedilhas restaurados)
 
 
+## v1.44 (2026-09-25)
+- CALIBRACAO DO CYCLE ENGINE (estudo do circuito):
+  - clamp da cadencia aprendida por familia de CAID (18xx 30W: amostras quantizadas para 7.5s/15s - a malha esticava 20-45s e envenenava o EMA)
+  - gate do stale-hold: so actua com 3+ stales em 60s (a repeticao legitima de pares do MEO passa limpa; sem freezes periodicos causados pelo motor)
+- AUTO-RECONEXAO da fonte com excesso de CWs mas: DCW BADCW RECONNECT (default 15, cooldown 15min, desconecta e reconecta o reader)
+- Pagina Cache: cabecalho "Cache Servers (N) - Peers: activos/total" (sem ambiguidade do contador)
+- Renomeacao definitiva: pagina Vigia -> CW Monitoring (menu + titulo)
+- Cache em producao: ALIVETIME 10s + ADAPTIVETTL + CACHE PEER do circuito
+
+
+
 
