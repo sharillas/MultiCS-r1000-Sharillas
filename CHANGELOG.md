@@ -115,6 +115,15 @@ Todas as alterações notáveis desde a v1.20, por versão.
 - Configs: clientes_cs378x.cfg/clientes_camd35.cfg + servidores.cfg com shares por ident + CACHE AUTOADD NO
 
 
+## v1.46 (2026-09-28)
+- VALIDACAO ANTI-LIXO DOS PUSHES CACHEEX (A1+A2): o motor valida as CWs recebidas por cacheex nos 4 handlers (cs378x/camd35/cccam) - stale e mudancas rapidas sao rejeitadas (badcw); a cadencia de cada canal passa a ser aprendida tambem pelo ritmo dos pushes da fonte
+- FILTRO AUTOMATICO DE IDENTS (B8): o motor conta as anomalias por (CAID:PROVID) - 5 anomalias em 10min marcam o ident por 1h e os pedidos com esse ident sao rejeitados (Bad ident aprendido)
+- CACHEEX VALIDECMTIME: cap alargado para 15000ms (configuravel por perfil)
+- FIX display camd35: o estado online usa a ultima datagrama recebida (os clientes cacheex nao mandam ECMs - o lastecmtime nao servia)
+- A4: cacheex_forward mode 2 (extrasrv) confirmado
+
+
+
 
 
 

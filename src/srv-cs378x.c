@@ -417,6 +417,19 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 			//if ( !checkECMD5(cacheex.ecmd5) ) cli->cacheex.totalcsp++;
 			cacheex.hash = (buf[43]<<24) | (buf[42]<<16) | (buf[41]<<8) | buf[40];
 			if (!cacheex_check(&cacheex)) break;
+			// v1.46 A1+A2: validacao do motor + aprendizagem da cadencia pelo ritmo
+			{
+				ECM_DATA tmp;
+				memset(&tmp, 0, sizeof(tmp));
+				tmp.caid = cacheex.caid;
+				tmp.provid = cacheex.provid;
+				tmp.sid = cacheex.sid;
+				tmp.hash = cacheex.hash;
+				int anom = dcwchan_engine(&tmp, cw);
+				if (anom==1) { cli->cacheex.badcw++; break; }
+				if (anom==3) { cli->cacheex.badcw++; break; }
+				if (anom==2) cli->cacheex.badcw++;
+			}
 			cli->cacheex.got[0]++;
 			int uphop = buf[60];
 			if (uphop<10) cli->cacheex.got[uphop]++;

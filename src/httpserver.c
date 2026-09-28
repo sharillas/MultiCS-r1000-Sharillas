@@ -926,7 +926,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	{
 		if (selected==PAGE_CS378X) class = cSelected; else class = cNormal;
 		sprintf( label, "Cs378x/Camd35 <span class='badge-count'> %d </span>", total_c35_clients()+total_cs378x_nb() );
-		sprintf( buf, class, "/cs378x", label); tcp_writestr(tcpbuf, sock, buf);
+		sprintf( buf, class, "/camd35", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 
 	// Profiles
@@ -2330,8 +2330,10 @@ void getcamd35cells(struct camd35_client_data *cli, char cell[10][2048])
 	else strcpy( cell[1], " ");
 
 	// CELL2 # Connection Time
-	// Camd35 is UDP so there's no connection. Use cli->lastecmtime to check last received ecm time is less than 90 seconds
-	if ((GetTickCount()-cli->lastecmtime) < 90000) {
+	// Camd35 is UDP so there's no connection. Usa a ultima datagrama recebida
+	// (lastactivity) - os clientes cacheex nao mandam ECMs, por isso o
+	// lastecmtime nao serve para estes
+	if ((GetTickCount()-cli->lastactivity) < 90000) {
 		if (cli->ecm.busy) sprintf( cell[9],"busy"); else sprintf( cell[9],"online");
 		sprintf( cell[2], "online");
 	}

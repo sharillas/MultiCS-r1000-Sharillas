@@ -2054,7 +2054,7 @@ sid accept:
 					} else iparser++;
 					parse_int(str);
 					defaultcs.option.cacheexvalidtime = atoi(str);
-					if ( defaultcs.option.cacheexvalidtime>7000 ) defaultcs.option.cacheexvalidtime = 7000;
+					if ( defaultcs.option.cacheexvalidtime>15000 ) defaultcs.option.cacheexvalidtime = 15000;
 				}
 				else if (!strcmp(str,"MAXHOP")) {
 					parse_spaces();
@@ -3013,7 +3013,7 @@ link_mgcamd_user:
 				parse_int(str);
 				if (cardserver) {
 					cardserver->option.cacheexvalidtime = atoi(str);
-					if ( cardserver->option.cacheexvalidtime>7000 ) cardserver->option.cacheexvalidtime = 7000;
+					if ( cardserver->option.cacheexvalidtime>15000 ) cardserver->option.cacheexvalidtime = 15000;
 				}
 			}
 			else if (!strcmp(str,"MAXHOP")) {

@@ -991,6 +991,9 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 				else ecm->checktime = 1; // Check NOW
 				pipe_wakeup( prg.pipe.ecm[1] );
 
+#if defined(CACHEEX) && defined(CS378X_SRV)
+				forward_cs378x(ecm);
+#endif
 
 #ifdef TESTCHANNEL
 				int testchannel = ( (ecm->caid==cfg.testchn.caid)&&(ecm->provid==cfg.testchn.provid)&&(!cfg.testchn.sid||(ecm->sid==cfg.testchn.sid)) );
@@ -1033,6 +1036,19 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 			//if ( !checkECMD5(cacheex.ecmd5) ) cli->cacheex.totalcsp++;
 			cacheex.hash = (buf[43]<<24) | (buf[42]<<16) | (buf[41]<<8) | buf[40];
 			if (!cacheex_check(&cacheex)) break;
+			// v1.46 A1+A2: validacao do motor + aprendizagem da cadencia pelo ritmo
+			{
+				ECM_DATA tmp;
+				memset(&tmp, 0, sizeof(tmp));
+				tmp.caid = cacheex.caid;
+				tmp.provid = cacheex.provid;
+				tmp.sid = cacheex.sid;
+				tmp.hash = cacheex.hash;
+				int anom = dcwchan_engine(&tmp, cw);
+				if (anom==1) { cli->cacheex.badcw++; break; }
+				if (anom==3) { cli->cacheex.badcw++; break; }
+				if (anom==2) cli->cacheex.badcw++;
+			}
 			cli->cacheex.got[0]++;
 			int uphop = buf[60];
 			if (uphop<10) cli->cacheex.got[uphop]++;

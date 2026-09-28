@@ -1,4 +1,7 @@
-# Lista total de implementações em standby
+# Lista de implementações em standby
+
+(Actualizado 28/09 - a v1.46 fechou os pontos A1-A4, B8 e o display camd35.
+Pendentes: A5, A6, A7.)
 
 (Compilada a 28/09 — nada se implementa sem discussão prévia.)
 

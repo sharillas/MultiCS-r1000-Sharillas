@@ -94,6 +94,58 @@ inline int dcwcheck_nds( ECM_DATA *ecm, uint8_t dcw[16], int swap )
 }
 
 
+// v1.46 B8: idents maus por CAID (aprendido pelo motor)
+// - cada anomalia do motor conta para o (caid,provid) da fonte
+// - >=5 anomalias em 10min marca o ident por 1h (filtro automatico)
+#define BADIDENT_MAX 16
+static struct {
+	uint16_t caid;
+	uint32_t provid;
+	uint32_t cnt;
+	uint32_t t0;
+	uint32_t marked;
+} badident[BADIDENT_MAX];
+
+static void badident_note(uint16_t caid, uint32_t provid)
+{
+	uint32_t ticks = GetTickCount();
+	int i, free = -1;
+	for (i=0; i<BADIDENT_MAX; i++) {
+		if (badident[i].caid==caid && badident[i].provid==provid) break;
+		if (free<0 && !badident[i].caid) free = i;
+	}
+	if (i==BADIDENT_MAX) {
+		if (free<0) return;
+		i = free;
+		badident[i].caid = caid;
+		badident[i].provid = provid;
+		badident[i].cnt = 0;
+		badident[i].t0 = ticks;
+		badident[i].marked = 0;
+	}
+	if ( (uint32_t)(ticks - badident[i].t0) > 600000 ) {
+		badident[i].t0 = ticks;
+		badident[i].cnt = 0;
+	}
+	badident[i].cnt++;
+	if (badident[i].cnt >= 5 && !badident[i].marked) {
+		badident[i].marked = ticks;
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ident: %04x:%06x marcado como mau (5 anomalias em 10min)\n", caid, provid);
+	}
+}
+
+int dcwchan_badident_check(uint16_t caid, uint32_t provid)
+{
+	uint32_t ticks = GetTickCount();
+	int i;
+	for (i=0; i<BADIDENT_MAX; i++) {
+		if (badident[i].caid!=caid || badident[i].provid!=provid) continue;
+		if (badident[i].marked && ((uint32_t)(ticks - badident[i].marked) < 3600000)) return 1;
+		return 0;
+	}
+	return 0;
+}
+
 // Per-channel DCW state: CYCLE ENGINE v1.40 (motor unico de ciclo)
 struct dcwchan_data {
 	struct dcwchan_data *next;
@@ -214,6 +266,7 @@ int dcwchan_engine(ECM_DATA *ecm, uint8_t dcw[16])
 	}
 
 	// janela (alimenta o LASTCWONNOK)
+	if (ret) badident_note(ecm->caid, ecm->provid); // v1.46 B8: ident com anomalias
 	memcpy(e->cw2, e->cw, 16);
 	memcpy(e->cw, dcw, 16);
 	e->lasthash = ecm->hash;

@@ -442,6 +442,8 @@ char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, 
 	if ( !accept_prov(cs,provid) ) return("Wrong provider");
 	// Check for sid
 	if ( !accept_sid(cs, provid, sid, chid, ecmlen, cw1cycle) ) return("Channel denied");
+	// v1.46 B8: ident aprendido como mau pelo motor (anomalias repetidas)
+	if ( dcwchan_badident_check(caid, provid) ) return("Bad ident (aprendido)");
 	// BUILD LITE: ignorar canais fora da lista
 	if ( cs->option.fenablelite && !lite_check(caid, provid, sid) ) return("Ignored (lite)");
 	// check for length
