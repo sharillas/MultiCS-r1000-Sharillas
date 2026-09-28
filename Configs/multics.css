@@ -130,11 +130,16 @@ input[type=file]::file-selector-button:hover { background:#0ea5e9; color:#fff; b
 
 /* ---------- tabelas ---------- */
 .maintable, .infotable, table.option {
-  width:100%; border-collapse:collapse; border-radius:10px; overflow:hidden;
+  width:100%; border-collapse:collapse; border-radius:10px;
 }
 .maintable th, .infotable th, table.option th {
   background:#2f3642; color:#9aa4b2; font-size:12px; font-weight:600;
   text-align:left; padding:9px 10px; border-bottom:1px solid #363d48;
+}
+/* v1.44: cabecalhos fixos no scroll (a 1a linha = <tr><th>) */
+.maintable tr:first-child th, .infotable tr:first-child th, table.option tr:first-child th {
+  position: -webkit-sticky; position: sticky; top: 0; z-index: 10;
+  background:#222832; box-shadow:0 1px 4px rgba(0,0,0,.45);
 }
 .maintable td, .infotable td, table.option td { padding:8px 10px; font-size:12.5px; border-bottom:1px solid #2c333e; }
 .maintable tr:hover td { background:#29303a; }

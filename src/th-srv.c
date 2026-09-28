@@ -64,10 +64,52 @@ void *cs_connect_srv_th(struct server_data *srv)
 		}
 	}
 #endif
+#ifdef CS378X_CLI
+	else if (srv->type==TYPE_CS378X) {
+		if ( cs378x_connect_srv(srv,fd)!=0 ) {
+			mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," server: connection failed to cs378x server (%s:%d)\n", srv->host->name,srv->port);
+			srv->connection.status = 0;
+			close(fd);
+		}
+	}
+#endif
 	else close(fd);
 
 	return NULL;
 }
+
+
+#ifdef CAMD35_CLI
+void *camd35_connect_srv_th(struct server_data *srv)
+{
+	if (srv->type!=TYPE_CAMD35) return NULL;
+
+	srv->connection.status = -1;
+	srv->connection.time = GetTickCount();
+	struct host_data *host = srv->host;
+	uint32_t ip = host->ip;
+	if (!ip) ip = host->clip;
+
+	int fd =  CreateClientSockUdp( 0, 0 );
+	if (fd<0) {
+		static char msg[]= "socket creation failed";
+		srv->statmsg = msg;
+		srv->connection.delay += 10000;
+		srv->connection.status = 0;
+		return NULL;
+	}
+	if (srv->connection.delay<90000) srv->connection.delay += 15000;
+	srv->error = 0; // No error
+
+	if ( camd35_connect_srv(srv,fd)!=0 ) {
+		mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," server: connection failed to camd35 server (%s:%d)\n", srv->host->name,srv->port);
+		srv->connection.status = 0;
+		close( fd );
+	}
+
+	return NULL;
+}
+#endif
 
 
 void connect_server(struct server_data *srv)
@@ -78,11 +120,15 @@ void connect_server(struct server_data *srv)
 	while (srv) {
 		if ( !IS_DISABLED(srv->flags) ) {
 			if ( ( (srv->host->ip)||(srv->host->clip) ) && !isblockedip(srv->host->ip) ) {
-				if ( !srv->connection.status ) {
-					if ( (srv->connection.time+srv->connection.delay) < ticks ) {
-						create_thread(&srv_tid, (threadfn)cs_connect_srv_th, srv); // Lock server
-					}
+			if ( !srv->connection.status ) {
+				if ( (srv->connection.time+srv->connection.delay) < ticks ) {
+#ifdef CAMD35_CLI
+					if (srv->type==TYPE_CAMD35) create_thread(&srv_tid, (threadfn)camd35_connect_srv_th, srv);
+					else
+#endif
+					create_thread(&srv_tid, (threadfn)cs_connect_srv_th, srv); // Lock server
 				}
+			}
 			}
 			else {
 				static char msg[]= "Invalid Address";

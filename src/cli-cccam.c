@@ -464,9 +464,8 @@ int cc_sendinfo_srv(struct server_data *srv, int ismultics)
 	memcpy(buf + 20, cfg.nodeid, 8 );
 	buf[28] = 0;
 	memcpy(buf + 29, cfg.cccam.version, 32);	// cccam version (ascii)
-	if (ismultics) {
-		buf[57]='W'; buf[58]='H'; buf[59]='O';
-	}
+	// v1.45: nao marcamos o flag WHO (buf[57..59]) - o servidor remoto mostra-nos
+	// como "CCcam v2.3.0" simples em vez de "CCcam/MCS r-XX"
 	memcpy(buf + 61, cfg.cccam.build, 32);	// build number (ascii)
 	mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " Server: send client info User: '%s', Version: '%s', Build: '%s'.\n", srv->user, cfg.cccam.version, cfg.cccam.build);
 	return cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_CLI_INFO, 20 + 8 + 1 + 64, buf);

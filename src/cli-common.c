@@ -48,8 +48,12 @@ char *getsrvtype(struct server_data *srv)
 {
 	static char *_cccam = "CCcam";
 	static char *_newcamd = "newcamd";
+	static char *_camd35 = "Camd35";
+	static char *_cs378x = "Cs378x";
 	if (srv->type==TYPE_CCCAM) return _cccam;
 	else if (srv->type==TYPE_NEWCAMD) return _newcamd;
+	else if (srv->type==TYPE_CAMD35) return _camd35;
+	else if (srv->type==TYPE_CS378X) return _cs378x;
 	else return NULL;
 }
 
