@@ -809,6 +809,8 @@ void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
 int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
 uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid);
 int dcwchan_stale_hold(uint16_t caid, uint32_t provid, uint16_t sid); // v1.44 gate do stale-hold
+int dcwchan_engine(ECM_DATA *ecm, uint8_t dcw[16]); // v1.46: validacao/aprendizagem dos pushes cacheex
+int dcwchan_badident_check(uint16_t caid, uint32_t provid); // v1.46 B8: ident mau (aprendido)
 void dcw_badmark(int srcid, uint16_t caid, uint16_t sid);
 int cfg_default_badcwrecon(void); // v1.44 DCW BADCW RECONNECT do DEFAULT section
 
