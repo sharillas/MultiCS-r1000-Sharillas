@@ -1,5 +1,9 @@
 #include "ipdata.h"
 
+#if defined(CAMD35_SRV) || defined(CS378X_SRV) || defined(CAMD35_CLI) || defined(CS378X_CLI)
+#include "aes.h"
+#endif
+
 #define MAX_ACCEPT_THREADS 500
 #define KEEPALIVE_NEWCAMD	80
 
@@ -625,6 +629,8 @@ struct cardserver_data
 #define TYPE_NEWCAMD    1
 #define TYPE_CCCAM      2
 #define TYPE_GBOX       3
+#define TYPE_CAMD35     5
+#define TYPE_CS378X     6
 #define TYPE_MGCAMD     8
 #define TYPE_CACHE      9
 
@@ -703,6 +709,13 @@ struct PACK server_data
 	struct cc_crypt_block recvblock;	// crypto state block
 	uint8_t nodeid[8];
 	char build[32];
+#endif
+
+#if defined(CAMD35_CLI) || defined(CS378X_CLI)
+	// AES KEYS (camd35/cs378x cacheex)
+	AES_KEY decryptkey;
+	AES_KEY encryptkey;
+	uint32_t ucrc;
 #endif
 
 	//Connection Data
@@ -798,6 +811,9 @@ uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid);
 int dcwchan_stale_hold(uint16_t caid, uint32_t provid, uint16_t sid); // v1.44 gate do stale-hold
 void dcw_badmark(int srcid, uint16_t caid, uint16_t sid);
 int cfg_default_badcwrecon(void); // v1.44 DCW BADCW RECONNECT do DEFAULT section
+
+// v1.45: camd35/cs378x cacheex (msg-camd35.c)
+void camd35_init_data( char *user, char *pass, AES_KEY *encryptkey, AES_KEY *decryptkey, uint32_t *ucrc);
 
 // v1.41 pagina Vigia (GUI): estado do cycle engine por canal
 struct dcwchan_info {
@@ -1123,6 +1139,124 @@ struct mgcamdserver_data {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+#if defined(CAMD35_SRV) || defined(CS378X_SRV)
+
+struct PACK camd35_client_data { // Connected Client
+	struct camd35_client_data *next;
+	uint32_t flags;
+	uint32_t id; // unique id
+
+	struct client_info_data *info;
+	char *realname;
+
+	// User/Pass
+	char user[64];
+	char pass[64];
+	uint32_t userhash;
+	// Card
+	struct cs_card_data card;
+	// AES KEYS
+	AES_KEY decryptkey;
+	AES_KEY encryptkey;
+	uint32_t ucrc;
+
+#ifdef CACHEEX
+	int cacheex_mode;
+	uint8_t nodeid[8];
+	struct {
+		int csid;
+		int hits;
+	} csporthit[MAX_CSPORTS];
+#endif
+	// Profiles
+	uint16_t csport[MAX_CSPORTS];
+	// Share Limits
+	struct sharelimit_data sharelimits[100];
+
+	//## Runtime Data (DYNAMIC)
+	unsigned int ip; // Client ip
+	int port; // Client port
+	int handle; // udp
+	int ipoll;
+
+	struct {
+		int status;
+		uint32_t time;
+		uint32_t lastseen;
+		uint32_t uptime;
+	} connection;
+
+	unsigned char type;
+	// ECM Stat
+	int ecmnb;
+	int ecmdenied;
+	int ecmok;
+	int ecmoktime;
+	unsigned int lastecmtime;
+	unsigned int lastdcwtime;
+	unsigned int lastactivity;
+#ifdef CACHEEX
+	struct {
+		uint32_t push[10];
+		uint32_t got[10];
+		uint32_t badcw;
+		uint32_t csp;
+		uint32_t hits;
+		uint32_t ihits;
+		uint16_t lastcaid;
+		uint32_t lastprov;
+		uint16_t lastsid;
+		uint32_t lastdecodetime;
+	} cacheex;
+#endif
+
+#ifdef CHECK_NEXTDCW
+	int dcwcheck;
+#endif
+
+	int freeze;
+	int zap;
+
+	struct {
+		int busy;
+		sendstatus_type status;
+		uint32_t recvtime;
+		ECM_DATA *request;
+		uint32_t hash;
+		int pin;
+	} ecm;
+
+	//Last Used Share Saved data
+	struct {
+		ECM_DATA *request;
+		uint16_t caid;
+		uint32_t prov;
+		uint16_t sid;
+		uint32_t hash;
+		uint8_t tag;
+		int status;
+		uint8_t dcw[16];
+		int dcwsrctype;
+		int dcwsrcid;
+		uint32_t cardid;
+		uint32_t decodetime;
+	} lastecm;
+};
+
+struct camd35_server_data {
+	struct camd35_server_data *next;
+	uint32_t flags;
+	struct camd35_client_data *client; // clients
+	struct camd35_client_data *cacheexclient;
+	int totalclients;
+	int id;
+	int port;
+	int handle;
+	int ipoll;
+};
+
+#endif
+
 #ifdef PEERLIST
 #define MAX_PEER_INDEX  0xFFF
 #endif
@@ -1306,6 +1440,32 @@ struct config_data
 	} mgcamd;
 #endif
 
+#ifdef CAMD35_SRV
+	struct {
+		struct camd35_server_data *server;
+		int totalservers;
+		int clientid;
+		int serverid;
+		pid_t pid_recvmsg;
+		pthread_t tid_recvmsg;
+		pid_t pid_connect;
+		pthread_t tid_connect;
+	} camd35;
+#endif
+#ifdef CS378X_SRV
+	struct {
+		struct camd35_server_data *server;
+		int totalservers;
+		int clientid;
+		int serverid;
+		int keepalive;
+		pid_t pid_recvmsg;
+		pthread_t tid_recvmsg;
+		pid_t pid_connect;
+		pthread_t tid_connect;
+	} cs378x;
+#endif
+
 
 	//WEBIF
 #ifdef HTTP_SRV
@@ -1476,6 +1636,8 @@ struct program_data
 		int newcamd[2];
 		int cache[2];
 		int cacheex[2];
+		int cs378x[2];
+		int cs378x_cex[2];
 		struct {
 			int cccam[2];
 			int mgcamd[2];

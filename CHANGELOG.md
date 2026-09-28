@@ -104,5 +104,17 @@ Todas as alterações notáveis desde a v1.20, por versão.
 - Cache em producao: ALIVETIME 10s + ADAPTIVETTL + CACHE PEER do circuito
 
 
+## v1.45 (2026-09-28)
+- CACHEEX CS378X (TCP) e CAMD35 (UDP) restaurados: readers + clientes com cacheex_mode 2/3, forward do pull, handshake AES
+- FIX CRITICO AES: a limpeza da v1.40 tinha apagado o loop das rondas (falhava o vector RFC) - restaurado e verificado
+- FIX CPU: as pipes internas cs378x em falta (2 threads a fazer busy-spin ~93%)
+- FIX fallback parse: CS378X/CAMD35 aceites no FALLBACK ORDER
+- GUI: paginas Cs378x/Camd35 restauradas (servers + clientes, iteram as duas listas normal+cacheex), CacheEX page com os tipos cs378x/camd35, cabecalhos fixos (sticky) nas tabelas
+- Graficos da CW Monitoring redesenhados: linha de area + marcadores de cwbad + grelha (em vez das barras finas)
+- Identificacao limpa nos protocolos: sem o flag WHO do CCcam, nodeid aleatorio, sem o provid multics no newcamd/mgcamd (os servers remotos mostram versoes normais)
+- Configs: clientes_cs378x.cfg/clientes_camd35.cfg + servidores.cfg com shares por ident + CACHE AUTOADD NO
+
+
+
 
 

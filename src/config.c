@@ -575,6 +575,57 @@ void cfg_addcccamserver(struct config_data *cfg, struct cccam_server_data *srv)
 	else cfg->cccam.server = srv;
 }
 
+#if defined(CAMD35_SRV) || defined(CS378X_SRV)
+void cfg_addcamd35client(struct camd35_server_data *camd35, struct camd35_client_data *cli)
+{
+#ifdef CACHEEX
+	if (cli->cacheex_mode) {
+		struct camd35_client_data *tmp = camd35->cacheexclient;
+		cli->next = NULL;
+		if (tmp) {
+			while (tmp->next) tmp = tmp->next;
+			tmp->next = cli;
+		} else camd35->cacheexclient = cli;
+	}
+	else
+#endif
+	{
+		struct camd35_client_data *tmp = camd35->client;
+		cli->next = NULL;
+		if (tmp) {
+			while (tmp->next) tmp = tmp->next;
+			tmp->next = cli;
+		} else camd35->client = cli;
+	}
+}
+#endif
+
+#ifdef CAMD35_SRV
+void cfg_addcamd35server(struct config_data *cfg, struct camd35_server_data *srv)
+{
+	struct camd35_server_data *tmp = cfg->camd35.server;
+	srv->next = NULL;
+	if (tmp) {
+		while (tmp->next) tmp = tmp->next;
+		tmp->next = srv;
+	}
+	else cfg->camd35.server = srv;
+}
+#endif
+
+#ifdef CS378X_SRV
+void cfg_addcs378xserver(struct config_data *cfg, struct camd35_server_data *srv)
+{
+	struct camd35_server_data *tmp = cfg->cs378x.server;
+	srv->next = NULL;
+	if (tmp) {
+		while (tmp->next) tmp = tmp->next;
+		tmp->next = srv;
+	}
+	else cfg->cs378x.server = srv;
+}
+#endif
+
 void cfg_addcachepeer(struct cacheserver_data *srv, struct cachepeer_data *peer)
 {
 	struct cachepeer_data *tmp = srv->peer;
@@ -683,6 +734,8 @@ int read_config(struct config_data *cfg)
 
 	struct cccam_server_data *cccam = NULL;
 	struct mgcamdserver_data *mgcamd = NULL;
+	struct camd35_server_data *camd35 = NULL;
+	struct camd35_server_data *cs378x = NULL;
 	struct cacheserver_data *cache = NULL;
 
 	struct includefile_data *file = newfile(config_file);
@@ -1794,6 +1847,8 @@ sid accept:
 					if (!strcmp(str,"NEWCAMD")) t = TYPE_NEWCAMD;
 					else if (!strcmp(str,"CCCAM")) t = TYPE_CCCAM;
 					else if (!strcmp(str,"MGCAMD")) t = TYPE_MGCAMD;
+					else if (!strcmp(str,"CAMD35")) t = TYPE_CAMD35;
+					else if (!strcmp(str,"CS378X")) t = TYPE_CS378X;
 					if (t) {
 						int dup = 0;
 						int dk;
@@ -2520,6 +2575,219 @@ link_cccam_client:
 				cfg->cccam.keepalive = parse_boolean();
 			}
 #endif
+		}
+#endif
+
+#if defined(CAMD35_SRV) || defined(CAMD35_CLI) || defined(CS378X_SRV) || defined(CS378X_CLI)
+		else if (!strcmp(str,"CAMD35")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"PORT")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0),"':' expected\n");
+					continue;
+				} else iparser++;
+				parse_int(str);
+				camd35 = malloc( sizeof(struct camd35_server_data) );
+				memset( camd35, 0, sizeof(struct camd35_server_data) );
+				camd35->port = atoi(str);
+				camd35->handle = -1;
+				camd35->id = 0;
+				cfg_addcamd35server(cfg, camd35);
+			}
+			else if (!strcmp(str,"SERVER")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				srv = malloc( sizeof(struct server_data) );
+				memset(srv,0,sizeof(struct server_data) );
+				srv->type = TYPE_CAMD35;
+				parse_str(str);
+				srv->host = add_host(cfg, str);
+				parse_int(str);
+				srv->port = atoi( str );
+				if (*iparser==',') iparser++;
+				parse_str(srv->user);
+				parse_str(srv->pass);
+				parse_server_data( srv );
+				srv->handle = -1;
+				pthread_mutex_init( &srv->lock, NULL );
+				cfg_addserver(cfg, srv);
+				camd35_init_data( srv->user, srv->pass, &srv->encryptkey, &srv->decryptkey, &srv->ucrc);
+			}
+			else if (!strcmp(str,"USER")) {
+				if (!camd35) {
+					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip Camd35 user, undefined Camd35 Server\n",file->nbline,iparser-currentline);
+					continue;
+				}
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				struct camd35_client_data *cli = malloc( sizeof(struct camd35_client_data) );
+				memset(cli,0,sizeof(struct camd35_client_data) );
+				cli->handle = -1;
+				cli->flags |= FLAG_DEFCONFIG;
+				parse_str(cli->user);
+				cli->userhash = hashCode( (unsigned char *)cli->user, strlen(cli->user) );
+				parse_str(cli->pass);
+				cli->sharelimits[0].caid = 0xFFFF;
+				parse_spaces();
+				if (*iparser=='{') {
+					iparser++;
+					parse_spaces();
+					while (1) {
+						parse_spaces();
+						if (*iparser=='}') break;
+						parse_value(str,"\r\n\t =");
+						parse_spaces();
+						if (*iparser!='=') break;
+						iparser++;
+						if (!strcmp(str,"profiles")) {
+							i = 0;
+							while (i<MAX_CSPORTS) {
+								if ( parse_int(str)>0 ) {
+									int n = cli->csport[i] = atoi(str);
+									int j;
+									for (j=0; j<i; j++) if ( cli->csport[j] && (cli->csport[j]==n) ) break;
+									if (j>=i) {
+										cli->csport[i] = n;
+										i++;
+									}
+								}
+								else break;
+								parse_spaces();
+								if (*iparser==',') iparser++;
+							}
+						}
+						else if (!strcmp(str,"shares")) parse_option_shares( cli->sharelimits );
+#ifdef CACHEEX
+						else if (!strcmp(str,"cacheex_mode")) {
+							if (parse_hex(str)) cli->cacheex_mode = hex2int(str);
+						}
+#endif
+						parse_spaces();
+						if (*iparser==';') iparser++; else break;
+					}
+					if (*iparser!='}') mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%s line %d,%d): '}' expected\n",file->name,file->nbline,iparser-currentline);
+				}
+				camd35_init_data( cli->user, cli->pass, &cli->encryptkey, &cli->decryptkey, &cli->ucrc);
+				cfg_addcamd35client(camd35, cli);
+			}
+		}
+		else if (!strcmp(str,"CS378X")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"PORT")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cs378x = malloc( sizeof(struct camd35_server_data) );
+				memset( cs378x, 0, sizeof(struct camd35_server_data) );
+				cs378x->client = NULL;
+				cs378x->port = atoi(str);
+				cs378x->handle = -1;
+				cs378x->id = 0;
+				cs378x->next = NULL;
+				cfg_addcs378xserver(cfg, cs378x);
+			}
+			else if (!strcmp(str,"USER")) {
+				if (!cs378x) {
+					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip cs378x user, undefined cs378x Server\n",file->nbline,iparser-currentline);
+					continue;
+				}
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				struct camd35_client_data *cli = malloc( sizeof(struct camd35_client_data) );
+				memset(cli,0,sizeof(struct camd35_client_data) );
+				cli->handle = -1;
+				cli->flags |= FLAG_DEFCONFIG;
+				parse_str(cli->user);
+				cli->userhash = hashCode( (unsigned char *)cli->user, strlen(cli->user) );
+				parse_str(cli->pass);
+				cli->sharelimits[0].caid = 0xFFFF;
+				parse_spaces();
+				if (*iparser=='{') {
+					iparser++;
+					parse_spaces();
+					while (1) {
+						parse_spaces();
+						if (*iparser=='}') break;
+						parse_value(str,"\r\n\t =");
+						parse_spaces();
+						if (*iparser!='=') break;
+						iparser++;
+						if (!strcmp(str,"profiles")) {
+							i = 0;
+							while (i<MAX_CSPORTS) {
+								if ( parse_int(str)>0 ) {
+									int n = cli->csport[i] = atoi(str);
+									int j;
+									for (j=0; j<i; j++) if ( cli->csport[j] && (cli->csport[j]==n) ) break;
+									if (j>=i) {
+										cli->csport[i] = n;
+										i++;
+									}
+								}
+								else break;
+								parse_spaces();
+								if (*iparser==',') iparser++;
+							}
+						}
+						else if (!strcmp(str,"shares")) parse_option_shares( cli->sharelimits );
+#ifdef CACHEEX
+						else if (!strcmp(str,"cacheex_mode")) {
+							if (parse_hex(str)) cli->cacheex_mode = hex2int(str);
+						}
+#endif
+						parse_spaces();
+						if (*iparser==';') iparser++; else break;
+					}
+					if (*iparser!='}') mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%s line %d,%d): '}' expected\n",file->name,file->nbline,iparser-currentline);
+				}
+				camd35_init_data( cli->user, cli->pass, &cli->encryptkey, &cli->decryptkey, &cli->ucrc);
+				cfg_addcamd35client( cs378x, cli);
+			}
+			else if (!strcmp(str,"SERVER")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				srv = malloc( sizeof(struct server_data) );
+				memset(srv,0,sizeof(struct server_data) );
+				srv->type = TYPE_CS378X;
+				parse_str(str);
+				srv->host = add_host(cfg, str);
+				parse_int(str);
+				srv->port = atoi( str );
+				if (*iparser==',') iparser++;
+				parse_str(srv->user);
+				parse_str(srv->pass);
+				parse_server_data( srv );
+				srv->handle = -1;
+				pthread_mutex_init( &srv->lock, NULL );
+				cfg_addserver(cfg, srv);
+				camd35_init_data( srv->user, srv->pass, &srv->encryptkey, &srv->decryptkey, &srv->ucrc);
+			}
+			else if (!strcmp(str,"KEEPALIVE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cfg->cs378x.keepalive = parse_boolean();
+			}
 		}
 #endif
 
@@ -3624,6 +3892,8 @@ link_mgcamd_user:
 				if (!strcmp(str,"NEWCAMD")) t = TYPE_NEWCAMD;
 				else if (!strcmp(str,"CCCAM")) t = TYPE_CCCAM;
 				else if (!strcmp(str,"MGCAMD")) t = TYPE_MGCAMD;
+				else if (!strcmp(str,"CAMD35")) t = TYPE_CAMD35;
+				else if (!strcmp(str,"CS378X")) t = TYPE_CS378X;
 				if (t) {
 					// nao repetir protocolo
 					int dup = 0;
@@ -5319,6 +5589,205 @@ void remove_cache_peers(struct cacheserver_data *srv)
 }
 
 
+///////////////////////////////////////////////////////////////////////////////
+// camd35 / cs378x (cacheex) - update/remove
+///////////////////////////////////////////////////////////////////////////////
+
+#if defined(CAMD35_SRV) || defined(CS378X_SRV)
+void remove_camd35_clients(struct camd35_server_data *srv)
+{
+	while (srv->client) {
+		struct camd35_client_data *cli = srv->client;
+		srv->client = cli->next;
+		if (cli->handle>0) close(cli->handle);
+		free( cli );
+	}
+}
+
+void remove_camd35_cacheexclients(struct camd35_server_data *srv)
+{
+	while (srv->cacheexclient) {
+		struct camd35_client_data *cli = srv->cacheexclient;
+		srv->cacheexclient = cli->next;
+		if (cli->handle>0) close(cli->handle);
+		free( cli );
+	}
+}
+
+void update_camd35_clients(struct camd35_server_data *srv, struct camd35_server_data *newsrv )
+{
+	struct camd35_client_data *cli = srv->client;
+	while (cli) {
+		struct camd35_client_data *newcli = newsrv->client;
+		while (newcli) {
+			if ( !(newcli->flags&FLAG_DELETE) )
+			if ( !(cli->flags&FLAG_DELETE) )
+			if ( !strcmp(cli->user, newcli->user) ) break;
+			newcli = newcli->next;
+		}
+		if (newcli) {
+			newcli->flags |= FLAG_DELETE;
+#ifdef CACHEEX
+			cli->cacheex_mode = newcli->cacheex_mode;
+#endif
+			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
+				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
+			}
+		}
+		else cli->flags |= FLAG_DELETE;
+		cli = cli->next;
+	}
+	struct camd35_client_data *prev = NULL;
+	struct camd35_client_data *newcli = newsrv->client;
+	while (newcli) {
+		struct camd35_client_data *next = newcli->next;
+		if (!(newcli->flags&FLAG_DELETE)) {
+			if (prev) prev->next = newcli->next; else newsrv->client = newcli->next;
+			cfg_addcamd35client(srv, newcli);
+		} else prev = newcli;
+		newcli = next;
+	}
+	prev = NULL;
+	cli = srv->client;
+	while (cli) {
+		struct camd35_client_data *next = cli->next;
+		if (cli->flags&FLAG_DELETE) {
+			if (prev) prev->next = cli->next; else srv->client = cli->next;
+			cfg_addcamd35client(newsrv, cli);
+		} else prev = cli;
+		cli = next;
+	}
+}
+
+void update_camd35_cacheexclients(struct camd35_server_data *srv, struct camd35_server_data *newsrv )
+{
+	struct camd35_client_data *cli = srv->cacheexclient;
+	while (cli) {
+		struct camd35_client_data *newcli = newsrv->cacheexclient;
+		while (newcli) {
+			if ( !(newcli->flags&FLAG_DELETE) )
+			if ( !(cli->flags&FLAG_DELETE) )
+			if ( !strcmp(cli->user, newcli->user) ) break;
+			newcli = newcli->next;
+		}
+		if (newcli) {
+			newcli->flags |= FLAG_DELETE;
+#ifdef CACHEEX
+			cli->cacheex_mode = newcli->cacheex_mode;
+#endif
+			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
+				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
+			}
+		}
+		else cli->flags |= FLAG_DELETE;
+		cli = cli->next;
+	}
+	struct camd35_client_data *prev = NULL;
+	struct camd35_client_data *newcli = newsrv->cacheexclient;
+	while (newcli) {
+		struct camd35_client_data *next = newcli->next;
+		if (!(newcli->flags&FLAG_DELETE)) {
+			if (prev) prev->next = newcli->next; else newsrv->cacheexclient = newcli->next;
+			cfg_addcamd35client(srv, newcli);
+		} else prev = newcli;
+		newcli = next;
+	}
+	prev = NULL;
+	cli = srv->cacheexclient;
+	while (cli) {
+		struct camd35_client_data *next = cli->next;
+		if (cli->flags&FLAG_DELETE) {
+			if (prev) prev->next = cli->next; else srv->cacheexclient = cli->next;
+			cfg_addcamd35client(newsrv, cli);
+		} else prev = cli;
+		cli = next;
+	}
+}
+#endif
+
+#ifdef CAMD35_SRV
+void update_camd35_servers(struct config_data *cfg, struct config_data *newcfg)
+{
+	struct camd35_server_data *srv = cfg->camd35.server;
+	while (srv) {
+		struct camd35_server_data *newsrv = newcfg->camd35.server;
+		while (newsrv) {
+			if (srv->port==newsrv->port) break;
+			newsrv = newsrv->next;
+		}
+		if (newsrv) {
+			newsrv->flags |= FLAG_DELETE;
+			update_camd35_clients( srv, newsrv );
+			update_camd35_cacheexclients( srv, newsrv );
+		}
+		else srv->flags |= FLAG_DELETE;
+		srv = srv->next;
+	}
+	struct camd35_server_data *prev = NULL;
+	srv = newcfg->camd35.server;
+	while (srv) {
+		struct camd35_server_data *next = srv->next;
+		if (!(srv->flags&FLAG_DELETE)) {
+			if (prev) prev->next = srv->next; else newcfg->camd35.server = srv->next;
+			cfg_addcamd35server(cfg, srv);
+		} else prev = srv;
+		srv = next;
+	}
+	prev = NULL;
+	srv = cfg->camd35.server;
+	while (srv) {
+		struct camd35_server_data *next = srv->next;
+		if (srv->flags&FLAG_DELETE) {
+			if (prev) prev->next = srv->next; else cfg->camd35.server = srv->next;
+			cfg_addcamd35server(newcfg, srv);
+		} else prev = srv;
+		srv = next;
+	}
+}
+#endif
+
+#ifdef CS378X_SRV
+void update_cs378x_servers(struct config_data *cfg, struct config_data *newcfg)
+{
+	struct camd35_server_data *srv = cfg->cs378x.server;
+	while (srv) {
+		struct camd35_server_data *newsrv = newcfg->cs378x.server;
+		while (newsrv) {
+			if (srv->port==newsrv->port) break;
+			newsrv = newsrv->next;
+		}
+		if (newsrv) {
+			newsrv->flags |= FLAG_DELETE;
+			update_camd35_clients( srv, newsrv );
+			update_camd35_cacheexclients( srv, newsrv );
+		}
+		else srv->flags |= FLAG_DELETE;
+		srv = srv->next;
+	}
+	struct camd35_server_data *prev = NULL;
+	srv = newcfg->cs378x.server;
+	while (srv) {
+		struct camd35_server_data *next = srv->next;
+		if (!(srv->flags&FLAG_DELETE)) {
+			if (prev) prev->next = srv->next; else newcfg->cs378x.server = srv->next;
+			cfg_addcs378xserver(cfg, srv);
+		} else prev = srv;
+		srv = next;
+	}
+	prev = NULL;
+	srv = cfg->cs378x.server;
+	while (srv) {
+		struct camd35_server_data *next = srv->next;
+		if (srv->flags&FLAG_DELETE) {
+			if (prev) prev->next = srv->next; else cfg->cs378x.server = srv->next;
+			cfg_addcs378xserver(newcfg, srv);
+		} else prev = srv;
+		srv = next;
+	}
+}
+#endif
+
+
 void update_cache_peers(struct cacheserver_data *srv, struct cacheserver_data *newsrv)
 {
 	// set remove flag to old deleted clients & update reused one
@@ -5997,6 +6466,13 @@ void reread_config( struct config_data *cfg )
 
 	update_mgcamd_servers( cfg, &newcfg );
 
+#ifdef CAMD35_SRV
+	update_camd35_servers( cfg, &newcfg );
+#endif
+#ifdef CS378X_SRV
+	update_cs378x_servers( cfg, &newcfg );
+#endif
+
 
 	cfg->cache.autoadd = newcfg.cache.autoadd;
 	cfg->cache.autoenable = newcfg.cache.autoenable;
@@ -6070,6 +6546,29 @@ void reread_config( struct config_data *cfg )
 		if (newsrv->handle>0) close(newsrv->handle);
 		free( newsrv );
 	}
+
+#ifdef CAMD35_SRV
+	// Camd35 Servers
+	while (newcfg.camd35.server) {
+		struct camd35_server_data *newsrv = newcfg.camd35.server;
+		newcfg.camd35.server = newsrv->next;
+		remove_camd35_clients( newsrv );
+		remove_camd35_cacheexclients( newsrv );
+		if (newsrv->handle>0) close(newsrv->handle);
+		free( newsrv );
+	}
+#endif
+#ifdef CS378X_SRV
+	// Cs378x Servers
+	while (newcfg.cs378x.server) {
+		struct camd35_server_data *newsrv = newcfg.cs378x.server;
+		newcfg.cs378x.server = newsrv->next;
+		remove_camd35_clients( newsrv );
+		remove_camd35_cacheexclients( newsrv );
+		if (newsrv->handle>0) close(newsrv->handle);
+		free( newsrv );
+	}
+#endif
 
 	// Cache Servers
 	while (newcfg.cache.server) {
@@ -6324,6 +6823,48 @@ int check_config(struct config_data *cfg)
 		cache = cache->next;
 	}
 
+#ifdef CAMD35_SRV
+	// Open port for Camd35 server (UDP)
+	struct camd35_server_data *camd35 = cfg->camd35.server;
+	while (camd35) {
+		if (camd35->handle<=0) {
+			if ( (camd35->port<1024)||(camd35->port>0xffff) ) {
+				mlogf(LOGWARNING,getdbgflag(DBG_CONFIG,0,0)," camd35 Server: invalid port value (%d)\n", camd35->port);
+				camd35->handle = -1;
+			}
+			else if ( (camd35->handle=CreateServerSockUdp(camd35->port, IP_ADRESS)) == -1) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," camd35 Server: bind port failed (%d)\n", camd35->port);
+				camd35->handle = -1;
+			}
+			else {
+				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," camd35 Server started on port %d\n",camd35->port);
+				CHECK_IP_ADRESS(camd35->handle);
+			}
+		}
+		camd35 = camd35->next;
+	}
+#endif
+#ifdef CS378X_SRV
+	// Open port for cs378x server (TCP)
+	struct camd35_server_data *cs378x = cfg->cs378x.server;
+	while (cs378x) {
+		if (cs378x->handle<=0) {
+			if ( (cs378x->port<1024)||(cs378x->port>0xffff) ) {
+				mlogf(LOGWARNING,getdbgflag(DBG_CONFIG,0,0)," cs378x Server: invalid port value (%d)\n", cs378x->port);
+				cs378x->handle = -1;
+			}
+			else if ( (cs378x->handle=CreateServerSockTcp_nonb(cs378x->port, IP_ADRESS)) == -1) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," cs378x Server: bind port failed (%d)\n", cs378x->port);
+				cs378x->handle = -1;
+			}
+			else {
+				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," cs378x Server started on port %d\n",cs378x->port);
+				CHECK_IP_ADRESS(cs378x->handle);
+			}
+		}
+		cs378x = cs378x->next;
+	}
+#endif
 
 
 	return 0;
@@ -6415,6 +6956,72 @@ void cfg_set_id_counters(struct config_data *cfg)
 		//
 		cfg->cccam.totalservers++;
 		ccc = ccc->next;
+	}
+#endif
+
+	// camd35 Servers/Clients
+#ifdef CAMD35_SRV
+	cfg->camd35.totalservers = 0;
+	struct camd35_server_data *camd35 = cfg->camd35.server;
+	while (camd35) {
+		if (!camd35->id) {
+			camd35->id = cfg->camd35.serverid;
+			cfg->camd35.serverid++;
+		}
+		camd35->totalclients = 0;
+		struct camd35_client_data *cli = camd35->client;
+		while (cli) {
+			if (!cli->id) {
+				cli->id = cfg->camd35.clientid;
+				cfg->camd35.clientid++;
+			}
+			camd35->totalclients++;
+			cli = cli->next;
+		}
+		cli = camd35->cacheexclient;
+		while (cli) {
+			if (!cli->id) {
+				cli->id = cfg->camd35.clientid;
+				cfg->camd35.clientid++;
+			}
+			camd35->totalclients++;
+			cli = cli->next;
+		}
+		cfg->camd35.totalservers++;
+		camd35 = camd35->next;
+	}
+#endif
+
+	// cs378x Servers/Clients
+#ifdef CS378X_SRV
+	cfg->cs378x.totalservers = 0;
+	struct camd35_server_data *cs378x = cfg->cs378x.server;
+	while (cs378x) {
+		cs378x->totalclients = 0;
+		if (!cs378x->id) {
+			cs378x->id = cfg->cs378x.serverid;
+			cfg->cs378x.serverid++;
+		}
+		struct camd35_client_data *cli = cs378x->client;
+		while (cli) {
+			if (!cli->id) {
+				cli->id = cfg->cs378x.clientid;
+				cfg->cs378x.clientid++;
+			}
+			cs378x->totalclients++;
+			cli = cli->next;
+		}
+		cli = cs378x->cacheexclient;
+		while (cli) {
+			if (!cli->id) {
+				cli->id = cfg->cs378x.clientid;
+				cfg->cs378x.clientid++;
+			}
+			cs378x->totalclients++;
+			cli = cli->next;
+		}
+		cfg->cs378x.totalservers++;
+		cs378x = cs378x->next;
 	}
 #endif
 

@@ -468,6 +468,9 @@ char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, 
 ///////////////////////////////////////////////////////////////////////////////
 void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid);
 int pipe_send_cacheex_push_cache(struct cache_data *pcache, uint8_t *cw, uint8_t *nodeid);
+#if defined(CACHEEX) && defined(CS378X_SRV)
+void forward_cs378x(ECM_DATA *ecm);
+#endif
 
 #include "clustredcache.c"
 
@@ -478,6 +481,16 @@ int pipe_send_cacheex_push_cache(struct cache_data *pcache, uint8_t *cw, uint8_t
 #endif
 
 #include "crc32.c"
+
+#if defined(CAMD35_SRV) || defined(CAMD35_CLI) || defined(CS378X_SRV) || defined(CS378X_CLI)
+#include "msg-camd35.c"
+#endif
+#ifdef CAMD35_CLI
+#include "cli-camd35.c"
+#endif
+#ifdef CS378X_CLI
+#include "cli-cs378x.c"
+#endif
 
 struct connect_cli_data {
 	void *server;
@@ -493,6 +506,12 @@ struct connect_cli_data {
 
 #ifdef CCCAM_SRV
 #include "srv-cccam.c"
+#endif
+#ifdef CAMD35_SRV
+#include "srv-camd35.c"
+#endif
+#ifdef CS378X_SRV
+#include "srv-cs378x.c"
 #endif
 
 #ifdef CACHEEX
@@ -560,8 +579,20 @@ char *src2string(int srctype, int srcid, char *ret)
 				sprintf( ret,"Unknow CacheEx server (id=%d)", srcid);
 			return "CacheEx Server";
 		}
+#ifdef CAMD35_SRV
+		else if (srcid&PEER_CAMD35_CLIENT) {
+			sprintf( ret,"CacheEx Camd35 client (id=%d)", srcid);
+			return "CacheEx Camd35 client";
+		}
 #endif
-	}
+#ifdef CS378X_SRV
+		else if (srcid&PEER_CS378X_CLIENT) {
+			sprintf( ret,"CacheEx Cs378x client (id=%d)", srcid);
+			return "CacheEx Cs378x client";
+		}
+#endif
+		}
+#endif
 #ifdef SRV_CSCACHE
 	else if (srctype==DCW_SOURCE_CSCLIENT) {
 		// srcid =  (csid<<16)|cliid;
@@ -681,6 +712,17 @@ void mainprocess()
 	SetSoketNonBlocking(prg.pipe.cacheex[1]);
 #endif
 
+#if defined(CS378X_SRV) || defined(CS378X_CLI)
+	if ( pipe(prg.pipe.cs378x) < 0 ) { perror("pipe()"); exit(1); }
+	SetSoketNonBlocking(prg.pipe.cs378x[0]);
+	SetSoketNonBlocking(prg.pipe.cs378x[1]);
+#ifdef CS378X_SRV
+	if ( pipe(prg.pipe.cs378x_cex) < 0 ) { perror("pipe()"); exit(1); }
+	SetSoketNonBlocking(prg.pipe.cs378x_cex[0]);
+	SetSoketNonBlocking(prg.pipe.cs378x_cex[1]);
+#endif
+#endif
+
 	if ( pipe(prg.pipe.cccam) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(prg.pipe.cccam[0]);
 	SetSoketNonBlocking(prg.pipe.cccam[1]);
@@ -715,11 +757,12 @@ void mainprocess()
 	srand (time(NULL));
 
 #ifdef CCCAM 
-// NODE ID: 8675e141 217e6912
-	prg.nodeid[0] = 'R';
-	prg.nodeid[1] = '8';
-	prg.nodeid[2] = '2';
-	prg.nodeid[3] = 'N';
+// NODE ID: aleatorio como uma box CCcam real (sem a assinatura "RxxN" do
+// multics - os servidores remotos mostram-nos como cliente normal)
+	prg.nodeid[0] = 0xff & fastrnd2();
+	prg.nodeid[1] = 0xff & fastrnd2();
+	prg.nodeid[2] = 0xff & fastrnd2();
+	prg.nodeid[3] = 0xff & fastrnd2();
 	prg.nodeid[4] = 0xff & fastrnd2();
 	prg.nodeid[5] = 0xff & fastrnd2();
 	prg.nodeid[6] = 0xff & fastrnd2();
@@ -760,6 +803,14 @@ void mainprocess()
 
 #ifdef CCCAM_SRV
 	start_thread_cccam();
+#endif
+
+#ifdef CS378X_SRV
+	start_thread_cs378x();
+#endif
+
+#ifdef CAMD35_SRV
+	start_thread_camd35();
 #endif
 
 	start_thread_http();
