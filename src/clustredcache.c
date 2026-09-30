@@ -501,7 +501,8 @@ struct cache_data *cache_fetch( struct cache_data *thereq )
 		uint32_t alive = pcache->validtime ? pcache->validtime : cfg.cache.alivetime;
 		if ( (pcache->recvtime+alive) < ticks ) return NULL;
 		if ( (pcache->hash==thereq->hash)&&(pcache->sid==thereq->sid) )
-			if ( (pcache->tag==thereq->tag) || !pcache->tag || !thereq->tag ) return pcache;
+			if ( (pcache->tag==thereq->tag) || !pcache->tag || !thereq->tag )
+			if ( !cfg.cache.strictprov || !pcache->provid || !thereq->provid || (pcache->provid==thereq->provid) ) return pcache;
 		pcache = pcache->next;
 		if (pcache==cachetab[index]) break;
 	}
@@ -1301,7 +1302,7 @@ inline int cache_fetch_cycle( struct cache_data *thereq, uint8_t cw[16], cwcycle
 
 
 // search for same cw in cache
-int cache_check_cw( uint32_t recvtime, uint8_t tag, uint16_t caid, uint32_t hash, uint16_t sid, uint8_t cw[16], int cwpart )
+int cache_check_cw( uint32_t recvtime, uint8_t tag, uint16_t caid, uint32_t hash, uint16_t sid, uint32_t provid, uint8_t cw[16], int cwpart )
 {
 	int index = sid&MAX_CACHE_INDEX;
 	struct cache_data **cachetab = getcachetabbycaid(caid);
@@ -1311,6 +1312,7 @@ int cache_check_cw( uint32_t recvtime, uint8_t tag, uint16_t caid, uint32_t hash
 		if ( (pcache->recvtime+cfg.cache.filtertime)<recvtime) {
 			if ( pcache->recvtime < ticks ) break;
 			if ( (pcache->sid==sid)&&(pcache->hash!=hash)&&(pcache->tag!=tag) ) { // ??? maybe find same dcw for different providers
+			if ( !cfg.cache.strictprov || !pcache->provid || !provid || (pcache->provid==provid) ) {
 				struct cw_cache_data *cwdata = pcache->cwdata;
 				while (cwdata) {
 					switch (cwpart) {
@@ -1328,6 +1330,7 @@ int cache_check_cw( uint32_t recvtime, uint8_t tag, uint16_t caid, uint32_t hash
 					}
 					cwdata = cwdata->next;
 				}
+			}
 			}
 		}
 		pcache = pcache->next;
@@ -1348,6 +1351,7 @@ int cache_check_samecw( struct cache_data *req, uint8_t cw[16], int cwpart )
 		if ( (pcache->recvtime+cfg.cache.filtertime)<req->recvtime) {
 			if ( pcache->recvtime < ticks ) break;
 			if ( (pcache->sid==req->sid)&&(pcache->hash!=req->hash) ) { // ??? maybe find same dcw for different providers
+			if ( !cfg.cache.strictprov || !pcache->provid || !req->provid || (pcache->provid==req->provid) ) {
 				struct cw_cache_data *cwdata = pcache->cwdata;
 				while (cwdata) {
 					switch (cwpart) {
@@ -1365,6 +1369,7 @@ int cache_check_samecw( struct cache_data *req, uint8_t cw[16], int cwpart )
 					}
 					cwdata = cwdata->next;
 				}
+			}
 			}
 		}
 		pcache = pcache->next;
@@ -1405,7 +1410,7 @@ inline struct cache_data *cache_fetch_samechannel( struct cache_data *thereq, ui
 		if ( pcache->recvtime < ticks ) break;
 		if ( pcache->flags&CACHE_FLAG_SENDPIPE )
 		if ( (pcache->sid==thereq->sid)&&(pcache->hash!=thereq->hash) ) // need provider XXX
-		//if ( !pcache->provid || !thereq->provid || (pcache->provid!=thereq->provid) )
+		if ( !cfg.cache.strictprov || !pcache->provid || !thereq->provid || (pcache->provid==thereq->provid) )
 		if ( pcache->tag && (pcache->tag==thereq->tag) )
 		if ( pcache->cwcycle!=NO_CYCLE )
 		if ( !isnullDCW(pcache->prevcw) )

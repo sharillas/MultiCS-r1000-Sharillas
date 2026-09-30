@@ -1355,6 +1355,7 @@ struct config_data
 		int faccept0onid;
 		int alivetime;
 		int adaptivettl; // TTL adaptativo (cryptoperiod estimado por canal)
+		int strictprov;  // v1.47: isolamento por provider (sem misturar idents nas caches)
 		int filter;
 		int filtertime;
 		int threshold;
