@@ -446,7 +446,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 
 	if (srctype!=DCW_SOURCE_CACHE) {
 		pthread_mutex_lock( &prg.lockcache );
-		int f = cache_check_cw( ecm->recvtime, ecm->ecm[0], ecm->caid, ecm->hash, ecm->sid, dcw, cwpart);
+		int f = cache_check_cw( ecm->recvtime, ecm->ecm[0], ecm->caid, ecm->hash, ecm->sid, ecm->provid, dcw, cwpart);
 		pthread_mutex_unlock( &prg.lockcache );
 		if (!f) {
 			pthread_mutex_unlock(&prg.lockecm);

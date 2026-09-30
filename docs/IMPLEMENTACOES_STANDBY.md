@@ -1,7 +1,4 @@
-# Lista de implementações em standby
-
-(Actualizado 28/09 - a v1.46 fechou os pontos A1-A4, B8 e o display camd35.
-Pendentes: A5, A6, A7.)
+# Lista total de implementações em standby
 
 (Compilada a 28/09 — nada se implementa sem discussão prévia.)
 
@@ -22,6 +19,32 @@ Pendentes: A5, A6, A7.)
 | # | Implementação |
 |---|---|
 | 8 | O motor aprende os **idents bons por CAID** e marca os que trazem lixo (o 000007) — filtro automático em vez do `shares=` manual |
+
+## B2. STRICT PROVIDER — v1.47 (IMPLEMENTADO e compilado — standby, não deployado)
+
+**Conclusão do estudo (30/09):** os idents MEO são streams com chaves PRÓPRIAS —
+`1814:005211`, `1814:000007` (ID_SAT) e `1814:000000` (wildcard/prov 0) têm
+Jaccard por hora ≈ 0 (chaves independentes). Os 70 SIDs do 000007 existem todos
+também no 005211 — o 000007 não é "só para certos canais"; é o ident alternativo
+dos MESMOS canais com scrambling separada. O receptor pede UM ident (o do PMT).
+
+**O mecanismo dos freezes:** o multics cruzava as CWs entre providers do mesmo
+SID (o `cache_fetch_samechannel` "same channel with different hash and provider"
+com o check do provid COMENTADO + os `cache_check_cw/samecw` sem provid) — a
+chave do 000007 ia parar à cache do 005211 (e vice-versa) = chave errada = freeze.
+
+**O que a v1.47 faz (feito e compilado, x64+x32):**
+- Nova opção `CACHE STRICTPROVID: YES/NO` (default **YES**)
+- O isolamento nos 4 pontos: `cache_fetch` (o hit principal), `cache_fetch_cycle`
+  (já tinha), `cache_check_cw` (assinatura + `ecm->provid` no chamador setdcw.c),
+  `cache_check_samecw`, `cache_fetch_samechannel` (o comentado reactivado)
+- A regra: cross-provider só quando um dos dois provid = 0 (o wildcard — o caso
+  "csp luck of provid" mantém-se)
+- `VERSION_STR` = 1.47
+
+**Deploy:** quando aprovar — o build está em `build\multics.x64` (a config da
+produção pode levar `CACHE STRICTPROVID: YES` explícito; sem a linha o default
+já é YES).
 
 ## C. GUI — retoques pendentes
 

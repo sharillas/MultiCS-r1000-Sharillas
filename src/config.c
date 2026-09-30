@@ -181,6 +181,7 @@ void init_config(struct config_data *cfg)
 	cfg->cache.server = NULL;
 	cfg->cache.faccept0onid = 1;
 	cfg->cache.alivetime = 45000;
+	cfg->cache.strictprov = 1; // v1.47: default ON (o 1814:000007 tem chaves proprias)
 	cfg->cache.filter = 1;
 	cfg->cache.filtertime = 0;
 	cfg->cache.threshold = 1;
@@ -3154,6 +3155,14 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cfg->cache.adaptivettl = parse_boolean();
+			}
+			else if (!strcmp(str,"STRICTPROVID")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cfg->cache.strictprov = parse_boolean();
 			}
 			else if (!strcmp(str,"AUTOADD")) {
 				parse_spaces();
@@ -6478,6 +6487,7 @@ void reread_config( struct config_data *cfg )
 	cfg->cache.autoenable = newcfg.cache.autoenable;
 	cfg->cache.alivetime = newcfg.cache.alivetime;
 	cfg->cache.adaptivettl = newcfg.cache.adaptivettl;
+	cfg->cache.strictprov = newcfg.cache.strictprov;
 	cfg->cache.threshold = newcfg.cache.threshold;
 	cfg->cache.filter = newcfg.cache.filter;
 	cfg->cache.filtertime = newcfg.cache.filtertime;
