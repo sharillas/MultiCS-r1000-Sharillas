@@ -8,4 +8,4 @@ projeto_final/
 # segredos locais - nunca versionar
 deploy.secrets.ps1
 *.secrets.ps1
-.secrets/
+.secrets/build/
