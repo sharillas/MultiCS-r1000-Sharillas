@@ -462,10 +462,11 @@ int cc_sendinfo_srv(struct server_data *srv, int ismultics)
 	memset(buf, 0, CC_MAXMSGSIZE);
 	memcpy(buf, srv->user, 20);
 	memcpy(buf + 20, cfg.nodeid, 8 );
-	buf[28] = 0;
+	buf[28] = 0; //srv->wantemus;
 	memcpy(buf + 29, cfg.cccam.version, 32);	// cccam version (ascii)
-	// v1.45: nao marcamos o flag WHO (buf[57..59]) - o servidor remoto mostra-nos
-	// como "CCcam v2.3.0" simples em vez de "CCcam/MCS r-XX"
+	if (ismultics) {
+		buf[57]='W'; buf[58]='H'; buf[59]='O';
+	}
 	memcpy(buf + 61, cfg.cccam.build, 32);	// build number (ascii)
 	mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " Server: send client info User: '%s', Version: '%s', Build: '%s'.\n", srv->user, cfg.cccam.version, cfg.cccam.build);
 	return cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_CLI_INFO, 20 + 8 + 1 + 64, buf);
@@ -490,6 +491,13 @@ int cc_connect_srv(struct server_data *srv, int fd)
 		mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " Server (%s:%d) does not return 16 bytes\n", srv->host->name,srv->port);
 		return -2;
 	}
+
+#ifdef DEBUG_NETWORK
+	if (flag_debugnet) {
+		mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " CCcam: receive server init seed (%d)\n",n);
+		debughex(data,n);
+	}
+#endif
 
 	// Check Multics
 	int ismultics = 0;

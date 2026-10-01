@@ -253,19 +253,6 @@ void camd35_srv_recvmsg(struct server_data *srv)
 			//if ( !checkECMD5(cacheex.ecmd5) ) cli->cacheex.totalcsp++;
 			cacheex.hash = (buf[43]<<24) | (buf[42]<<16) | (buf[41]<<8) | buf[40];
 			if (!cacheex_check(&cacheex)) break;
-			// v1.46 A1+A2: validacao do motor + aprendizagem da cadencia pelo ritmo
-			{
-				ECM_DATA tmp;
-				memset(&tmp, 0, sizeof(tmp));
-				tmp.caid = cacheex.caid;
-				tmp.provid = cacheex.provid;
-				tmp.sid = cacheex.sid;
-				tmp.hash = cacheex.hash;
-				int anom = dcwchan_engine(&tmp, cw);
-				if (anom==1) { srv->cacheex.badcw++; break; }
-				if (anom==3) { srv->cacheex.badcw++; break; }
-				if (anom==2) srv->cacheex.badcw++;
-			}
 			//mlogf(LOGDEBUG,getdbgflag(DBG_CACHEEX, 0, 0)," CACHEEX PUSH from client(%d) %04x:%06x:%04x (%08x)\n",cli->id,cacheex.caid,cacheex.provid,cacheex.sid,cacheex.hash);
 			srv->cacheex.got[0]++;
 			int uphop = buf[60];

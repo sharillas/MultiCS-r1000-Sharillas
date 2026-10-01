@@ -253,6 +253,8 @@ void newcamd_srv_accept(struct cardserver_data *srv)
 	}
 }
 
+#ifndef MONOTHREAD_ACCEPT
+
 void *newcamd_accept_thread(void *param)
 {
 	sleep(5);
@@ -289,6 +291,9 @@ void *newcamd_accept_thread(void *param)
 	}
 	return NULL;
 }
+
+#endif
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // SEND DCW
@@ -343,12 +348,7 @@ void cs_senddcw_cli(struct cs_client_data *cli)
 		buf[2] = 0x10;
 		memcpy( &buf[3], &ecm->cw, 16 );
 		if ( !cs_message_send( cli->handle, &clicd, buf, 19, cli->sessionkey) ) cs_disconnect_cli( cli );
-		else {
-			if ( ecm->cs && ecm->cs->option.dcw.dcwlog ) {
-				mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," => cw to client '%s' ch %04x:%06x:%04x (%dms) CW: %02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime, ecm->cw[0],ecm->cw[1],ecm->cw[2],ecm->cw[3],ecm->cw[4],ecm->cw[5],ecm->cw[6],ecm->cw[7],ecm->cw[8],ecm->cw[9],ecm->cw[10],ecm->cw[11],ecm->cw[12],ecm->cw[13],ecm->cw[14],ecm->cw[15]);
-			}
-			else mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," => cw to client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime);
-		}
+		else mlogf(LOGINFO,getdbgflag(DBG_NEWCAMD,cli->pid,cli->id)," => cw to client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, GetTickCount()-cli->ecm.recvtime);
 		cli->lastdcwtime = GetTickCount();
 	}
 	else { //if (ecm->data->dcwstatus==STAT_DCW_FAILED)
@@ -459,8 +459,6 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 					memcpy( data, buf, len);
 					uint32_t provid = ecm_getprovid( data, clicd.caid );
 					if (provid!=0) clicd.provid = provid;
-					// CWFEED (estudo de CWs): pedido do cliente
-					cwfeed_add(clicd.caid, clicd.provid, clicd.sid, data, len, NULL, 0, 0, 0, 2, 0, cli->id);
 
 					if (cli->ecm.busy) {
 						cli->ecmdenied++;
@@ -527,11 +525,6 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 							}
 							// Check for Success/Timeout
 							if (!ecm->checktime) {
-								// v1.41 FEEDBACK: hash repetido apos entrega com sucesso => a CW nao abriu
-								if ( (cli->lastecm.status==1) && (cli->lastecm.dcwsrctype==DCW_SOURCE_SERVER)
-									&& ((ticks - cli->lastdcwtime) < 15000) ) {
-									dcw_badmark( cli->lastecm.dcwsrcid, clicd.caid, clicd.sid );
-								}
 								pthread_mutex_unlock(&prg.lockecm);
 								cs_senddcw_cli(cli);
 								break;
@@ -571,8 +564,10 @@ void cs_cli_recvmsg(struct cs_client_data *cli)
 						else ecm->checktime = 1; // Check NOW
 						pipe_wakeup( prg.pipe.ecm[1] );
 
+#ifndef PUBLIC
 #if defined(CACHEEX) && defined(CS378X_SRV)
 						forward_cs378x(ecm);
+#endif
 #endif
 
 #ifdef TESTCHANNEL
@@ -705,8 +700,10 @@ void cs_recv_pipe()
 
 void *cs_recvmsg_thread(void *param)
 {
+#ifndef PUBLIC
 	prg.pid_cs_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Newcamd RecvMSG",0,0,0);
+#endif
 
 	prg.epoll.newcamd = epoll_create( MAX_EPOLL_EVENTS );
 	// Add PIPE
@@ -771,8 +768,10 @@ void *cs_recvmsg_thread(void *param)
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
 
+#ifndef PUBLIC
 	prg.pid_cs_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Newcamd RecvMSG",0,0,0);
+#endif
 
 	while (!prg.restart) {
 		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
@@ -870,7 +869,9 @@ void *cs_recvmsg_thread(void *param)
 int start_thread_newcamd()
 {
 	pthread_t tid;
+#ifndef MONOTHREAD_ACCEPT
 	create_thread(&tid, newcamd_accept_thread,NULL);
+#endif
 	create_thread(&tid, cs_recvmsg_thread,NULL);
 	return 0;
 }

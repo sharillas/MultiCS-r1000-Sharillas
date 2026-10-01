@@ -1,14 +1,14 @@
 
-// TIMING BUDGET (v1.40): timeout efetivo do ECM = min(dcw.timeout*period,
-// cadencia aprendida pelo CYCLE ENGINE / 2) quando o motor esta activo no perfil
+// TIMING BUDGET: timeout efetivo do ECM = min(dcw.timeout*period,
+// cryptoperiod estimado * fraction/100) quando TIMING ativo no perfil
 uint32_t dcwtimeout(struct cardserver_data *cs, ECM_DATA *ecm)
 {
 	uint32_t t = cs->option.dcw.timeout*ecm->period;
 	if (t<1) t = 1;
-	if (!cs->option.dcw.cycleengine) return t;
-	uint32_t cad = dcwchan_getcadence( ecm->caid, ecm->provid, ecm->sid );
-	if ( cad >= 8000 ) {
-		uint32_t budget = cad/2;
+	if (!cs->option.timing.enable) return t;
+	int period = chnbudget_getperiod( ecm->caid, ecm->provid, ecm->sid );
+	if ( period>0 && (cs->option.timing.minperiod>0) && (period >= cs->option.timing.minperiod) ) {
+		uint32_t budget = ((uint32_t)period * cs->option.timing.fraction)/100;
 		if ( (budget>0) && (budget < t) ) return budget;
 	}
 	return t;
@@ -87,6 +87,15 @@ void clients_check_sendcw(ECM_DATA *ecm)
 #ifdef CCCAM_SRV
 	cc_check_sendcw(ecm);
 #endif
+#ifdef FREECCCAM_SRV
+	freecccam_check_sendcw(ecm);
+#endif
+#ifdef CS378X_SRV
+	cs378x_check_sendcw(ecm);
+#endif
+#ifdef CAMD35_SRV
+	camd35_check_sendcw(ecm);
+#endif
 }
 
 
@@ -104,31 +113,6 @@ void wakeup_sendecm() // not needed in mono-thread
 
 void ecm_faileddcw( ECM_DATA *ecm )
 {
-	uint32_t ticks = GetTickCount();
-	// CWFEED (estudo de CWs): registar falha
-	if (ecm->caid || ecm->sid)
-		cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, NULL, 0, (uint16_t)((ticks-ecm->recvtime)%60000), 2, 0, 0, 0);
-
-	// LASTCW ON NOK: reenviar a ultima CW valida deste canal em vez de NOK
-	// (mantem o descrambler do cliente a trabalhar quando a fonte falha 1 ciclo)
-	if (ecm->cs && ecm->cs->option.dcw.lastcwon_nok) {
-		uint8_t lastcw[16], prevcw[16];
-		int n = dcwchan_getlast2(ecm->caid, ecm->provid, ecm->sid, lastcw, prevcw);
-		if (n>0) {
-			uint8_t *use = lastcw;
-			if (n==2 && !dcwcmp16(ecm->cw, lastcw)) use = prevcw; // a ultima ja foi usada -> tenta a anterior (outra metade)
-			ecm->statusmsg = "Decode Success (last CW)";
-			ecm->dcwstatus = STAT_DCW_SUCCESS;
-			ecm->checktime = 0;
-			ecm->waitserver = 0;
-			memcpy(ecm->cw, use, 16);
-			sid_newecm(ecm);
-			clients_check_sendcw(ecm);
-			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,ecm->cs->id)," < Decode_Failed -> LAST CW resent ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
-			return;
-		}
-	}
-
 	// DEDUP: falhar os followers deste leader (partilham o resultado)
 	ECM_DATA *f = ecm->dedupnext;
 	while (f) {
@@ -175,6 +159,51 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 		}
 		else ecm->checktime = ticks + 500;
 		return;
+	}
+
+	// EMULATOR (constcw / BISS)
+	if ( (ecm->dcwstatus==STAT_DCW_WAIT)||(ecm->dcwstatus==STAT_DCW_WAITCACHE) ) {
+		if ( (ecm->cs==NULL) || ecm->cs->option.fenableemu ) {
+			if ( emu_get_constcw(ecm) ) {
+				ecm_setdcw( ecm, ecm->cw, DCW_SOURCE_EMU, 0 );
+				return;
+			}
+			// BISS (2600) sem chave -> NOK imediato (amarelo na GUI) SO SE
+			// nao houver mais fontes a tentar (readers/cache)
+			if (ecm->caid==0x2600) {
+				int hastry = 0;
+				struct server_data *srv = cfg.server;
+				while (srv) {
+					if (!(srv->flags&FLAG_DELETE)) { hastry = 1; break; }
+					srv = srv->next;
+				}
+				if (!hastry && ecm->cs && ecm->cs->option.fallowcache) hastry = 1;
+				if (!hastry) {
+					ecm->statusmsg = "NOK (BISS EMU): no key";
+					ecm->nokbiss = 1;
+					mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ecm: BISS EMU NOK ch %04x:%06x:%04x (%s)\n", ecm->caid, ecm->provid, ecm->sid, ecm->statusmsg);
+					ecm_faileddcw( ecm );
+					return;
+				}
+			}
+		}
+		else if (ecm->caid==0x2600) {
+			// emulador desligado neste perfil -> NOK imediato so sem outras fontes
+			int hastry = 0;
+			struct server_data *srv = cfg.server;
+			while (srv) {
+				if (!(srv->flags&FLAG_DELETE)) { hastry = 1; break; }
+				srv = srv->next;
+			}
+			if (!hastry && ecm->cs && ecm->cs->option.fallowcache) hastry = 1;
+			if (!hastry) {
+				ecm->statusmsg = "NOK (BISS EMU): emulator disabled";
+				ecm->nokbiss = 1;
+				mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ecm: BISS EMU NOK ch %04x:%06x:%04x (%s)\n", ecm->caid, ecm->provid, ecm->sid, ecm->statusmsg);
+				ecm_faileddcw( ecm );
+				return;
+			}
+		}
 	}
 
 	// CACHE(fallowcache = 1)
@@ -335,14 +364,71 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 							ecm_addsrvip(ecm, newsrv->host->ip);
 						}
 					}
+					else if (newsrv->type==TYPE_CCAM3) {
+						if (ccam3_sendecm_srv(newsrv, ecm)>0) {
+							ecm->lastsendtime = ticks;
+							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to CCcam3 server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
+							newsrv->lastecmtime = ticks;
+							newsrv->ecmnb++;
+							newsrv->busy=1;
+							newsrv->ecm.request = ecm;
+							newsrv->ecm.hash = ecm->hash;
+							newsrv->retry=0;
+							ecm_addsrv(ecm, newsrv->id);
+							ecm_addsrvip(ecm, newsrv->host->ip);
+						}
+					}
 #endif
 
-					// CWFEED (estudo de CWs): registar envio ao server
-					if (newsrv) {
-						uint8_t fp = (newsrv->type==TYPE_CCCAM)?1:
-							(newsrv->type==TYPE_NEWCAMD)?2:0;
-						cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, NULL, 0, 0, 0, fp, newsrv->id, 0);
+#ifdef RADEGAST_CLI
+					else if (newsrv->type==TYPE_RADEGAST) {
+						if (rdgd_sendecm_srv(newsrv, ecm)>0) {
+							ecm->lastsendtime = ticks;
+							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to Radegast server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
+							newsrv->lastecmtime = ticks;
+							newsrv->ecmnb++;
+							newsrv->busy=1;
+							newsrv->ecm.request = ecm;
+							newsrv->ecm.hash = ecm->hash;
+							newsrv->retry=0;
+							ecm_addsrv(ecm, newsrv->id);
+							ecm_addsrvip(ecm, newsrv->host->ip);
+						}
 					}
+#endif
+#ifdef CAMD35_CLI
+					else if (newsrv->type==TYPE_CAMD35) {
+						if (camd35_sendecm_srv(newsrv, ecm)>0) {
+							ecm->lastsendtime = ticks;
+							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to camd35 server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
+							newsrv->lastecmtime = ticks;
+							newsrv->ecmnb++;
+							newsrv->busy=1;
+							newsrv->ecm.request = ecm;
+							newsrv->ecm.hash = ecm->hash;
+							newsrv->retry=0;
+							ecm_addsrv(ecm, newsrv->id);
+							ecm_addsrvip(ecm, newsrv->host->ip);
+						}
+					}
+#endif
+#ifdef CS378X_CLI
+					else if (newsrv->type==TYPE_CS378X) {
+						if (cs378x_sendecm_srv(newsrv, ecm)>0) {
+							ecm->lastsendtime = ticks;
+							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to cs378x server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
+
+							newsrv->lastecmtime = ticks;
+							newsrv->ecmnb++;
+							newsrv->busy=1;
+							newsrv->ecm.request = ecm;
+							newsrv->ecm.hash = ecm->hash;
+							newsrv->retry=0;
+							ecm_addsrv(ecm, newsrv->id);
+							ecm_addsrvip(ecm, newsrv->host->ip);
+						}
+					}
+#endif
 					ecm->statusmsg = "Waiting for servers...";
 					if ( cs->option.server.first > (ecm->server_totalsent+1) ) ecm->checktime = ticks + 10;
 					else {
@@ -359,6 +445,13 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 					ecm->waitserver = 1; // XXX
 					ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm); // till the end if there is no server
 
+#ifdef BUSY_SERVER
+					if (!ecm->server_totalwait && !ecm->server_totalsent) {
+						ecm->statusmsg = "Decode failed, no free server";
+						ecm_faileddcw( ecm );
+						cs->ecmbusysrv++;
+					}
+#endif
 					return;
 				}
 			}
@@ -367,6 +460,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				if ( (ecm->checktime-ecm->recvtime) > (cs->option.server.timeout*ecm->period) ) ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 			}
 		}
+#ifndef PUBLIC
 		else if (!ecm->server_totalwait) {
 			ecm->statusmsg = "Decode failed, no server open this channel";
 			ecm_faileddcw( ecm );
@@ -381,6 +475,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 			ecm->cachestatus = ECM_CACHE_REQ2;
 			ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 		}
+#endif
 		else ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 	}
 }
@@ -457,7 +552,10 @@ void recv_ecm_pipe()
 					ecm = req.ecm; //search_ecmdata_byhash( req.caid, req.sid, req.hash );
 					if (ecm) {
 						if ( (ecm->caid==req.caid)&&(ecm->hash==req.hash)&&(ecm->sid==req.sid)&&(ecm->dcwstatus==STAT_DCW_WAITCACHE) ) {
+#ifndef PUBLIC
 							struct cardserver_data *cs = ecm->cs;
+							if ( cs && (!cs->option.cachestatic) )
+#endif
 							ecm->dcwstatus = STAT_DCW_WAIT;
 							ecm->checktime = ecm->recvtime;
 						}
@@ -522,6 +620,16 @@ inline void srv_recvmsg( struct server_data *srv )
 	if (srv->type==TYPE_NEWCAMD) cs_srv_recvmsg(srv);
 #ifdef CCCAM_CLI
 	else if (srv->type==TYPE_CCCAM) cc_srv_recvmsg(srv);
+	else if (srv->type==TYPE_CCAM3) ccam3_srv_recvmsg(srv);
+#endif
+#ifdef RADEGAST_CLI
+	else if (srv->type==TYPE_RADEGAST) rdgd_srv_recvmsg(srv);
+#endif
+#ifdef CAMD35_CLI
+	else if (srv->type==TYPE_CAMD35) camd35_srv_recvmsg(srv);
+#endif
+#ifdef CS378X_CLI
+	else if (srv->type==TYPE_CS378X) cs378x_srv_recvmsg(srv);
 #endif
 }
 
@@ -530,9 +638,11 @@ inline void srv_recvmsg( struct server_data *srv )
 
 void *recv_msg_thread(void *param)
 {
+#ifndef PUBLIC
 	prg.pid_msg = syscall(SYS_gettid);
 	prg.tid_msg = pthread_self();
 	prctl(PR_SET_NAME,"ECM Thread",0,0,0);
+#endif
 
 	struct epoll_event evlist[MAX_EPOLL_EVENTS]; // epoll recv events
 	prg.epoll.ecm = epoll_create( MAX_EPOLL_EVENTS );
@@ -598,9 +708,11 @@ void *recv_msg_thread(void *param)
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
 
+#ifndef PUBLIC
 	prg.pid_msg = syscall(SYS_gettid);
 	prg.tid_msg = pthread_self();
 	prctl(PR_SET_NAME,"ECM Thread",0,0,0);
+#endif
 
 	while (!prg.restart) {
 		// getmintime
@@ -687,6 +799,25 @@ void *thread_keepalive(void *param)
 						if ( !cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_KEEPALIVE, 0, NULL) ) disconnect_srv( srv );
 					}
 				}
+
+#ifdef CAMD35_CLI
+				else if (srv->type==TYPE_CAMD35) {
+					if ( !srv->keepalive.status && ((srv->keepalive.time+30000)<ticks) ) {
+						camd35_send_keepalive(srv);
+						srv->keepalive.status = 1; // Sent and waiting for reply
+						srv->keepalive.time = ticks;
+					}
+					else if ( (srv->keepalive.status==1) && ((srv->keepalive.time+10000)<ticks) ) {
+						camd35_send_keepalive(srv);
+						srv->keepalive.status = 2;
+						srv->keepalive.time = ticks;
+					}
+					else if ( (srv->keepalive.status>1) && ((srv->keepalive.time+10000)<ticks) ) {
+						mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," ??? no keepalive response from camd35 server (%s:%d)\n",srv->host->name,srv->port);
+						disconnect_srv( srv );
+					}
+				}
+#endif
 			}
 			srv = srv->next;
 		}
@@ -703,9 +834,48 @@ void *thread_keepalive(void *param)
 						if ( !cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_KEEPALIVE, 0, NULL) ) disconnect_srv( srv );
 					}
 				}
+
+#ifdef CAMD35_CLI
+				else if (srv->type==TYPE_CAMD35) {
+					if ( !srv->keepalive.status && ((srv->keepalive.time+30000)<ticks) ) {
+						camd35_send_keepalive(srv);
+						srv->keepalive.status = 1; // Sent and waiting for reply
+						srv->keepalive.time = ticks;
+					}
+					else if ( (srv->keepalive.status==1) && ((srv->keepalive.time+10000)<ticks) ) {
+						camd35_send_keepalive(srv);
+						srv->keepalive.status = 2;
+						srv->keepalive.time = ticks;
+					}
+					else if ( (srv->keepalive.status>1) && ((srv->keepalive.time+10000)<ticks) ) {
+						mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," ??? no keepalive response from camd35 server (%s:%d)\n",srv->host->name,srv->port);
+						disconnect_srv( srv );
+					}
+				}
+#endif
 			}
 			srv = srv->next;
 		}
+
+
+#ifdef CAMD35_SRV
+		sleep(1);
+		// Check camd35 Clients
+		ticks = GetTickCount();
+		struct camd35_server_data *camd35 = cfg.camd35.server;
+		while (camd35) {
+			struct camd35_client_data *cli = camd35->client;
+			while (cli) {
+				if (cli->connection.status>0) {
+					if ( (cli->lastactivity+300000) < ticks) {
+						camd35_disconnect_cli(cli);
+					}
+				}
+				cli = cli->next;
+			}
+			camd35 = camd35->next;
+		}
+#endif
 
 	}
 }

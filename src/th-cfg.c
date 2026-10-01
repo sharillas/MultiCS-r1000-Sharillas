@@ -3,7 +3,12 @@
 // THREAD REREAD CONFIG
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef INOTIFY
+#include "inotify/inotify.h"
+#include "inotify/inotify-syscalls.h"
+#else
 #include <sys/inotify.h>
+#endif
 /*
 static void displayInotifyEvent(struct inotify_event *i)
 {
@@ -37,14 +42,17 @@ static void displayInotifyEvent(struct inotify_event *i)
 
 void *reread_config_thread(void *param)
 {
+#ifndef PUBLIC
 	prg.pid_cfg = syscall(SYS_gettid);
 	//prg.tid_cfg = pthread_self();
 	prctl(PR_SET_NAME,"Config Thread",0,0,0);
+#endif
 	init_config(&cfg);
 	read_config(&cfg);
 	usleep(100000);
 	check_config(&cfg);
 	cfg_set_id_counters(&cfg);
+	emu_load();
 	ipblock_load();
 	lite_load();
 
@@ -96,6 +104,7 @@ void *reread_config_thread(void *param)
 			sleep(1);
 			check_config(&cfg);
 			cfg_set_id_counters(&cfg);
+			emu_load();
 			ipblock_load();
 			lite_load();
 		}

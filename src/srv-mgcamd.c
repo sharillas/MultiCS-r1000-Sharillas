@@ -392,9 +392,13 @@ void mgcamd_srv_accept(struct mgcamdserver_data *srv)
 	}
 }
 
+#ifndef MONOTHREAD_ACCEPT
+
 void *mgcamd_accept_thread(void *param)
 {
+#ifndef PUBLIC
 	prctl(PR_SET_NAME,"MGcamd Accept",0,0,0);
+#endif
 	sleep(5);
 
 	while(!prg.restart) {
@@ -428,6 +432,9 @@ void *mgcamd_accept_thread(void *param)
 	}
 	return NULL;
 }
+
+#endif
+
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -731,11 +738,9 @@ void mg_cli_recvmsg(struct mg_client_data *cli)
 						break;
 					}
 				}
-			// Check for Accepted sids
-			uint8_t cw1cycle;
-			// CWFEED (estudo de CWs): pedido do cliente
-			cwfeed_add(clicd.caid, clicd.provid, clicd.sid, ecmdata, ecmlen, NULL, 0, 0, 0, 3, 0, cli->id);
-			if ( !accept_sid(cs, clicd.provid, clicd.sid, ecm_getchid(ecmdata,clicd.caid), ecmlen, &cw1cycle) ) {
+				// Check for Accepted sids
+				uint8_t cw1cycle;
+				if ( !accept_sid(cs, clicd.provid, clicd.sid, ecm_getchid(ecmdata,clicd.caid), ecmlen, &cw1cycle) ) {
 					cli->ecmdenied++;
 					cs->ecmdenied++;
 					// send decode failed
@@ -797,11 +802,6 @@ void mg_cli_recvmsg(struct mg_client_data *cli)
 						}
 						// Check for Success/Timeout
 						if (!ecm->checktime) {
-							// v1.41 FEEDBACK: hash repetido apos entrega com sucesso => a CW nao abriu
-							if ( (cli->lastecm.status==1) && (cli->lastecm.dcwsrctype==DCW_SOURCE_SERVER)
-								&& ((ticks - cli->lastdcwtime) < 15000) ) {
-								dcw_badmark( cli->lastecm.dcwsrcid, clicd.caid, clicd.sid );
-							}
 							mg_senddcw_cli(cli);
 							pthread_mutex_unlock(&prg.lockecm); //###
 							break;
@@ -848,8 +848,10 @@ void mg_cli_recvmsg(struct mg_client_data *cli)
 					}
 					else ecm->checktime = 1; // Check NOW
 					pipe_wakeup( prg.pipe.ecm[1] );
+#ifndef PUBLIC
 #if defined(CACHEEX) && defined(CS378X_SRV)
 					forward_cs378x(ecm);
+#endif
 #endif
 
 #ifdef TESTCHANNEL
@@ -1021,9 +1023,11 @@ void *mg_recvmsg_thread(void *param)
 {
 	int i;
 
+#ifndef PUBLIC
 	cfg.mgcamd.pid_recvmsg = syscall(SYS_gettid);
 	prg.pid_mg_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Mgcamd RecvMSG",0,0,0);
+#endif
 	struct epoll_event evlist[MAX_EPOLL_EVENTS]; // epoll recv events
 
 	prg.epoll.mgcamd = epoll_create( MAX_EPOLL_EVENTS );
@@ -1087,9 +1091,11 @@ void *mg_recvmsg_thread(void *param)
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
 
+#ifndef PUBLIC
 	cfg.mgcamd.pid_recvmsg = syscall(SYS_gettid);
 	prg.pid_mg_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"MGcamd RecvMSG",0,0,0);
+#endif
 
 	while (1) {
 		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
@@ -1185,8 +1191,10 @@ void *mg_recvmsg_thread(void *param)
 int start_thread_mgcamd()
 {
 	pthread_t tid;
+#ifndef MONOTHREAD_ACCEPT
 	create_thread(&tid, mgcamd_accept_thread,NULL);
 	create_thread(&tid, mgcamd_connector_thread,NULL);
+#endif
 
 	create_thread(&cfg.mgcamd.tid_recvmsg, mg_recvmsg_thread,NULL);
 	return 0;

@@ -6,6 +6,22 @@
 #include <stdarg.h>
 #include <unistd.h>
 
+#ifdef WIN32
+
+#include <windows.h>
+#include <sys/types.h>
+#include <sys/_default_fcntl.h>
+#include <sys/poll.h>
+#include <cygwin/types.h>
+#include <cygwin/socket.h>
+#include <sys/errno.h>
+#include <cygwin/in.h>
+#include <sched.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
+
+#else
+
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/time.h>
@@ -17,6 +33,8 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <poll.h>
+
+#endif
 
 #include "common.h"
 #include "convert.h"
@@ -110,6 +128,10 @@ void free_allhosts( struct config_data *cfg )
 	}
 }
 
+#if defined(CAMD35_SRV) || defined(CAMD35_CLI)
+void camd35_init_data( char *user, char *pass, AES_KEY *encryptkey, AES_KEY *decryptkey, uint32_t *ucrc);
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////
 // READ CONFIG
 ///////////////////////////////////////////////////////////////////////////////
@@ -130,8 +152,14 @@ void init_cccamserver(struct cccam_server_data *cccam)
 	cccam->client = NULL;
 	cccam->handle = -1;
 	cccam->port = 0;
+	cccam->ccam3_port = 0;
+	cccam->ccam3_handle = -1;
 #endif
 }
+
+#ifdef CCCAM_SRV
+void *ccam3_srv_thread(void *param); // servidor CCcam3 (srv-ccam3.c)
+#endif
 
 void init_mgcamdserver(struct mgcamdserver_data *mgcamd)
 {
@@ -181,7 +209,6 @@ void init_config(struct config_data *cfg)
 	cfg->cache.server = NULL;
 	cfg->cache.faccept0onid = 1;
 	cfg->cache.alivetime = 45000;
-	cfg->cache.strictprov = 1; // v1.47: default ON (o 1814:000007 tem chaves proprias)
 	cfg->cache.filter = 1;
 	cfg->cache.filtertime = 0;
 	cfg->cache.threshold = 1;
@@ -204,6 +231,17 @@ void init_config(struct config_data *cfg)
 	//init_cccamserver( &cfg->cccam ); cfg->cccam.id = cfg->cccamserverid; cfg->cccamserverid++;
 #endif
 
+#ifdef FREECCCAM_SRV
+	//2.2.1 build 3316
+	strcpy(cfg->freecccam.version, cc_version[0]);//"2.0.11");
+	sprintf(cfg->freecccam.build, "%d", cc_build[0]);
+
+	cfg->freecccam.server.client = NULL;
+	cfg->freecccam.server.handle = -1;
+	cfg->freecccam.server.port = 0;
+	cfg->freecccam.maxusers = 0;
+#endif
+
 #ifdef MGCAMD_SRV
 	cfg->mgcamd.clientid = 1;
 	cfg->mgcamd.serverid = 1;
@@ -217,12 +255,14 @@ void init_config(struct config_data *cfg)
 	cfg->testchn.provid = 0;
 #endif
 
+	cfg->camd35.clientid = 1;
+	cfg->camd35.serverid = 1;
+
+	cfg->cs378x.clientid = 1;
+	cfg->cs378x.serverid = 1;
+
 }
 
-
-// v1.44 DCW BADCW RECONNECT: valor do DEFAULT (partilhado com o loadbalance)
-static int g_badcwrecon_default = 15;
-int cfg_default_badcwrecon(void) { return g_badcwrecon_default; }
 
 void init_cardserver(struct cardserver_data *cs)
 {
@@ -241,15 +281,21 @@ void init_cardserver(struct cardserver_data *cs)
 	// NAGRA protection defaults (ativada por perfil com ENABLE NAGRA: 1)
 	cs->option.nagra.chk = 1;        // checksum das 4 quads
 	cs->option.nagra.prov = 0;       // provider na lista do perfil
-	cs->option.nagra.onbad = 0;      // LOG ONLY por defeito (v1.28: drop so se o perfil pedir NAGRA ONBAD: YES - false positives cortavam CWs legitimas)
+	cs->option.nagra.cycle = 1;      // ciclo + similaridade por canal
+	cs->option.nagra.onbad = 1;      // drop em bad dcw
+	cs->option.nagra.sensitive = 4;  // bytes iguais a CW anterior
 
 	// Flags
 	cs->option.faccept0caid = 1;
 	cs->option.faccept0provider = 1;
-	cs->option.faccept0sid = 1; // v1.29: rel?? transparente - aceitar SID vazio (boxes/ferramentas do circuito)
+	cs->option.faccept0sid = 0;
 	cs->option.fallownewcamd = 1;  // Allow newcamd server protocol to decode ecm
 	cs->option.fallowcccam = 1;    // Allow cccam server protocol to decode ecm
+	cs->option.fallowradegast = 1;
+	cs->option.fallowcamd35 = 1;
+	cs->option.fallowcs378x = 1;
 	cs->option.fallowskipcwc = 1; // default ON: ignorar cws repetidas
+	cs->option.fenableemu = 1;    // default ON: emulador BISS por perfil
 	cs->option.fenablelite = 0;   // default OFF: filtro de canais CCcam.lite
 
 	cs->option.fallowcache = 1;
@@ -267,11 +313,6 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.cssendsid = 1;
 	memcpy( cs->newcamd.key, defdeskey, 14);
 	cs->option.dcw.check = 0; // default: off
-	cs->option.dcw.lastcwon_nok = 0; // v1.29: opt-in por perfil
-	cs->option.dcw.cycleengine = 0; // v1.40: opt-in por perfil (motor unico de ciclo)
-	cs->option.dcw.badcwttl = 10;  // v1.40: 10 minutos por defeito
-	cs->option.dcw.badcwrecon = 15; // v1.44: 15 cwbad efectivas forcam reconexao da fonte (0=off)
-	cs->option.health.minecms = 10; // v1.41-fix: readers sem amostras participam ate ganharem historial (fix ovo-e-galinha)
 	// Shares
 	cs->option.fsharecccam = 1;
 	cs->option.fsharenewcamd = 1;
@@ -425,26 +466,10 @@ void parse_server_data( struct server_data *tsrv )
 					sids->chid = 0;
 				}
 				else if (!strcmp(str,"shares")) parse_option_shares( tsrv->sharelimits );
-		else if (!strcmp(str,"priority")) {
-			if (parse_int(str)) tsrv->priority = atoi(str);
-		}
-		else if (!strcmp(str,"hop")) {
-			// v1.40: hop da fonte (1 = directa, N = circuito) - preferido no load-balance
-			if (parse_int(str)) tsrv->hop = (uint8_t)atoi(str);
-		}
-			else if (!strcmp(str,"name")) {
-				// nome do reader para a GUI ("from" do last used share) - o '=' ja foi consumido
-				parse_spaces();
-				if (*iparser=='"') {
-					iparser++;
-					int n = 0;
-					while (*iparser && (*iparser!='"') && (n<62)) { tsrv->name[n++] = *iparser++; }
-					tsrv->name[n] = 0;
-					if (*iparser=='"') iparser++;
+				else if (!strcmp(str,"priority")) {
+					if (parse_int(str)) tsrv->priority = atoi(str);
 				}
-				else parse_name(tsrv->name);
-			}
-			else if (!strcmp(str,"nocheck")) {
+				else if (!strcmp(str,"nocheck")) {
 					// nao aplicar a protecao anti-loop (cliente e reader no mesmo IP)
 					tsrv->nocheck = parse_boolean();
 				}
@@ -455,9 +480,11 @@ void parse_server_data( struct server_data *tsrv )
 				else if (!strcmp(str,"cacheex_maxhop")) {
 					if (parse_hex(str)) tsrv->cacheex_maxhop = hex2int(str);
 				}
+#ifndef PUBLIC
 				else if (!strcmp(str,"cacheex_forward")) {
 					if (parse_hex(str)) tsrv->cacheex_forward = hex2int(str);
 				}
+#endif
 #endif
 
 				parse_spaces();
@@ -735,9 +762,9 @@ int read_config(struct config_data *cfg)
 
 	struct cccam_server_data *cccam = NULL;
 	struct mgcamdserver_data *mgcamd = NULL;
+	struct cacheserver_data *cache = NULL;
 	struct camd35_server_data *camd35 = NULL;
 	struct camd35_server_data *cs378x = NULL;
-	struct cacheserver_data *cache = NULL;
 
 	struct includefile_data *file = newfile(config_file);
 	if (!file) return -1;
@@ -927,6 +954,46 @@ int read_config(struct config_data *cfg)
 			}
 		}
 
+#ifdef RADEGAST_CLI
+		//R: host port caid providers
+		else if (!strcmp(str,"R")) {
+link_radegast_server:
+			parse_spaces();
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			srv = malloc( sizeof(struct server_data) );
+			memset(srv,0,sizeof(struct server_data) );
+			srv->type = TYPE_RADEGAST;
+			parse_str(str);
+			srv->host = add_host(cfg, str);
+			parse_int(str);
+			srv->port = atoi( str );
+			// Card
+			struct cs_card_data *card = malloc( sizeof(struct cs_card_data) );
+			memset(card, 0, sizeof(struct cs_card_data) );
+			srv->card = card;
+			parse_hex(str);
+			card->caid = hex2int( str );
+			card->nbprov = 0;
+			card->uphops = 1;
+			for(i=0;i<CARD_MAXPROV;i++) {
+				if ( parse_hex(str)>0 ) {
+					card->prov[i] = hex2int( str );
+					card->nbprov++;
+				} else break;
+				parse_spaces();
+				if (*iparser==',') iparser++;
+			}
+			srv->handle = -1;
+			pthread_mutex_init( &srv->lock, NULL );
+			cfg_addserver(cfg, srv);
+		}
+#endif
+
+
+
 		else if (!strcmp(str,"NEWCAMD")) {
 			parse_name(str);
 			uppercase(str);
@@ -1011,9 +1078,265 @@ int read_config(struct config_data *cfg)
 
 
 
+#ifdef CAMD35_SRV
+		else if (!strcmp(str,"CAMD35")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"PORT")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0),"':' expected\n");
+					continue;
+				} else iparser++;
+				parse_int(str);
+				// Create New
+				camd35 = malloc( sizeof(struct camd35_server_data) );
+				memset( camd35, 0, sizeof(struct camd35_server_data) );
+				camd35->port = atoi(str);
+				camd35->handle = -1;
+				camd35->id = 0;
+				cfg_addcamd35server(cfg, camd35);
+			}
+#ifdef CAMD35_CLI
+			else if (!strcmp(str,"SERVER")) {
+				goto link_camd35_server;
+			}
+#endif
+			else if (!strcmp(str,"USER")) {
+				if (!camd35) {
+					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip Camd35 user, undefined Camd35 Server\n",file->nbline,iparser-currentline);
+					continue;
+				}
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				// must check for reuse of same user
+				struct camd35_client_data *cli = malloc( sizeof(struct camd35_client_data) );
+				memset(cli,0,sizeof(struct camd35_client_data) );
+				// init default
+				cli->handle = -1;
+				cli->flags |= FLAG_DEFCONFIG;
+				//
+				parse_str(cli->user);
+				cli->userhash = hashCode( (unsigned char *)cli->user, strlen(cli->user) );
+				parse_str(cli->pass);
+
+				cli->sharelimits[0].caid = 0xFFFF;
+				parse_spaces();
+				if (*iparser=='{') { // Get Ports List & User Info
+					iparser++;
+					parse_spaces();
+					while (1) {
+						parse_spaces();
+						if (*iparser=='}') break;
+						// NAME1=value1; Name2=Value2 ... }
+						parse_value(str,"\r\n\t =");
+						//printf(" NAME: '%s'\n", str);
+						// '='
+						parse_spaces();
+						if (*iparser!='=') break;
+						iparser++;
+						// Value
+						// Check for PREDEFINED names
+						if (!strcmp(str,"profiles")) {
+							i = 0;
+							while (i<MAX_CSPORTS) {
+								if ( parse_int(str)>0 ) {
+									// check for port
+									int n = cli->csport[i] = atoi(str);
+									int j;
+									for (j=0; j<i; j++) if ( cli->csport[j] && (cli->csport[j]==n) ) break;
+									if (j>=i) { 
+										cli->csport[i] = n;
+										i++;
+									}
+								}
+								else break;
+								parse_spaces();
+								if (*iparser==',') iparser++;
+							}
+						}
+
+						else if (!strcmp(str,"shares")) parse_option_shares( cli->sharelimits );
+#ifdef CACHEEX
+						else if (!strcmp(str,"cacheex_mode")) {
+							if (parse_hex(str)) cli->cacheex_mode = hex2int(str);
+						}
+#endif
+						parse_spaces();
+						if (*iparser==';') iparser++; else break;
+					}
+					if (*iparser!='}') mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%s line %d,%d): '}' expected\n",file->name,file->nbline,iparser-currentline);
+				}
+				camd35_init_data( cli->user, cli->pass, &cli->encryptkey, &cli->decryptkey, &cli->ucrc);
+				cfg_addcamd35client(camd35, cli);
+			}
+		}
+
+#endif
+
+#ifdef CS378X_SRV
+		else if (!strcmp(str,"CS378X")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"PORT")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				// Create New
+				cs378x = malloc( sizeof(struct camd35_server_data) );
+				memset( cs378x, 0, sizeof(struct camd35_server_data) );
+				cs378x->client = NULL;
+				cs378x->port = atoi(str);
+				cs378x->handle = -1;
+				cs378x->id = 0;
+				cs378x->next = NULL;
+				// Add to config
+				cfg_addcs378xserver(cfg, cs378x);
+			}
+			else if (!strcmp(str,"USER")) {
+				if (!cs378x) {
+					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip cs378x user, undefined cs378x Server\n",file->nbline,iparser-currentline);
+					continue;
+				}
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				// must check for reuse of same user
+				struct camd35_client_data *cli = malloc( sizeof(struct camd35_client_data) );
+				memset(cli,0,sizeof(struct camd35_client_data) );
+				// init default
+				cli->handle = -1;
+				cli->flags |= FLAG_DEFCONFIG;
+				//
+				parse_str(cli->user);
+				cli->userhash = hashCode( (unsigned char *)cli->user, strlen(cli->user) );
+				parse_str(cli->pass);
+
+				cli->sharelimits[0].caid = 0xFFFF;
+				parse_spaces();
+				if (*iparser=='{') { // Get Ports List & User Info
+					iparser++;
+					parse_spaces();
+					while (1) {
+						parse_spaces();
+						if (*iparser=='}') break;
+						// NAME1=value1; Name2=Value2 ... }
+						parse_value(str,"\r\n\t =");
+						//printf(" NAME: '%s'\n", str);
+						// '='
+						parse_spaces();
+						if (*iparser!='=') break;
+						iparser++;
+						// Value
+						// Check for PREDEFINED names
+						if (!strcmp(str,"profiles")) {
+							i = 0;
+							while (i<MAX_CSPORTS) {
+								if ( parse_int(str)>0 ) {
+									// check for port
+									int n = cli->csport[i] = atoi(str);
+									int j;
+									for (j=0; j<i; j++) if ( cli->csport[j] && (cli->csport[j]==n) ) break;
+									if (j>=i) { 
+										cli->csport[i] = n;
+										i++;
+									}
+								}
+								else break;
+								parse_spaces();
+								if (*iparser==',') iparser++;
+							}
+						}
+
+						else if (!strcmp(str,"shares")) parse_option_shares( cli->sharelimits );
+#ifdef CACHEEX
+						else if (!strcmp(str,"cacheex_mode")) {
+							if (parse_hex(str)) cli->cacheex_mode = hex2int(str);
+						}
+#endif
+						parse_spaces();
+						if (*iparser==';') iparser++; else break;
+					}
+					if (*iparser!='}') mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%s line %d,%d): '}' expected\n",file->name,file->nbline,iparser-currentline);
+				}
+				camd35_init_data( cli->user, cli->pass, &cli->encryptkey, &cli->decryptkey, &cli->ucrc);
+				//
+				cfg_addcamd35client( cs378x, cli);
+			}
+			else if (!strcmp(str,"SERVER")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				srv = malloc( sizeof(struct server_data) );
+				memset(srv,0,sizeof(struct server_data) );
+				srv->type = TYPE_CS378X;
+				parse_str(str);
+				srv->host = add_host(cfg, str);
+				parse_int(str);
+				srv->port = atoi( str );
+				if (*iparser==',') iparser++; // like in oscam (device = host,port)
+				parse_str(srv->user);
+				parse_str(srv->pass);
+				/// if (parse_int(str)) srv->uphops = atoi( str ); else srv->uphops=1; removed
+				parse_server_data( srv );
+				srv->handle = -1;
+				pthread_mutex_init( &srv->lock, NULL );
+				cfg_addserver(cfg, srv);
+				camd35_init_data( srv->user, srv->pass, &srv->encryptkey, &srv->decryptkey, &srv->ucrc);
+			}
+			else if (!strcmp(str,"KEEPALIVE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cfg->cs378x.keepalive = parse_boolean();
+			}
+		}
+#endif
+
+
+#ifdef CAMD35_CLI
+		else if (!strcmp(str,"L")) {
+link_camd35_server:
+			parse_spaces();
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			srv = malloc( sizeof(struct server_data) );
+			memset(srv,0,sizeof(struct server_data) );
+			srv->type = TYPE_CAMD35;
+			parse_str(str);
+			srv->host = add_host(cfg, str);
+			parse_int(str);
+			srv->port = atoi( str );
+			if (*iparser==',') iparser++; // like in oscam (device = host,port)
+			parse_str(srv->user);
+			parse_str(srv->pass);
+			/// if (parse_int(str)) srv->uphops = atoi( str ); else srv->uphops=1; removed
+			parse_server_data( srv );
+			srv->handle = -1;
+			pthread_mutex_init( &srv->lock, NULL );
+			cfg_addserver(cfg, srv);
+			camd35_init_data( srv->user, srv->pass, &srv->encryptkey, &srv->decryptkey, &srv->ucrc);
+		}
+#endif
 
 
 
+
+#ifndef PUBLIC
 		else if (!strcmp(str,"DELAY")) {
 			parse_name(str);
 			uppercase(str);
@@ -1034,6 +1357,7 @@ int read_config(struct config_data *cfg)
 				if (parse_int(str)) cfg->delay.connect = atoi(str);
 			}
 		}
+#endif
 
 		else if (!strcmp(str,"LOGLEVEL")) {
 			parse_spaces();
@@ -1384,6 +1708,8 @@ sid accept:
 			else if (!strcmp(str,"CCCAM")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_cccam = atoi(str); }
 			else if (!strcmp(str,"NEWCAMD")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_newcamd = atoi(str); }
 			else if (!strcmp(str,"MGCAMD")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_mgcamd = atoi(str); }
+			else if (!strcmp(str,"CAMD35")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_camd35 = atoi(str); }
+			else if (!strcmp(str,"CS378X")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_cs378x = atoi(str); }
 			else if (!strcmp(str,"CACHE")) { parse_spaces(); iparser++; parse_int(str); cfg->failban.max_cache = atoi(str); }
 			else if (!strcmp(str,"EXCLUDE")) {
 				parse_spaces();
@@ -1559,6 +1885,22 @@ sid accept:
 					strcpy( cfg->javascript_file, str );
 				}
 			}
+			else if (!strcmp(str,"CONSTCW")) {
+				parse_spaces();
+				if (!strncmp(iparser,"FILE",4)) {
+					iparser += 4;
+					parse_spaces();
+				}
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_spaces();
+				if ( parse_path(str) ) {
+					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: read CONSTCW file %s\n",str);
+					strcpy( cfg->constcw_file, str );
+				}
+			}
 			else if (!strcmp(str,"BLOCKEDIP")) {
 				parse_spaces();
 				if (!strncmp(iparser,"FILE",4)) {
@@ -1574,6 +1916,24 @@ sid accept:
 					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: read BLOCKEDIP file %s\n",str);
 					strcpy( cfg->blockedip_file, str );
 				}
+			}
+		}
+
+		// top-level: CONSTCW FILE: ...  (sinonimo de FILE CONSTCW: ...)
+		else if (!strcmp(str,"CONSTCW")) {
+			parse_spaces();
+			if (!strncmp(iparser,"FILE",4)) {
+				iparser += 4;
+				parse_spaces();
+			}
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			parse_spaces();
+			if ( parse_path(str) ) {
+				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: read CONSTCW file %s\n",str);
+				strcpy( cfg->constcw_file, str );
 			}
 		}
 
@@ -1615,7 +1975,36 @@ sid accept:
 		}
 
 
+#ifdef TWIN
+///////////////////////////////////////////////////////////////////////////////
+// TWIN PROTOCOL
+///////////////////////////////////////////////////////////////////////////////
+		else if (!strcmp(str,"TWIN")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"DEVICE")) {
+				parse_spaces();
+				if ( (*iparser!=':')&&(*iparser!='=') ) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
 
+				cfg->twin.serial.handle=-1;
+				parse_quotes('"',cfg->twin.serial.device);
+				//debug("SERIAL = '%s', '%s'\n", twin->device, twin->chninfo.fname);
+			}
+			else if (!strcmp(str,"CHANNELINFO")) {
+				parse_spaces();
+				if ( (*iparser!=':')&&(*iparser!='=') ) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_quotes('"', cfg->twin.chninfo.fname);
+				twin_read_chninfo(cfg);
+				//debug("SERIAL = '%s', '%s'\n", cfg->twin.device, cfg->twin.chninfo.fname);
+			}
+		}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // DEFAULT
@@ -1691,43 +2080,24 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.dcw.silentnok = parse_boolean();
 				}
-				else if (!strcmp(str,"CYCLE_ENGINE")) {
-					// v1.40 DCW CYCLE ENGINE: motor unico de ciclo (substitui MINTIME/CYCLE_CHECK/CWC/STALE_CHECK/NAGRA CYCLE)
+				else if (!strcmp(str,"CYCLE_CHECK")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
 						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
 						continue;
 					} else iparser++;
-					defaultcs.option.dcw.cycleengine = parse_boolean();
+					defaultcs.option.dcw.cyclecheck = parse_boolean();
 				}
-				else if (!strcmp(str,"BADCW")) {
-					// v1.40 DCW BADCW TTL: minutos que um reader e saltado num canal com CW ma
-					parse_name(str);
-					uppercase(str);
-					if (!strcmp(str,"TTL")) {
-						parse_spaces();
-						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-							continue;
-						} else iparser++;
-						parse_int(str);
-						defaultcs.option.dcw.badcwttl = atoi(str);
-						if (defaultcs.option.dcw.badcwttl<1) defaultcs.option.dcw.badcwttl=1;
-						else if (defaultcs.option.dcw.badcwttl>1440) defaultcs.option.dcw.badcwttl=1440;
-					}
-					// v1.44 DCW BADCW RECONNECT: cwbad efectivas que forcam reconexao da fonte
-					else if (!strcmp(str,"RECONNECT")) {
-						parse_spaces();
-						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-							continue;
-						} else iparser++;
-						parse_int(str);
-						defaultcs.option.dcw.badcwrecon = atoi(str);
-						if (defaultcs.option.dcw.badcwrecon<0) defaultcs.option.dcw.badcwrecon=0;
-						else if (defaultcs.option.dcw.badcwrecon>100) defaultcs.option.dcw.badcwrecon=100;
-						g_badcwrecon_default = defaultcs.option.dcw.badcwrecon;
-					}
+				else if (!strcmp(str,"MINTIME")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.dcw.mintime = atoi(str);
+					if (defaultcs.option.dcw.mintime<0) defaultcs.option.dcw.mintime=0;
+					else if (defaultcs.option.dcw.mintime>60000) defaultcs.option.dcw.mintime=60000;
 				}
 				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 					parse_spaces();
@@ -1844,19 +2214,19 @@ sid accept:
 						parse_name(str);
 						uppercase(str);
 						if (!str[0]) break;
-					int t = 0;
-					if (!strcmp(str,"NEWCAMD")) t = TYPE_NEWCAMD;
-					else if (!strcmp(str,"CCCAM")) t = TYPE_CCCAM;
-					else if (!strcmp(str,"MGCAMD")) t = TYPE_MGCAMD;
-					else if (!strcmp(str,"CAMD35")) t = TYPE_CAMD35;
-					else if (!strcmp(str,"CS378X")) t = TYPE_CS378X;
-					if (t) {
-						int dup = 0;
-						int dk;
-						for (dk=0; dk<oi; dk++) if (defaultcs.option.fallback.order[dk]==t) dup = 1;
-						if (!dup) defaultcs.option.fallback.order[oi++] = t;
-					}
-					else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): unknown fallback protocol '%s'\n",file->nbline,iparser-currentline,str);
+						int t = 0;
+						if (!strcmp(str,"NEWCAMD")) t = TYPE_NEWCAMD;
+						else if (!strcmp(str,"CCCAM")) t = TYPE_CCCAM;
+						else if (!strcmp(str,"RADEGAST")) t = TYPE_RADEGAST;
+						else if (!strcmp(str,"CAMD35")) t = TYPE_CAMD35;
+						else if (!strcmp(str,"CS378X")) t = TYPE_CS378X;
+						if (t) {
+							int dup = 0;
+							int dk;
+							for (dk=0; dk<oi; dk++) if (defaultcs.option.fallback.order[dk]==t) dup = 1;
+							if (!dup) defaultcs.option.fallback.order[oi++] = t;
+						}
+						else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): unknown fallback protocol '%s'\n",file->nbline,iparser-currentline,str);
 					}
 				}
 				else if (!strcmp(str,"TIMEOUT")) {
@@ -1869,6 +2239,40 @@ sid accept:
 					defaultcs.option.fallback.timeout = atoi(str);
 					if (defaultcs.option.fallback.timeout<0) defaultcs.option.fallback.timeout=0;
 					else if (defaultcs.option.fallback.timeout>10000) defaultcs.option.fallback.timeout=10000;
+				}
+			}
+			else if (!strcmp(str,"TIMING")) {
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"ENABLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.timing.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"FRACTION")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.timing.fraction = atoi(str);
+					if (defaultcs.option.timing.fraction<10) defaultcs.option.timing.fraction=10;
+					else if (defaultcs.option.timing.fraction>100) defaultcs.option.timing.fraction=100;
+				}
+				else if (!strcmp(str,"MINPERIOD")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.timing.minperiod = atoi(str);
+					if (defaultcs.option.timing.minperiod<1000) defaultcs.option.timing.minperiod=1000;
+					else if (defaultcs.option.timing.minperiod>60000) defaultcs.option.timing.minperiod=60000;
 				}
 			}
 			else if (!strcmp(str,"NAGRA")) {
@@ -1898,6 +2302,14 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.nagra.prov = parse_boolean();
 				}
+				else if (!strcmp(str,"CYCLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.nagra.cycle = parse_boolean();
+				}
 				else if (!strcmp(str,"ONBAD")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -1905,6 +2317,17 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.onbad = parse_boolean();
+				}
+				else if (!strcmp(str,"SENSITIVE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.nagra.sensitive = atoi(str);
+					if (defaultcs.option.nagra.sensitive<0) defaultcs.option.nagra.sensitive=0;
+					else if (defaultcs.option.nagra.sensitive>8) defaultcs.option.nagra.sensitive=8;
 				}
 			}
 			else if ( !strcmp(str,"SERVER") ) {
@@ -1963,6 +2386,7 @@ sid accept:
 					if (defaultcs.option.server.first<0) defaultcs.option.server.first = 0;
 					else if (defaultcs.option.server.first>5) defaultcs.option.server.first = 5;
 				}
+#ifndef PUBLIC
 				else if ( (!strcmp(str,"ECMTIME"))||(!strcmp(str,"TIMEPERECM")) ) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2013,6 +2437,7 @@ sid accept:
 					}
 					else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): cardserver send variable expected\n",file->nbline,iparser-currentline);
 				}
+#endif
 				else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): profile variable expected\n",file->nbline,iparser-currentline);
 			}
 			else if ( !strcmp(str,"RETRY") ) {
@@ -2093,6 +2518,15 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.cachesendreq = parse_boolean();
 				}
+#ifndef PUBLIC
+				else if (!strcmp(str,"STATIC")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue; 
+					} else iparser++;
+					defaultcs.option.cachestatic = parse_boolean();
+				}
 				else if (!strcmp(str,"RESENDREQ")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2108,6 +2542,65 @@ sid accept:
 						continue; 
 					} else iparser++;
 					defaultcs.option.cachesendrep = parse_boolean();
+				}
+#endif
+			}
+			else if ( !strcmp(str,"CWC") ) {
+				parse_name(str);
+				uppercase(str);
+				if (!str[0]) { // DEFAULT CWC: 1
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"ENABLE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"SENSITIVE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.cwc.sensitive = atoi(str);
+					if (defaultcs.option.cwc.sensitive<0) defaultcs.option.cwc.sensitive=0;
+					else if (defaultcs.option.cwc.sensitive>8) defaultcs.option.cwc.sensitive=8;
+				}
+				else if (!strcmp(str,"DROPOLD")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.dropold = parse_boolean();
+				}
+				else if (!strcmp(str,"DROPBAD") || !strcmp(str,"ONBAD")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.dropbad = parse_boolean();
+				}
+				else if (!strcmp(str,"KEEPCYCLETIME")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.cwc.keepcycletime = atoi(str);
+					if (defaultcs.option.cwc.keepcycletime<0) defaultcs.option.cwc.keepcycletime=0;
+					else if (defaultcs.option.cwc.keepcycletime>600) defaultcs.option.cwc.keepcycletime=600;
 				}
 			}
 			else if ( !strcmp(str,"ACCEPT") ) {
@@ -2161,6 +2654,14 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.fallownewcamd = !parse_boolean();
 				}
+				else if (!strcmp(str,"RADEGAST")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fallowradegast = !parse_boolean();
+				}
 				else if (!strcmp(str,"CACHE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2168,6 +2669,22 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowcache = !parse_boolean();
+				}
+				else if (!strcmp(str,"CAMD35")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fallowcamd35 = !parse_boolean();
+				}
+				else if (!strcmp(str,"CS378X")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fallowcs378x = !parse_boolean();
 				}
 				else if (!strcmp(str,"SKIPCWC")) {
 					parse_spaces();
@@ -2207,6 +2724,14 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.fallownewcamd = parse_boolean();
 				}
+				else if (!strcmp(str,"RADEGAST")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fallowradegast = parse_boolean();
+				}
 				else if (!strcmp(str,"CACHE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2215,6 +2740,22 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.fallowcache = parse_boolean();
 				}
+				else if (!strcmp(str,"CAMD35")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fallowcamd35 = parse_boolean();
+				}
+				else if (!strcmp(str,"CS378X")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fallowcs378x = parse_boolean();
+				}
 				else if (!strcmp(str,"SKIPCWC")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2222,6 +2763,14 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowskipcwc = parse_boolean();
+				}
+				else if (!strcmp(str,"CWC")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.cwc.enable = parse_boolean();
 				}
 		else if (!strcmp(str,"ECMRATELIMIT")) {
 			if (!cardserver) {
@@ -2270,6 +2819,14 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.fallback.enable = parse_boolean();
 				}
+				else if (!strcmp(str,"TIMING")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.timing.enable = parse_boolean();
+				}
 				else if (!strcmp(str,"NAGRA")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2277,6 +2834,16 @@ sid accept:
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.enable = parse_boolean();
+				}
+				else if (!strcmp(str,"EMULATOR")) {
+					parse_name(str); // BISS
+					uppercase(str);
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.fenableemu = parse_boolean();
 				}
 				else if (!strcmp(str,"LITE")) {
 					parse_spaces();
@@ -2321,6 +2888,29 @@ link_cccam_server:
 			parse_str(srv->user);
 			parse_str(srv->pass);
 			/// if (parse_int(str)) srv->uphops = atoi( str ); else srv->uphops=1; removed
+			parse_server_data( srv );
+			srv->handle = -1;
+			pthread_mutex_init( &srv->lock, NULL );
+			cfg_addserver(cfg, srv);
+		}
+
+		else if (!strcmp(str,"C3")) {
+			// CCcam3 reader: C3: host porta user pass
+			parse_spaces();
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				continue;
+			} else iparser++;
+			srv = malloc( sizeof(struct server_data) );
+			memset(srv,0,sizeof(struct server_data) );
+			srv->type = TYPE_CCAM3;
+			parse_str(str);
+			srv->host = add_host(cfg, str);
+			parse_int(str);
+			srv->port = atoi( str );
+			if (*iparser==',') iparser++;
+			parse_str(srv->user);
+			parse_str(srv->pass);
 			parse_server_data( srv );
 			srv->handle = -1;
 			pthread_mutex_init( &srv->lock, NULL );
@@ -2493,6 +3083,28 @@ link_cccam_client:
 		//}
 
 #ifdef CCCAM
+		else if (!strcmp(str,"CCCAM3")) {
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"PORT")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cccam = cfg->cccam.server;
+				if (!cccam) {
+					cccam = malloc( sizeof(struct cccam_server_data) );
+					init_cccamserver(cccam);
+					cccam->id = 0;
+					cccam->next = NULL;
+					cfg_addcccamserver(cfg, cccam);
+				}
+				cccam->ccam3_port = atoi(str);
+			}
+		}
+
 		else if (!strcmp(str,"CCCAM")) {
 			parse_name(str);
 			uppercase(str);
@@ -2579,108 +3191,8 @@ link_cccam_client:
 		}
 #endif
 
-#if defined(CAMD35_SRV) || defined(CAMD35_CLI) || defined(CS378X_SRV) || defined(CS378X_CLI)
-		else if (!strcmp(str,"CAMD35")) {
-			parse_name(str);
-			uppercase(str);
-			if (!strcmp(str,"PORT")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0),"':' expected\n");
-					continue;
-				} else iparser++;
-				parse_int(str);
-				camd35 = malloc( sizeof(struct camd35_server_data) );
-				memset( camd35, 0, sizeof(struct camd35_server_data) );
-				camd35->port = atoi(str);
-				camd35->handle = -1;
-				camd35->id = 0;
-				cfg_addcamd35server(cfg, camd35);
-			}
-			else if (!strcmp(str,"SERVER")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				srv = malloc( sizeof(struct server_data) );
-				memset(srv,0,sizeof(struct server_data) );
-				srv->type = TYPE_CAMD35;
-				parse_str(str);
-				srv->host = add_host(cfg, str);
-				parse_int(str);
-				srv->port = atoi( str );
-				if (*iparser==',') iparser++;
-				parse_str(srv->user);
-				parse_str(srv->pass);
-				parse_server_data( srv );
-				srv->handle = -1;
-				pthread_mutex_init( &srv->lock, NULL );
-				cfg_addserver(cfg, srv);
-				camd35_init_data( srv->user, srv->pass, &srv->encryptkey, &srv->decryptkey, &srv->ucrc);
-			}
-			else if (!strcmp(str,"USER")) {
-				if (!camd35) {
-					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip Camd35 user, undefined Camd35 Server\n",file->nbline,iparser-currentline);
-					continue;
-				}
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				struct camd35_client_data *cli = malloc( sizeof(struct camd35_client_data) );
-				memset(cli,0,sizeof(struct camd35_client_data) );
-				cli->handle = -1;
-				cli->flags |= FLAG_DEFCONFIG;
-				parse_str(cli->user);
-				cli->userhash = hashCode( (unsigned char *)cli->user, strlen(cli->user) );
-				parse_str(cli->pass);
-				cli->sharelimits[0].caid = 0xFFFF;
-				parse_spaces();
-				if (*iparser=='{') {
-					iparser++;
-					parse_spaces();
-					while (1) {
-						parse_spaces();
-						if (*iparser=='}') break;
-						parse_value(str,"\r\n\t =");
-						parse_spaces();
-						if (*iparser!='=') break;
-						iparser++;
-						if (!strcmp(str,"profiles")) {
-							i = 0;
-							while (i<MAX_CSPORTS) {
-								if ( parse_int(str)>0 ) {
-									int n = cli->csport[i] = atoi(str);
-									int j;
-									for (j=0; j<i; j++) if ( cli->csport[j] && (cli->csport[j]==n) ) break;
-									if (j>=i) {
-										cli->csport[i] = n;
-										i++;
-									}
-								}
-								else break;
-								parse_spaces();
-								if (*iparser==',') iparser++;
-							}
-						}
-						else if (!strcmp(str,"shares")) parse_option_shares( cli->sharelimits );
-#ifdef CACHEEX
-						else if (!strcmp(str,"cacheex_mode")) {
-							if (parse_hex(str)) cli->cacheex_mode = hex2int(str);
-						}
-#endif
-						parse_spaces();
-						if (*iparser==';') iparser++; else break;
-					}
-					if (*iparser!='}') mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%s line %d,%d): '}' expected\n",file->name,file->nbline,iparser-currentline);
-				}
-				camd35_init_data( cli->user, cli->pass, &cli->encryptkey, &cli->decryptkey, &cli->ucrc);
-				cfg_addcamd35client(camd35, cli);
-			}
-		}
-		else if (!strcmp(str,"CS378X")) {
+#ifdef FREECCCAM_SRV
+		else if (!strcmp(str,"FREECCCAM")) {
 			parse_name(str);
 			uppercase(str);
 			if (!strcmp(str,"PORT")) {
@@ -2690,104 +3202,47 @@ link_cccam_client:
 					continue;
 				} else iparser++;
 				parse_int(str);
-				cs378x = malloc( sizeof(struct camd35_server_data) );
-				memset( cs378x, 0, sizeof(struct camd35_server_data) );
-				cs378x->client = NULL;
-				cs378x->port = atoi(str);
-				cs378x->handle = -1;
-				cs378x->id = 0;
-				cs378x->next = NULL;
-				cfg_addcs378xserver(cfg, cs378x);
+				cfg->freecccam.server.port = atoi(str);
 			}
-			else if (!strcmp(str,"USER")) {
-				if (!cs378x) {
-					mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip cs378x user, undefined cs378x Server\n",file->nbline,iparser-currentline);
-					continue;
-				}
+			else if (!strcmp(str,"MAXUSERS")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
 					continue;
 				} else iparser++;
-				struct camd35_client_data *cli = malloc( sizeof(struct camd35_client_data) );
-				memset(cli,0,sizeof(struct camd35_client_data) );
-				cli->handle = -1;
-				cli->flags |= FLAG_DEFCONFIG;
-				parse_str(cli->user);
-				cli->userhash = hashCode( (unsigned char *)cli->user, strlen(cli->user) );
-				parse_str(cli->pass);
-				cli->sharelimits[0].caid = 0xFFFF;
-				parse_spaces();
-				if (*iparser=='{') {
-					iparser++;
-					parse_spaces();
-					while (1) {
-						parse_spaces();
-						if (*iparser=='}') break;
-						parse_value(str,"\r\n\t =");
-						parse_spaces();
-						if (*iparser!='=') break;
-						iparser++;
-						if (!strcmp(str,"profiles")) {
-							i = 0;
-							while (i<MAX_CSPORTS) {
-								if ( parse_int(str)>0 ) {
-									int n = cli->csport[i] = atoi(str);
-									int j;
-									for (j=0; j<i; j++) if ( cli->csport[j] && (cli->csport[j]==n) ) break;
-									if (j>=i) {
-										cli->csport[i] = n;
-										i++;
-									}
-								}
-								else break;
-								parse_spaces();
-								if (*iparser==',') iparser++;
-							}
-						}
-						else if (!strcmp(str,"shares")) parse_option_shares( cli->sharelimits );
-#ifdef CACHEEX
-						else if (!strcmp(str,"cacheex_mode")) {
-							if (parse_hex(str)) cli->cacheex_mode = hex2int(str);
-						}
-#endif
-						parse_spaces();
-						if (*iparser==';') iparser++; else break;
-					}
-					if (*iparser!='}') mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%s line %d,%d): '}' expected\n",file->name,file->nbline,iparser-currentline);
-				}
-				camd35_init_data( cli->user, cli->pass, &cli->encryptkey, &cli->decryptkey, &cli->ucrc);
-				cfg_addcamd35client( cs378x, cli);
-			}
-			else if (!strcmp(str,"SERVER")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				srv = malloc( sizeof(struct server_data) );
-				memset(srv,0,sizeof(struct server_data) );
-				srv->type = TYPE_CS378X;
-				parse_str(str);
-				srv->host = add_host(cfg, str);
 				parse_int(str);
-				srv->port = atoi( str );
-				if (*iparser==',') iparser++;
-				parse_str(srv->user);
-				parse_str(srv->pass);
-				parse_server_data( srv );
-				srv->handle = -1;
-				pthread_mutex_init( &srv->lock, NULL );
-				cfg_addserver(cfg, srv);
-				camd35_init_data( srv->user, srv->pass, &srv->encryptkey, &srv->decryptkey, &srv->ucrc);
+				cfg->freecccam.maxusers = atoi(str);
 			}
-			else if (!strcmp(str,"KEEPALIVE")) {
+			else if (!strcmp(str,"USERNAME")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
 					continue;
 				} else iparser++;
-				cfg->cs378x.keepalive = parse_boolean();
+				parse_str(cfg->freecccam.user);
+			}
+			else if (!strcmp(str,"PASSWORD")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_str(cfg->freecccam.pass);
+			}
+			else if (!strcmp(str,"PROFILES")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				for(i=0;i<MAX_CSPORTS;i++) {
+					if ( parse_int(str)>0 ) {
+						cfg->freecccam.csport[i] = atoi(str);
+					}
+					else break;
+					parse_spaces();
+					if (*iparser==',') iparser++;
+				}
 			}
 		}
 #endif
@@ -2991,6 +3446,7 @@ link_mgcamd_user:
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifndef PUBLIC
 		else if (!strcmp(str,"HOST")) {
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3000,6 +3456,7 @@ link_mgcamd_user:
 			parse_str(str);
 			cfg->srvhost = add_host(cfg, str);
 		}
+#endif
 
 #ifdef CACHEEX
 		else if ( !strcmp(str,"CACHEEX") ) {
@@ -3071,7 +3528,9 @@ link_mgcamd_user:
 				parse_int(str);
 				peer->port = atoi(str);
 				if (parse_bin(str)) peer->fblock0onid = str[0]=='1';
+#ifndef PUBLIC
 				peer->sharelimits[0].caid = 0xFFFF;
+#endif
 				parse_spaces();
 				if (*iparser=='{') { // Get Ports List
 					iparser++;
@@ -3099,6 +3558,7 @@ link_mgcamd_user:
 						else if (!strcmp(str,"sendreq")) {
 							if (parse_boolean()) peer->flags |= FLAG_CACHE_SENDREQ; else peer->flags &= ~FLAG_CACHE_SENDREQ;
 						}
+#ifndef PUBLIC
 						else if (!strcmp(str,"fwd")) {
 							peer->fwd = parse_boolean();
 						}
@@ -3106,6 +3566,7 @@ link_mgcamd_user:
 							if (parse_boolean()) peer->flags |= FLAG_CACHE_SENDREP; else peer->flags &= ~FLAG_CACHE_SENDREP;
 						}
 						else if (!strcmp(str,"shares")) parse_option_shares( peer->sharelimits );
+#endif
 						parse_spaces();
 						if (*iparser==';') iparser++; else break;
 					}
@@ -3155,14 +3616,6 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cfg->cache.adaptivettl = parse_boolean();
-			}
-			else if (!strcmp(str,"STRICTPROVID")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-					continue;
-				} else iparser++;
-				cfg->cache.strictprov = parse_boolean();
 			}
 			else if (!strcmp(str,"AUTOADD")) {
 				parse_spaces();
@@ -3229,6 +3682,7 @@ link_mgcamd_user:
 					else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Invalid integer (FILTER TIME)\n",file->nbline,iparser-currentline);
 				}
 			}
+#ifndef PUBLIC
 			else if (!strcmp(str,"DCWCHECK2")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3246,6 +3700,7 @@ link_mgcamd_user:
 				} else iparser++;
 				cfg->cache.dcwcheck3 = parse_boolean();
 			}
+#endif
 
 			else if (!strcmp(str,"FORWARD")) {
 				parse_spaces();
@@ -3272,6 +3727,22 @@ link_mgcamd_user:
 				else if (!strcmp(str,"YES")) cardserver->option.cachesendreq = 1;
 			}
 
+#ifndef PUBLIC
+			else if (!strcmp(str,"STATIC")) {
+				if (!cardserver) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip CACHE STATIC, undefined profile\n",file->nbline,iparser-currentline);
+					continue;
+				}
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue; 
+				} else iparser++;
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"NO")) cardserver->option.cachestatic = 0;
+				else if (!strcmp(str,"YES")) cardserver->option.cachestatic = 1;
+			}
 			else if (!strcmp(str,"RESENDREQ")) {
 				if (!cardserver) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip CACHE RESENDREQ, undefined profile\n",file->nbline,iparser-currentline);
@@ -3302,6 +3773,7 @@ link_mgcamd_user:
 				if (!strcmp(str,"NO")) cardserver->option.cachesendrep = 0;
 				else if (!strcmp(str,"YES")) cardserver->option.cachesendrep = 1;
 			}
+#endif
 
 		}
 
@@ -3671,61 +4143,24 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.dcw.silentnok = parse_boolean();
 			}
-			else if (!strcmp(str,"CYCLE_ENGINE")) {
-				// v1.40 DCW CYCLE ENGINE: motor unico de ciclo (substitui MINTIME/CYCLE_CHECK/CWC/STALE_CHECK/NAGRA CYCLE)
+			else if (!strcmp(str,"CYCLE_CHECK")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
 					continue;
 				} else iparser++;
-				cardserver->option.dcw.cycleengine = parse_boolean();
+				cardserver->option.dcw.cyclecheck = parse_boolean();
 			}
-			else if (!strcmp(str,"SERVERS")) {
-				// v1.40 SERVERS: lista explicita de readers (ids) que este perfil pode usar
+			else if (!strcmp(str,"MINTIME")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
 					continue;
 				} else iparser++;
-				int x = 0;
-				while (x<MAX_PROFILE_SERVERS) {
-					parse_spaces();
-					if ( parse_int(str)>0 ) {
-						cardserver->option.servers[x] = (uint16_t)atoi(str);
-						x++;
-					}
-					else break;
-					if (*iparser==',') iparser++;
-				}
-				cardserver->option.nbservers = x;
-			}
-			else if (!strcmp(str,"BADCW")) {
-				// v1.40 DCW BADCW TTL: minutos que um reader e saltado num canal com CW ma
-				parse_name(str);
-				uppercase(str);
-				if (!strcmp(str,"TTL")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					parse_int(str);
-					cardserver->option.dcw.badcwttl = atoi(str);
-					if (cardserver->option.dcw.badcwttl<1) cardserver->option.dcw.badcwttl=1;
-					else if (cardserver->option.dcw.badcwttl>1440) cardserver->option.dcw.badcwttl=1440;
-				}
-				// v1.44 DCW BADCW RECONNECT: cwbad efectivas que forcam reconexao da fonte
-				else if (!strcmp(str,"RECONNECT")) {
-					parse_spaces();
-					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-						continue;
-					} else iparser++;
-					parse_int(str);
-					cardserver->option.dcw.badcwrecon = atoi(str);
-					if (cardserver->option.dcw.badcwrecon<0) cardserver->option.dcw.badcwrecon=0;
-					else if (cardserver->option.dcw.badcwrecon>100) cardserver->option.dcw.badcwrecon=100;
-				}
+				parse_int(str);
+				cardserver->option.dcw.mintime = atoi(str);
+				if (cardserver->option.dcw.mintime<0) cardserver->option.dcw.mintime=0;
+				else if (cardserver->option.dcw.mintime>60000) cardserver->option.dcw.mintime=60000;
 			}
 			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 				parse_spaces();
@@ -3790,24 +4225,80 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.dcw.cak7 = parse_boolean();
 			}
-		else if (!strcmp(str,"LOG")) {
-			// DCW LOG: YES - regista as CWs em hex no debug (aprendizagem CAK7)
-			parse_spaces();
-			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-				continue;
-			} else iparser++;
-			cardserver->option.dcw.dcwlog = parse_boolean();
-		}
-		else if (!strcmp(str,"LASTCWONNOK")) {
-			// DCW LASTCWONNOK: YES - em NOK reenvia a ultima CW valida do canal (nao para o descrambler)
-			parse_spaces();
-			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
-				continue;
-			} else iparser++;
-			cardserver->option.dcw.lastcwon_nok = parse_boolean();
-		}
+			else if (!strcmp(str,"FILTER")) {
+				// DCW FILTER: YES | DCW FILTER MODE: DROP/LOGONLY | DCW FILTER RULES: n
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					parse_name(str);
+					uppercase(str);
+					if (!strcmp(str,"MODE")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							continue;
+						} else iparser++;
+						parse_name(str);
+						uppercase(str);
+						if (!strcmp(str,"LOGONLY")) cardserver->option.dcwfilter.mode = 0;
+						else if (!strcmp(str,"DROP")) cardserver->option.dcwfilter.mode = 1;
+						else if (!strcmp(str,"AUTO")) cardserver->option.dcwfilter.mode = 2;
+					}
+					else if (!strcmp(str,"LEARN")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							continue;
+						} else iparser++;
+						cardserver->option.dcwfilter.learn = parse_boolean();
+					}
+					continue;
+				}
+				iparser++;
+				cardserver->option.dcwfilter.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"RULE")) {
+				// DCW RULE n: EXACT <hex32> | MASK <hex32> <hex32> | ALLEQUAL
+				parse_int(str);
+				int n = atoi(str);
+				if ((n<1)||(n>16)) continue;
+				parse_spaces();
+				if (*iparser==':') iparser++;
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"EXACT")) {
+					cardserver->option.dcwfilter.rules[n-1].type = 1;
+					int x = 0;
+					while (x<8) {
+						int j, ok = 1;
+						for (j=0; j<16; j++) {
+							if ( parse_hex(str)!=2 ) { ok = 0; break; }
+							cardserver->option.dcwfilter.rules[n-1].cw[x][j] = hex2int(str);
+						}
+						if (!ok) break;
+						x++;
+						parse_spaces();
+						if (*iparser==',') iparser++;
+					}
+					cardserver->option.dcwfilter.rules[n-1].n = x;
+				}
+				else if (!strcmp(str,"MASK")) {
+					cardserver->option.dcwfilter.rules[n-1].type = 2;
+					int j;
+					for (j=0; j<16; j++) {
+						if ( parse_hex(str)!=2 ) break;
+						cardserver->option.dcwfilter.rules[n-1].cw[0][j] = hex2int(str);
+					}
+					for (j=0; j<16; j++) {
+						if ( parse_hex(str)!=2 ) break;
+						cardserver->option.dcwfilter.rules[n-1].mask[j] = hex2int(str);
+					}
+				}
+				else if (!strcmp(str,"ALLEQUAL")) {
+					cardserver->option.dcwfilter.rules[n-1].type = 3;
+				}
+				else continue;
+				if (cardserver->option.dcwfilter.nrules<n) cardserver->option.dcwfilter.nrules = n;
+			}
 		}
 
 		else if (!strcmp(str,"HEALTH")) {
@@ -3897,20 +4388,20 @@ link_mgcamd_user:
 					parse_name(str);
 					uppercase(str);
 					if (!str[0]) break;
-				int t = 0;
-				if (!strcmp(str,"NEWCAMD")) t = TYPE_NEWCAMD;
-				else if (!strcmp(str,"CCCAM")) t = TYPE_CCCAM;
-				else if (!strcmp(str,"MGCAMD")) t = TYPE_MGCAMD;
-				else if (!strcmp(str,"CAMD35")) t = TYPE_CAMD35;
-				else if (!strcmp(str,"CS378X")) t = TYPE_CS378X;
-				if (t) {
-					// nao repetir protocolo
-					int dup = 0;
-					int dk;
-					for (dk=0; dk<oi; dk++) if (cardserver->option.fallback.order[dk]==t) dup = 1;
-					if (!dup) cardserver->option.fallback.order[oi++] = t;
-				}
-				else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): unknown fallback protocol '%s'\n",file->nbline,iparser-currentline,str);
+					int t = 0;
+					if (!strcmp(str,"NEWCAMD")) t = TYPE_NEWCAMD;
+					else if (!strcmp(str,"CCCAM")) t = TYPE_CCCAM;
+					else if (!strcmp(str,"RADEGAST")) t = TYPE_RADEGAST;
+					else if (!strcmp(str,"CAMD35")) t = TYPE_CAMD35;
+					else if (!strcmp(str,"CS378X")) t = TYPE_CS378X;
+					if (t) {
+						// nao repetir protocolo
+						int dup = 0;
+						int dk;
+						for (dk=0; dk<oi; dk++) if (cardserver->option.fallback.order[dk]==t) dup = 1;
+						if (!dup) cardserver->option.fallback.order[oi++] = t;
+					}
+					else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): unknown fallback protocol '%s'\n",file->nbline,iparser-currentline,str);
 				}
 			}
 			else if (!strcmp(str,"TIMEOUT")) {
@@ -3923,6 +4414,45 @@ link_mgcamd_user:
 				cardserver->option.fallback.timeout = atoi(str);
 				if (cardserver->option.fallback.timeout<0) cardserver->option.fallback.timeout=0;
 				else if (cardserver->option.fallback.timeout>10000) cardserver->option.fallback.timeout=10000;
+			}
+		}
+
+		else if (!strcmp(str,"TIMING")) {
+			if (!cardserver) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip TIMING, undefined profile\n",file->nbline,iparser-currentline);
+				continue;
+			}
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"ENABLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.timing.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"FRACTION")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.timing.fraction = atoi(str);
+				if (cardserver->option.timing.fraction<10) cardserver->option.timing.fraction=10;
+				else if (cardserver->option.timing.fraction>100) cardserver->option.timing.fraction=100;
+			}
+			else if (!strcmp(str,"MINPERIOD")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.timing.minperiod = atoi(str);
+				if (cardserver->option.timing.minperiod<1000) cardserver->option.timing.minperiod=1000;
+				else if (cardserver->option.timing.minperiod>60000) cardserver->option.timing.minperiod=60000;
 			}
 		}
 
@@ -3957,6 +4487,14 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.nagra.prov = parse_boolean();
 			}
+			else if (!strcmp(str,"CYCLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.nagra.cycle = parse_boolean();
+			}
 			else if (!strcmp(str,"ONBAD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3964,6 +4502,17 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cardserver->option.nagra.onbad = parse_boolean();
+			}
+			else if (!strcmp(str,"SENSITIVE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.nagra.sensitive = atoi(str);
+				if (cardserver->option.nagra.sensitive<0) cardserver->option.nagra.sensitive=0;
+				else if (cardserver->option.nagra.sensitive>8) cardserver->option.nagra.sensitive=8;
 			}
 		}
 
@@ -4027,6 +4576,7 @@ link_mgcamd_user:
 				if (cardserver->option.server.first<0) cardserver->option.server.first = 0;
 				else if (cardserver->option.server.first>3) cardserver->option.server.first = 3;
 			}
+#ifndef PUBLIC
 			else if ( (!strcmp(str,"ECMTIME"))||(!strcmp(str,"TIMEPERECM")) ) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -4080,6 +4630,7 @@ link_mgcamd_user:
 				}
 				else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): cardserver send variable expected\n",file->nbline,iparser-currentline);
 			}
+#endif
 			else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): cardserver variable expected\n",file->nbline,iparser-currentline);
 		}
 
@@ -4115,6 +4666,28 @@ link_mgcamd_user:
 			else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): cardserver variable expected\n",file->nbline,iparser-currentline);
 		}
 
+		else if (!strcmp(str,"RADEGAST")) {
+			if (!cardserver) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip PORT, undefined profile\n",file->nbline,iparser-currentline);
+				continue;
+			}
+			parse_name(str);
+			uppercase(str);
+			if (!strcmp(str,"SERVER")) {
+				goto link_radegast_server;
+			}
+#ifdef RADEGAST_SRV
+			else if (!strcmp(str,"PORT")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->radegast.port = atoi(str);
+			}
+#endif
+		}
 		else if (!strcmp(str,"ONID")) {
 			if (!cardserver) {
 				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip ONID, undefined profile\n",file->nbline,iparser-currentline);
@@ -4198,6 +4771,14 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fallownewcamd = !parse_boolean();
 			}
+			else if (!strcmp(str,"RADEGAST")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.fallowradegast = !parse_boolean();
+			}
 			else if (!strcmp(str,"CACHE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -4250,6 +4831,14 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fallownewcamd = parse_boolean();
 			}
+			else if (!strcmp(str,"RADEGAST")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.fallowradegast = parse_boolean();
+			}
 			else if (!strcmp(str,"CACHE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -4265,6 +4854,14 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cardserver->option.fallowskipcwc = parse_boolean();
+			}
+			else if (!strcmp(str,"CWC")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.cwc.enable = parse_boolean();
 			}
 			else if (!strcmp(str,"HEALTH")) {
 				parse_spaces();
@@ -4282,6 +4879,14 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fallback.enable = parse_boolean();
 			}
+			else if (!strcmp(str,"TIMING")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.timing.enable = parse_boolean();
+			}
 			else if (!strcmp(str,"NAGRA")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -4289,6 +4894,16 @@ link_mgcamd_user:
 					continue;
 				} else iparser++;
 				cardserver->option.nagra.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"EMULATOR")) {
+				parse_name(str); // BISS
+				uppercase(str);
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.fenableemu = parse_boolean();
 			}
 			else if (!strcmp(str,"LITE")) {
 				parse_spaces();
@@ -4310,6 +4925,65 @@ link_mgcamd_user:
 #endif
 		}
 
+
+			else if (!strcmp(str,"CWC")) {
+				parse_name(str);
+				uppercase(str);
+				if (!str[0]) { // CWC: 1
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						continue;
+					} else iparser++;
+					cardserver->option.cwc.enable = parse_boolean();
+				}
+			else if (!strcmp(str,"ENABLE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.cwc.enable = parse_boolean();
+			}
+			else if (!strcmp(str,"SENSITIVE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.cwc.sensitive = atoi(str);
+				if (cardserver->option.cwc.sensitive<0) cardserver->option.cwc.sensitive=0;
+				else if (cardserver->option.cwc.sensitive>8) cardserver->option.cwc.sensitive=8;
+			}
+			else if (!strcmp(str,"DROPOLD")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.cwc.dropold = parse_boolean();
+			}
+			else if (!strcmp(str,"DROPBAD") || !strcmp(str,"ONBAD")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.cwc.dropbad = parse_boolean();
+			}
+			else if (!strcmp(str,"KEEPCYCLETIME")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.cwc.keepcycletime = atoi(str);
+				if (cardserver->option.cwc.keepcycletime<0) cardserver->option.cwc.keepcycletime=0;
+				else if (cardserver->option.cwc.keepcycletime>600) cardserver->option.cwc.keepcycletime=600;
+			}
+		}
 
 		else if (!strcmp(str,"SHARE")) {
 			if (!cardserver) {
@@ -4342,6 +5016,7 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fsharemgcamd = parse_boolean();
 			}
+#ifndef PUBLIC
 			else if (!strcmp(str,"EXPIRED")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -4350,6 +5025,7 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.fshareexpired = parse_boolean();
 			}
+#endif
 		}
 
 		else if (!strcmp(str,"BLOCK")) {
@@ -4581,6 +5257,22 @@ link_mgcamd_user:
 
 	}
 
+#ifdef FREECCCAM_SRV
+	//Create clients
+	for(i=0; i< cfg->freecccam.maxusers; i++) {
+		struct cc_client_data *cli = malloc( sizeof(struct cc_client_data) );
+		memset(cli, 0, sizeof(struct cc_client_data) );
+		// init Default
+		cli->id = i+1;
+		cli->handle = -1;
+		cli->dnhops = 0;
+		cli->uphops = 0;
+		cli->sharelimits[0].caid = 0xFFFF;
+		cli->next = cfg->freecccam.server.client;
+		cfg->freecccam.server.client = cli;
+	}
+#endif
+
 // ADD GLOBAL USERS TO PROFILES
 	struct global_user_data *gl = guser;
 	while(gl) {
@@ -4616,7 +5308,9 @@ link_mgcamd_user:
 		free( oldgl );
 	}
 
+#ifndef PUBLIC
 	read_cccam_nodeid(cfg);
+#endif
 
 //	read_chinfo(cfg);
 
@@ -4631,6 +5325,7 @@ link_mgcamd_user:
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+#ifndef PUBLIC
 int read_cccam_nodeid( struct config_data *cfg )
 {
 	if (!cfg->cccam.server) return 0;
@@ -4669,12 +5364,104 @@ int read_cccam_nodeid( struct config_data *cfg )
 	fclose(fhandle);
 	return 0;
 }
+#endif
 
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef TWIN
 
+void twin_read_chninfo( struct config_data *cfg )
+{
+	int len,i;
+	char str[255];
+	FILE *fhandle;
+	int nbline = 0;
+
+	// Open Config file
+	fhandle = fopen(cfg->twin.chninfo.fname,"rt");
+	if (fhandle==0) {
+		mlogf(LOGERROR,0," file not found '%s'\n",cfg->twin.chninfo.fname);
+		return -1;
+	} else mlogf(LOGINFO,0," config: parsing file '%s'\n",cfg->twin.chninfo.fname);
+
+	// Init config data
+	cfg->twin.chninfo.count = 0;
+
+	while (!feof(fhandle))
+	{
+		if ( !fgets(currentline, 1023, fhandle) ) break;
+		nbline++;
+		iparser = &currentline[0];
+
+		parse_spaces();
+		if ( (*iparser=='#')||(*iparser==0)||(*iparser==13)||(*iparser==10) ) continue;
+
+		if ( parse_hex(str)!=4 ) continue;
+
+		cfg->twin.chninfo.data[cfg->twin.chninfo.count].caid = hex2int(str);
+
+		parse_spaces();
+		if (*iparser!=':') {
+			mlogf(LOGERROR,0," config(%d,%d): ':' expected\n",nbline,iparser-currentline);
+			continue;
+		} else iparser++;
+		parse_hex(&str[0]);
+		cfg->twin.chninfo.data[cfg->twin.chninfo.count].prov = hex2int(str);
+
+		parse_spaces();
+		if (*iparser!=':') {
+			mlogf(LOGERROR,0," config(%d,%d): ':' expected\n",nbline,iparser-currentline);
+			continue;
+		} else iparser++;
+		parse_hex(str);
+		cfg->twin.chninfo.data[cfg->twin.chninfo.count].sid = hex2int(str);
+
+		parse_spaces();
+		if (*iparser!=':') {
+			mlogf(LOGERROR,0," config(%d,%d): ':' expected\n",nbline,iparser-currentline);
+			continue;
+		} else iparser++;
+		parse_hex(str);
+		cfg->twin.chninfo.data[cfg->twin.chninfo.count].deg = hex2int(str);
+
+		parse_spaces();
+		if (*iparser!=':') {
+			mlogf(LOGERROR,0," config(%d,%d): ':' expected\n",nbline,iparser-currentline);
+			continue;
+		} else iparser++;
+		parse_hex(str);
+		cfg->twin.chninfo.data[cfg->twin.chninfo.count].freq = hex2int(str);
+
+		parse_spaces();
+		if (*iparser=='.') {
+			iparser++;
+			parse_hex(str);
+			cfg->twin.chninfo.data[cfg->twin.chninfo.count].cw1cycle = hex2int(str);
+		}
+
+		parse_quotes( '"', str );
+		str[63] = 0; // Overflow
+		strcpy(cfg->twin.chninfo.data[cfg->twin.chninfo.count].name, str);
+
+		//debug("%s -> %04x:%06x:%04x\n",chninfo[nbchninfo].name, chninfo[nbchninfo].caid,chninfo[nbchninfo].prov,chninfo[nbchninfo].sid);
+		cfg->twin.chninfo.count++;
+	}
+	fclose(fhandle);
+}
+
+void twin_free_chinfo( struct config_data *cfg )
+{
+	cfg->twin.chninfo.count = 0;
+}
+
+#endif
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
 
 int read_chinfo( struct config_data *cfg )
 {
@@ -5168,6 +5955,384 @@ void free_providers( struct config_data *cfg )
 
 
 ///////////////////////////////////////////////////////////////////////////////
+// CAMD35 SERVER
+///////////////////////////////////////////////////////////////////////////////
+
+#ifdef CAMD35_SRV
+
+// Clients
+void remove_camd35_clients(struct camd35_server_data *srv)
+{
+	while (srv->client) {
+		struct camd35_client_data *cli = srv->client;
+		srv->client = cli->next;
+		if (cli->handle>0) close(cli->handle);
+		free( cli );
+	}
+}
+
+void update_camd35_clients(struct camd35_server_data *srv, struct camd35_server_data *newsrv )
+{
+	// set remove flag to old deleted clients & update reused one
+	struct camd35_client_data *cli = srv->client;
+	while (cli) {
+		struct camd35_client_data *newcli = newsrv->client;
+		while (newcli) {
+			if ( !(newcli->flags&FLAG_DELETE) )
+			if ( !(cli->flags&FLAG_DELETE) )
+			if ( !strcmp(cli->user, newcli->user) ) break;
+			newcli = newcli->next;
+		}
+		if (newcli) {
+			newcli->flags |= FLAG_DELETE;
+			// Update camd35 Client Data
+/*
+			// PASS
+			if ( strcmp(cli->pass, newcli->pass) ) {
+				cli->connected = 0;
+				strcpy(cli->pass, newcli->pass);
+			}
+*/
+			//
+#ifdef CACHEEX
+			cli->cacheex_mode = newcli->cacheex_mode;
+#endif
+			// Share Limits
+			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
+				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
+			}
+		}
+		else cli->flags |= FLAG_DELETE;
+		cli = cli->next;
+	}
+	// Move all newcli without FLAG_DELETE to cli
+	struct camd35_client_data *prev = NULL;
+	struct camd35_client_data *newcli = newsrv->client;
+	while (newcli) {
+		struct camd35_client_data *next = newcli->next;
+		if (!(newcli->flags&FLAG_DELETE)) {
+			if (prev) prev->next = newcli->next; else newsrv->client = newcli->next;
+			cfg_addcamd35client(srv, newcli);
+		} else prev = newcli;
+		newcli = next;
+	}
+	// Move all cli with FLAG_DELETE to newcli
+	prev = NULL;
+	cli = srv->client;
+	while (cli) {
+		struct camd35_client_data *next = cli->next;
+		if (cli->flags&FLAG_DELETE) {
+			if (prev) prev->next = cli->next; else srv->client = cli->next;
+			cfg_addcamd35client(newsrv, cli);
+		} else prev = cli;
+		cli = next;
+	}
+}
+
+//CacheEX 
+void remove_camd35_cacheexclients(struct camd35_server_data *srv)
+{
+	while (srv->cacheexclient) {
+		struct camd35_client_data *cli = srv->cacheexclient;
+		srv->cacheexclient = cli->next;
+		if (cli->handle>0) close(cli->handle);
+		free( cli );
+	}
+}
+
+void update_camd35_cacheexclients(struct camd35_server_data *srv, struct camd35_server_data *newsrv )
+{
+	// set remove flag to old deleted clients & update reused one
+	struct camd35_client_data *cli = srv->cacheexclient;
+	while (cli) {
+		struct camd35_client_data *newcli = newsrv->cacheexclient;
+		while (newcli) {
+			if ( !(newcli->flags&FLAG_DELETE) )
+			if ( !(cli->flags&FLAG_DELETE) )
+			if ( !strcmp(cli->user, newcli->user) ) break;
+			newcli = newcli->next;
+		}
+		if (newcli) {
+			newcli->flags |= FLAG_DELETE;
+			// Update camd35 Client Data
+/*
+			// PASS
+			if ( strcmp(cli->pass, newcli->pass) ) {
+				cli->connected = 0;
+				strcpy(cli->pass, newcli->pass);
+			}
+*/
+			//
+#ifdef CACHEEX
+			cli->cacheex_mode = newcli->cacheex_mode;
+#endif
+			// Share Limits
+			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
+				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
+			}
+		}
+		else cli->flags |= FLAG_DELETE;
+		cli = cli->next;
+	}
+	// Move all newcli without FLAG_DELETE to cli
+	struct camd35_client_data *prev = NULL;
+	struct camd35_client_data *newcli = newsrv->cacheexclient;
+	while (newcli) {
+		struct camd35_client_data *next = newcli->next;
+		if (!(newcli->flags&FLAG_DELETE)) {
+			if (prev) prev->next = newcli->next; else newsrv->cacheexclient = newcli->next;
+			cfg_addcamd35client(srv, newcli);
+		} else prev = newcli;
+		newcli = next;
+	}
+	// Move all cli with FLAG_DELETE to newcli
+	prev = NULL;
+	cli = srv->cacheexclient;
+	while (cli) {
+		struct camd35_client_data *next = cli->next;
+		if (cli->flags&FLAG_DELETE) {
+			if (prev) prev->next = cli->next; else srv->cacheexclient = cli->next;
+			cfg_addcamd35client(newsrv, cli);
+		} else prev = cli;
+		cli = next;
+	}
+}
+
+//
+
+void update_camd35_servers(struct config_data *cfg, struct config_data *newcfg)
+{
+	struct camd35_server_data *srv = cfg->camd35.server;
+	while (srv) {
+		struct camd35_server_data *newsrv = newcfg->camd35.server;
+		while (newsrv) {
+			if (srv->port==newsrv->port) break;
+			newsrv = newsrv->next;
+		}
+		if (newsrv) {
+			newsrv->flags |= FLAG_DELETE;
+			update_camd35_clients( srv, newsrv );
+			update_camd35_cacheexclients( srv, newsrv );
+		}
+		else srv->flags |= FLAG_DELETE;
+		srv = srv->next;
+	}
+	// Move all newsrv without FLAG_DELETE to srv
+	struct camd35_server_data *prev = NULL;
+	srv = newcfg->camd35.server;
+	while (srv) {
+		struct camd35_server_data *next = srv->next;
+		if (!(srv->flags&FLAG_DELETE)) {
+			if (prev) prev->next = srv->next; else newcfg->camd35.server = srv->next;
+			cfg_addcamd35server(cfg, srv);
+		} else prev = srv;
+		srv = next;
+	}
+	// Move all srv with FLAG_DELETE to newsrv
+	prev = NULL;
+	srv = cfg->camd35.server;
+	while (srv) {
+		struct camd35_server_data *next = srv->next;
+		if (srv->flags&FLAG_DELETE) {
+			if (prev) prev->next = srv->next; else cfg->camd35.server = srv->next;
+			cfg_addcamd35server(newcfg, srv);
+		} else prev = srv;
+		srv = next;
+	}
+}
+
+#endif
+
+///////////////////////////////////////////////////////////////////////////////
+//  cs378x
+///////////////////////////////////////////////////////////////////////////////
+
+#ifdef CS378X_SRV
+
+void remove_cs378x_clients(struct camd35_server_data *srv)
+{
+	while (srv->client) {
+		struct camd35_client_data *cli = srv->client;
+		srv->client = cli->next;
+		if (cli->handle>0) close(cli->handle);
+		free( cli );
+	}
+}
+
+void update_cs378x_clients(struct camd35_server_data *srv, struct camd35_server_data *newsrv )
+{
+	// set remove flag to old deleted clients & update reused one
+	struct camd35_client_data *cli = srv->client;
+	while (cli) {
+		struct camd35_client_data *newcli = newsrv->client;
+		while (newcli) {
+			if ( !(newcli->flags&FLAG_DELETE) )
+			if ( !(cli->flags&FLAG_DELETE) )
+			if ( !strcmp(cli->user, newcli->user) ) break;
+			newcli = newcli->next;
+		}
+		if (newcli) {
+			newcli->flags |= FLAG_DELETE;
+			// Update camd35 Client Data
+/*
+			// PASS
+			if ( strcmp(cli->pass, newcli->pass) ) {
+				cli->connected = 0;
+				strcpy(cli->pass, newcli->pass);
+			}
+*/
+			//
+#ifdef CACHEEX
+			cli->cacheex_mode = newcli->cacheex_mode;
+#endif
+			// Share Limits
+			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
+				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
+			}
+		}
+		else cli->flags |= FLAG_DELETE;
+		cli = cli->next;
+	}
+	// Move all newcli without FLAG_DELETE to cli
+	struct camd35_client_data *prev = NULL;
+	struct camd35_client_data *newcli = newsrv->client;
+	while (newcli) {
+		struct camd35_client_data *next = newcli->next;
+		if (!(newcli->flags&FLAG_DELETE)) {
+			if (prev) prev->next = newcli->next; else newsrv->client = newcli->next;
+			cfg_addcamd35client(srv, newcli);
+		} else prev = newcli;
+		newcli = next;
+	}
+	// Move all cli with FLAG_DELETE to newcli
+	prev = NULL;
+	cli = srv->client;
+	while (cli) {
+		struct camd35_client_data *next = cli->next;
+		if (cli->flags&FLAG_DELETE) {
+			if (prev) prev->next = cli->next; else srv->client = cli->next;
+			cfg_addcamd35client(newsrv, cli);
+		} else prev = cli;
+		cli = next;
+	}
+}
+
+// CACHEEX
+
+
+void remove_cs378x_cacheexclients(struct camd35_server_data *srv)
+{
+	while (srv->cacheexclient) {
+		struct camd35_client_data *cli = srv->cacheexclient;
+		srv->cacheexclient = cli->next;
+		if (cli->handle>0) close(cli->handle);
+		free( cli );
+	}
+}
+
+void update_cs378x_cacheexclients(struct camd35_server_data *srv, struct camd35_server_data *newsrv )
+{
+	// set remove flag to old deleted clients & update reused one
+	struct camd35_client_data *cli = srv->cacheexclient;
+	while (cli) {
+		struct camd35_client_data *newcli = newsrv->cacheexclient;
+		while (newcli) {
+			if ( !(newcli->flags&FLAG_DELETE) )
+			if ( !(cli->flags&FLAG_DELETE) )
+			if ( !strcmp(cli->user, newcli->user) ) break;
+			newcli = newcli->next;
+		}
+		if (newcli) {
+			newcli->flags |= FLAG_DELETE;
+			// Update camd35 Client Data
+/*
+			// PASS
+			if ( strcmp(cli->pass, newcli->pass) ) {
+				cli->connected = 0;
+				strcpy(cli->pass, newcli->pass);
+			}
+*/
+			//
+#ifdef CACHEEX
+			cli->cacheex_mode = newcli->cacheex_mode;
+#endif
+			// Share Limits
+			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
+				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
+			}
+		}
+		else cli->flags |= FLAG_DELETE;
+		cli = cli->next;
+	}
+	// Move all newcli without FLAG_DELETE to cli
+	struct camd35_client_data *prev = NULL;
+	struct camd35_client_data *newcli = newsrv->cacheexclient;
+	while (newcli) {
+		struct camd35_client_data *next = newcli->next;
+		if (!(newcli->flags&FLAG_DELETE)) {
+			if (prev) prev->next = newcli->next; else newsrv->cacheexclient = newcli->next;
+			cfg_addcamd35client(srv, newcli);
+		} else prev = newcli;
+		newcli = next;
+	}
+	// Move all cli with FLAG_DELETE to newcli
+	prev = NULL;
+	cli = srv->cacheexclient;
+	while (cli) {
+		struct camd35_client_data *next = cli->next;
+		if (cli->flags&FLAG_DELETE) {
+			if (prev) prev->next = cli->next; else srv->cacheexclient = cli->next;
+			cfg_addcamd35client(newsrv, cli);
+		} else prev = cli;
+		cli = next;
+	}
+}
+
+
+void update_cs378x_servers(struct config_data *cfg, struct config_data *newcfg)
+{
+	struct camd35_server_data *srv = cfg->cs378x.server;
+	while (srv) {
+		struct camd35_server_data *newsrv = newcfg->cs378x.server;
+		while (newsrv) {
+			if (srv->port==newsrv->port) break;
+			newsrv = newsrv->next;
+		}
+		if (newsrv) {
+			newsrv->flags |= FLAG_DELETE;
+			update_cs378x_clients( srv, newsrv );
+			update_cs378x_cacheexclients( srv, newsrv );
+		}
+		else srv->flags |= FLAG_DELETE;
+		srv = srv->next;
+	}
+	// Move all newsrv without FLAG_DELETE to srv
+	struct camd35_server_data *prev = NULL;
+	srv = newcfg->cs378x.server;
+	while (srv) {
+		struct camd35_server_data *next = srv->next;
+		if (!(srv->flags&FLAG_DELETE)) {
+			if (prev) prev->next = srv->next; else newcfg->cs378x.server = srv->next;
+			cfg_addcs378xserver(cfg, srv);
+		} else prev = srv;
+		srv = next;
+	}
+	// Move all srv with FLAG_DELETE to newsrv
+	prev = NULL;
+	srv = cfg->cs378x.server;
+	while (srv) {
+		struct camd35_server_data *next = srv->next;
+		if (srv->flags&FLAG_DELETE) {
+			if (prev) prev->next = srv->next; else cfg->cs378x.server = srv->next;
+			cfg_addcs378xserver(newcfg, srv);
+		} else prev = srv;
+		srv = next;
+	}
+}
+
+#endif
+
+///////////////////////////////////////////////////////////////////////////////
 /// CCCAM SERVERS
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -5230,6 +6395,7 @@ void update_cccam_clients(struct cccam_server_data *srv, struct cccam_server_dat
 			}
 			//
 			cli->uphops = newcli->uphops;
+			cli->shareemus = newcli->shareemus;
 			cli->allowemm = newcli->allowemm;
 #ifdef CACHEEX
 			if (cli->cacheex_mode!=newcli->cacheex_mode) {
@@ -5245,7 +6411,9 @@ void update_cccam_clients(struct cccam_server_data *srv, struct cccam_server_dat
 				cli->flags |= FLAG_DISCONNECT;
 				memcpy(cli->option.nodeid, newcli->option.nodeid, 8);
 			}
+#ifndef PUBLIC
 			cli->option.checknodeid = newcli->option.checknodeid;
+#endif
 
 			// Share Limits
 #ifdef CACHEEX
@@ -5342,6 +6510,7 @@ void update_cccam_cacheexclients(struct cccam_server_data *srv, struct cccam_ser
 			}
 			//
 			cli->uphops = newcli->uphops;
+			cli->shareemus = newcli->shareemus;
 			cli->allowemm = newcli->allowemm;
 #ifdef CACHEEX
 			if (cli->cacheex_mode!=newcli->cacheex_mode) {
@@ -5357,7 +6526,9 @@ void update_cccam_cacheexclients(struct cccam_server_data *srv, struct cccam_ser
 				cli->flags |= FLAG_DISCONNECT;
 				memcpy(cli->option.nodeid, newcli->option.nodeid, 8);
 			}
+#ifndef PUBLIC
 			cli->option.checknodeid = newcli->option.checknodeid;
+#endif
 
 			// Share Limits
 #ifdef CACHEEX
@@ -5446,6 +6617,41 @@ void update_cccam_servers(struct config_data *cfg, struct config_data *newcfg)
 		srv = next;
 	}
 }
+
+#ifdef FREECCCAM_SRV
+//////////////////////////// FREECCCAM
+void update_freecccam_server(struct config_data *cfg, struct config_data *newcfg)
+{
+	// Check for port/user/pass/max
+
+	if ( ( cfg->freecccam.maxusers!=newcfg->freecccam.maxusers )
+		|| ( strcmp(cfg->freecccam.user ,newcfg->freecccam.user) )
+		|| ( strcmp(cfg->freecccam.pass ,newcfg->freecccam.pass) )
+		|| ( strcmp(cfg->freecccam.version ,newcfg->freecccam.version) )
+		|| ( strcmp(cfg->freecccam.build ,newcfg->freecccam.build) )
+		|| ( memcmp(cfg->freecccam.csport ,newcfg->freecccam.csport, sizeof(cfg->freecccam.csport)) )
+		|| ( cfg->freecccam.server.port != newcfg->freecccam.server.port )
+	) {
+		// Remove OLD
+		cfg->freecccam.maxusers = newcfg->freecccam.maxusers;
+		strcpy(cfg->freecccam.user ,newcfg->freecccam.user);
+		strcpy(cfg->freecccam.pass ,newcfg->freecccam.pass);
+		strcpy(cfg->freecccam.version ,newcfg->freecccam.version);
+		strcpy(cfg->freecccam.build ,newcfg->freecccam.build);
+		memcpy(cfg->freecccam.csport ,newcfg->freecccam.csport, sizeof(cfg->freecccam.csport));
+
+		void *temp = cfg->freecccam.server.client;
+		cfg->freecccam.server.client = newcfg->freecccam.server.client;
+		newcfg->freecccam.server.client = temp;
+
+		if ( cfg->freecccam.server.port != newcfg->freecccam.server.port ) {
+			newcfg->freecccam.server.handle = cfg->freecccam.server.handle;
+			cfg->freecccam.server.handle = -1;
+			cfg->freecccam.server.port = newcfg->freecccam.server.port;
+		}
+	}
+}
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // MGCAMD SERVER
@@ -5598,205 +6804,6 @@ void remove_cache_peers(struct cacheserver_data *srv)
 }
 
 
-///////////////////////////////////////////////////////////////////////////////
-// camd35 / cs378x (cacheex) - update/remove
-///////////////////////////////////////////////////////////////////////////////
-
-#if defined(CAMD35_SRV) || defined(CS378X_SRV)
-void remove_camd35_clients(struct camd35_server_data *srv)
-{
-	while (srv->client) {
-		struct camd35_client_data *cli = srv->client;
-		srv->client = cli->next;
-		if (cli->handle>0) close(cli->handle);
-		free( cli );
-	}
-}
-
-void remove_camd35_cacheexclients(struct camd35_server_data *srv)
-{
-	while (srv->cacheexclient) {
-		struct camd35_client_data *cli = srv->cacheexclient;
-		srv->cacheexclient = cli->next;
-		if (cli->handle>0) close(cli->handle);
-		free( cli );
-	}
-}
-
-void update_camd35_clients(struct camd35_server_data *srv, struct camd35_server_data *newsrv )
-{
-	struct camd35_client_data *cli = srv->client;
-	while (cli) {
-		struct camd35_client_data *newcli = newsrv->client;
-		while (newcli) {
-			if ( !(newcli->flags&FLAG_DELETE) )
-			if ( !(cli->flags&FLAG_DELETE) )
-			if ( !strcmp(cli->user, newcli->user) ) break;
-			newcli = newcli->next;
-		}
-		if (newcli) {
-			newcli->flags |= FLAG_DELETE;
-#ifdef CACHEEX
-			cli->cacheex_mode = newcli->cacheex_mode;
-#endif
-			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
-				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
-			}
-		}
-		else cli->flags |= FLAG_DELETE;
-		cli = cli->next;
-	}
-	struct camd35_client_data *prev = NULL;
-	struct camd35_client_data *newcli = newsrv->client;
-	while (newcli) {
-		struct camd35_client_data *next = newcli->next;
-		if (!(newcli->flags&FLAG_DELETE)) {
-			if (prev) prev->next = newcli->next; else newsrv->client = newcli->next;
-			cfg_addcamd35client(srv, newcli);
-		} else prev = newcli;
-		newcli = next;
-	}
-	prev = NULL;
-	cli = srv->client;
-	while (cli) {
-		struct camd35_client_data *next = cli->next;
-		if (cli->flags&FLAG_DELETE) {
-			if (prev) prev->next = cli->next; else srv->client = cli->next;
-			cfg_addcamd35client(newsrv, cli);
-		} else prev = cli;
-		cli = next;
-	}
-}
-
-void update_camd35_cacheexclients(struct camd35_server_data *srv, struct camd35_server_data *newsrv )
-{
-	struct camd35_client_data *cli = srv->cacheexclient;
-	while (cli) {
-		struct camd35_client_data *newcli = newsrv->cacheexclient;
-		while (newcli) {
-			if ( !(newcli->flags&FLAG_DELETE) )
-			if ( !(cli->flags&FLAG_DELETE) )
-			if ( !strcmp(cli->user, newcli->user) ) break;
-			newcli = newcli->next;
-		}
-		if (newcli) {
-			newcli->flags |= FLAG_DELETE;
-#ifdef CACHEEX
-			cli->cacheex_mode = newcli->cacheex_mode;
-#endif
-			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
-				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
-			}
-		}
-		else cli->flags |= FLAG_DELETE;
-		cli = cli->next;
-	}
-	struct camd35_client_data *prev = NULL;
-	struct camd35_client_data *newcli = newsrv->cacheexclient;
-	while (newcli) {
-		struct camd35_client_data *next = newcli->next;
-		if (!(newcli->flags&FLAG_DELETE)) {
-			if (prev) prev->next = newcli->next; else newsrv->cacheexclient = newcli->next;
-			cfg_addcamd35client(srv, newcli);
-		} else prev = newcli;
-		newcli = next;
-	}
-	prev = NULL;
-	cli = srv->cacheexclient;
-	while (cli) {
-		struct camd35_client_data *next = cli->next;
-		if (cli->flags&FLAG_DELETE) {
-			if (prev) prev->next = cli->next; else srv->cacheexclient = cli->next;
-			cfg_addcamd35client(newsrv, cli);
-		} else prev = cli;
-		cli = next;
-	}
-}
-#endif
-
-#ifdef CAMD35_SRV
-void update_camd35_servers(struct config_data *cfg, struct config_data *newcfg)
-{
-	struct camd35_server_data *srv = cfg->camd35.server;
-	while (srv) {
-		struct camd35_server_data *newsrv = newcfg->camd35.server;
-		while (newsrv) {
-			if (srv->port==newsrv->port) break;
-			newsrv = newsrv->next;
-		}
-		if (newsrv) {
-			newsrv->flags |= FLAG_DELETE;
-			update_camd35_clients( srv, newsrv );
-			update_camd35_cacheexclients( srv, newsrv );
-		}
-		else srv->flags |= FLAG_DELETE;
-		srv = srv->next;
-	}
-	struct camd35_server_data *prev = NULL;
-	srv = newcfg->camd35.server;
-	while (srv) {
-		struct camd35_server_data *next = srv->next;
-		if (!(srv->flags&FLAG_DELETE)) {
-			if (prev) prev->next = srv->next; else newcfg->camd35.server = srv->next;
-			cfg_addcamd35server(cfg, srv);
-		} else prev = srv;
-		srv = next;
-	}
-	prev = NULL;
-	srv = cfg->camd35.server;
-	while (srv) {
-		struct camd35_server_data *next = srv->next;
-		if (srv->flags&FLAG_DELETE) {
-			if (prev) prev->next = srv->next; else cfg->camd35.server = srv->next;
-			cfg_addcamd35server(newcfg, srv);
-		} else prev = srv;
-		srv = next;
-	}
-}
-#endif
-
-#ifdef CS378X_SRV
-void update_cs378x_servers(struct config_data *cfg, struct config_data *newcfg)
-{
-	struct camd35_server_data *srv = cfg->cs378x.server;
-	while (srv) {
-		struct camd35_server_data *newsrv = newcfg->cs378x.server;
-		while (newsrv) {
-			if (srv->port==newsrv->port) break;
-			newsrv = newsrv->next;
-		}
-		if (newsrv) {
-			newsrv->flags |= FLAG_DELETE;
-			update_camd35_clients( srv, newsrv );
-			update_camd35_cacheexclients( srv, newsrv );
-		}
-		else srv->flags |= FLAG_DELETE;
-		srv = srv->next;
-	}
-	struct camd35_server_data *prev = NULL;
-	srv = newcfg->cs378x.server;
-	while (srv) {
-		struct camd35_server_data *next = srv->next;
-		if (!(srv->flags&FLAG_DELETE)) {
-			if (prev) prev->next = srv->next; else newcfg->cs378x.server = srv->next;
-			cfg_addcs378xserver(cfg, srv);
-		} else prev = srv;
-		srv = next;
-	}
-	prev = NULL;
-	srv = cfg->cs378x.server;
-	while (srv) {
-		struct camd35_server_data *next = srv->next;
-		if (srv->flags&FLAG_DELETE) {
-			if (prev) prev->next = srv->next; else cfg->cs378x.server = srv->next;
-			cfg_addcs378xserver(newcfg, srv);
-		} else prev = srv;
-		srv = next;
-	}
-}
-#endif
-
-
 void update_cache_peers(struct cacheserver_data *srv, struct cacheserver_data *newsrv)
 {
 	// set remove flag to old deleted clients & update reused one
@@ -5818,12 +6825,14 @@ void update_cache_peers(struct cacheserver_data *srv, struct cacheserver_data *n
 			peer->fblock0onid = newpeer->fblock0onid;
 			peer->csp = newpeer->csp;
 			peer->runtime = 0;
+#ifndef PUBLIC
 			peer->fwd = newpeer->fwd;
 			// csport
 			if ( memcmp(peer->sharelimits,newpeer->sharelimits,sizeof(peer->sharelimits)) ) {
 				peer->flags |= FLAG_DISCONNECT;
 				memcpy( peer->sharelimits, newpeer->sharelimits, sizeof(peer->sharelimits) );
 			}
+#endif
 		}
 		else if (!peer->runtime) peer->flags |= FLAG_DELETE; // if it is not created at runtime so delete
 		peer = peer->next;
@@ -6067,11 +7076,42 @@ void update_cardserver(struct config_data *cfg, struct config_data *newcfg)
 	while (cs) {
 		struct cardserver_data *next = cs->next;
 		if (cs->flags&FLAG_DELETE) {
+#ifdef MULTITHREADED
+			// SEND DEL SHARE TO CCCAM/MGCAMD CLIENTS
+			mlogf(LOGINFO,0, " DEL share [%s] id:%d  caid:%04x\n", cs->name, cs->id, cs->card.caid);
+			uint8_t buf[16];
+			buf[0] = PIPE_CARD_DEL;
+			memcpy( buf+1, &cs, sizeof(void*) );
+			pipe_send( prg.pipe.cccam[1], buf, 1+sizeof(void*) );
+			pipe_send( prg.pipe.mgcamd[1], buf, 1+sizeof(void*) );
+#endif
 			if (prev) prev->next = cs->next; else cfg->cardserver = cs->next;
 			cfg_addprofile(newcfg, cs);
 		} else prev = cs;
 		cs = next;
 	}
+#ifdef MULTITHREADED
+	//check for card update
+	cs = newcfg->cardserver;
+	while (cs) {
+		if (cs->flags&FLAG_DISCONNECT) {
+			uint8_t buf[16];
+			// SEND DEL SHARE TO CCCAM/MGCAMD CLIENTS
+			mlogf(LOGINFO,0, " DEL share [%s] id:%d  caid:%04x\n", cs->name, cs->id, cs->card.caid);
+			buf[0] = PIPE_CARD_DEL;
+			memcpy( buf+1, &cs, sizeof(void*) );
+			if (cs->option.fsharecccam) pipe_send( prg.pipe.cccam[1], buf, 1+sizeof(void*) );
+			if (cs->option.fsharemgcamd) pipe_send( prg.pipe.mgcamd[1], buf, 1+sizeof(void*) );
+			// SEND ADD SHARE TO CCCAM/MGCAMD CLIENTS
+			mlogf(LOGINFO,0, " ADD share [%s] id:%d  caid:%04x\n", cs->name, cs->id, cs->card.caid);
+			buf[0] = PIPE_CARD_ADD;
+			memcpy( buf+1, &cs, sizeof(void*) );
+			if (cs->option.fsharecccam) pipe_send( prg.pipe.cccam[1], buf, 1+sizeof(void*) );
+			if (cs->option.fsharemgcamd) pipe_send( prg.pipe.mgcamd[1], buf, 1+sizeof(void*) );
+		} 
+		cs = cs->next;
+	}
+#endif
 
 
 }
@@ -6237,7 +7277,9 @@ void update_servers(struct config_data *cfg, struct config_data *newcfg )
 #ifdef CACHEEX
 			srv->cacheex_mode = newsrv->cacheex_mode;
 			srv->cacheex_maxhop = newsrv->cacheex_maxhop;
+#ifndef PUBLIC
 			srv->cacheex_forward = newsrv->cacheex_forward;
+#endif
 #endif
 			// Share Limits
 			if ( memcmp(srv->sharelimits, newsrv->sharelimits, sizeof(srv->sharelimits)) ) {
@@ -6318,7 +7360,9 @@ void update_cacheexservers(struct config_data *cfg, struct config_data *newcfg )
 #ifdef CACHEEX
 			srv->cacheex_mode = newsrv->cacheex_mode;
 			srv->cacheex_maxhop = newsrv->cacheex_maxhop;
+#ifndef PUBLIC
 			srv->cacheex_forward = newsrv->cacheex_forward;
+#endif
 #endif
 			// Share Limits
 			if ( memcmp(srv->sharelimits, newsrv->sharelimits, sizeof(srv->sharelimits)) ) {
@@ -6412,6 +7456,7 @@ void reread_config( struct config_data *cfg )
 	strcpy(cfg->channelinfo_file,newcfg.channelinfo_file);
 	strcpy(cfg->providers_file,newcfg.providers_file);
 	strcpy(cfg->ip2country_file,newcfg.ip2country_file);
+	strcpy(cfg->constcw_file,newcfg.constcw_file);
 	strcpy(cfg->blockedip_file,newcfg.blockedip_file);
 	// SWAP das listas de dados (as antigas vao para oldcfg e sao libertadas no fim)
 	struct config_data oldcfg;
@@ -6471,9 +7516,11 @@ void reread_config( struct config_data *cfg )
 
 	// Servers
 
-	update_cccam_servers( cfg, &newcfg );
+#ifdef FREECCCAM_SRV
+	update_freecccam_server( cfg, &newcfg );
+#endif
 
-	update_mgcamd_servers( cfg, &newcfg );
+	update_cccam_servers( cfg, &newcfg );
 
 #ifdef CAMD35_SRV
 	update_camd35_servers( cfg, &newcfg );
@@ -6482,17 +7529,20 @@ void reread_config( struct config_data *cfg )
 	update_cs378x_servers( cfg, &newcfg );
 #endif
 
+	update_mgcamd_servers( cfg, &newcfg );
+
 
 	cfg->cache.autoadd = newcfg.cache.autoadd;
 	cfg->cache.autoenable = newcfg.cache.autoenable;
 	cfg->cache.alivetime = newcfg.cache.alivetime;
 	cfg->cache.adaptivettl = newcfg.cache.adaptivettl;
-	cfg->cache.strictprov = newcfg.cache.strictprov;
 	cfg->cache.threshold = newcfg.cache.threshold;
 	cfg->cache.filter = newcfg.cache.filter;
 	cfg->cache.filtertime = newcfg.cache.filtertime;
+#ifndef PUBLIC
 	cfg->cache.dcwcheck2 = newcfg.cache.dcwcheck2;
 	cfg->cache.dcwcheck3 = newcfg.cache.dcwcheck3;
+#endif
 	cfg->cache.forward = newcfg.cache.forward;
 	cfg->cache.faccept0onid = newcfg.cache.faccept0onid;
 	memcpy( cfg->cache.caids, newcfg.cache.caids, sizeof(newcfg.cache.caids) );
@@ -6508,6 +7558,7 @@ void reread_config( struct config_data *cfg )
 	cfg->mgcamd.keepalive = newcfg.mgcamd.keepalive;
 	cfg->cccam.dcwcheck = newcfg.cccam.dcwcheck;
 	cfg->cccam.keepalive = newcfg.cccam.keepalive;
+	cfg->cs378x.keepalive = newcfg.cs378x.keepalive;
 
 	update_servers( cfg, &newcfg );
 	update_cacheexservers( cfg, &newcfg );
@@ -6538,21 +7589,18 @@ void reread_config( struct config_data *cfg )
 	// Server
 	remove_servers(&newcfg);
 
+#ifdef FREECCCAM_SRV
+	// FreeCCcam Server
+	remove_cccam_clients(&newcfg.freecccam.server);
+	if (newcfg.freecccam.server.handle>0) close(newcfg.freecccam.server.handle);
+#endif
+
 	// CCcam Servers
 	while (newcfg.cccam.server) {
 		struct cccam_server_data *newsrv = newcfg.cccam.server;
 		newcfg.cccam.server = newsrv->next;
 		remove_cccam_clients( newsrv );
 		remove_cccam_cacheexclients( newsrv );
-		if (newsrv->handle>0) close(newsrv->handle);
-		free( newsrv );
-	}
-
-	// Mgcamd Servers
-	while (newcfg.mgcamd.server) {
-		struct mgcamdserver_data *newsrv = newcfg.mgcamd.server;
-		newcfg.mgcamd.server = newsrv->next;
-		remove_mgcamd_clients( newsrv );
 		if (newsrv->handle>0) close(newsrv->handle);
 		free( newsrv );
 	}
@@ -6568,8 +7616,9 @@ void reread_config( struct config_data *cfg )
 		free( newsrv );
 	}
 #endif
+
 #ifdef CS378X_SRV
-	// Cs378x Servers
+	//cs378x
 	while (newcfg.cs378x.server) {
 		struct camd35_server_data *newsrv = newcfg.cs378x.server;
 		newcfg.cs378x.server = newsrv->next;
@@ -6579,6 +7628,15 @@ void reread_config( struct config_data *cfg )
 		free( newsrv );
 	}
 #endif
+
+	// Mgcamd Servers
+	while (newcfg.mgcamd.server) {
+		struct mgcamdserver_data *newsrv = newcfg.mgcamd.server;
+		newcfg.mgcamd.server = newsrv->next;
+		remove_mgcamd_clients( newsrv );
+		if (newsrv->handle>0) close(newsrv->handle);
+		free( newsrv );
+	}
 
 	// Cache Servers
 	while (newcfg.cache.server) {
@@ -6713,6 +7771,22 @@ int check_config(struct config_data *cfg)
 			}
 		}
 
+#ifdef RADEGAST_SRV
+		if (cs->radegast.handle<=0) {
+			if ( (cs->radegast.port<1024)||(cs->radegast.port>0xffff) ) {
+				//mlogf(LOGWARNING,getdbgflag(DBG_CONFIG,0,0)," CardServer '%s': invalid port value (%d)\n", cs->name, cs->newcamd.port);
+				cs->radegast.handle = -1;
+			}
+			else if ( (cs->radegast.handle=CreateServerSockTcp_nonb(cs->radegast.port, IP_ADRESS)) == -1) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," [%s] Radegast Server: bind port failed (%d)\n", cs->name, cs->radegast.port);
+				cs->radegast.handle = -1;
+			}
+			else {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," [%s] Radegast Server started on port %d\n",cs->name,cs->radegast.port);
+				CHECK_IP_ADRESS(cs->radegast.handle);
+			}
+		}
+#endif
 		cs = cs->next;
 	}
 
@@ -6772,6 +7846,43 @@ int check_config(struct config_data *cfg)
 		}
 		cccam = cccam->next;
 	}
+	// Open port for CCcam3 server (protocolo CCcam 3 - boxes CCcam3)
+	cccam = cfg->cccam.server;
+	while (cccam) {
+		if (cccam->ccam3_port && (cccam->ccam3_handle<=0)) {
+			if ( (cccam->ccam3_port<1024)||(cccam->ccam3_port>0xffff) ) {
+				mlogf(LOGWARNING,getdbgflag(DBG_CONFIG,0,0)," CCcam3 Server: invalid port value (%d)\n", cccam->ccam3_port);
+				cccam->ccam3_handle = -1;
+			}
+			else if ( (cccam->ccam3_handle=CreateServerSockTcp_nonb(cccam->ccam3_port, IP_ADRESS)) == -1) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," CCcam3 Server: bind port failed (%d)\n", cccam->ccam3_port);
+				cccam->ccam3_handle = -1;
+			}
+			else {
+				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," CCcam3 server started on port %d\n", cccam->ccam3_port);
+				create_thread( &cccam->tid_ccam3, (void*(*)(void*))ccam3_srv_thread, cccam );
+			}
+		}
+		cccam = cccam->next;
+	}
+#endif
+
+#ifdef FREECCCAM_SRV
+	// Open port
+	if (cfg->freecccam.server.handle<=0) {
+		if ( (cfg->freecccam.server.port<1024)||(cfg->freecccam.server.port>0xffff) ) {
+			mlogf(LOGWARNING,getdbgflag(DBG_CONFIG,0,0)," FreeCCcam Server: invalid port value (%d)\n", cfg->freecccam.server.port);
+			cfg->freecccam.server.handle = -1;
+		}
+		else if ( (cfg->freecccam.server.handle=CreateServerSockTcp_nonb(cfg->freecccam.server.port, IP_ADRESS)) == -1) {
+			mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," FreeCCcam Server: bind port failed (%d)\n", cfg->freecccam.server.port);
+			cfg->freecccam.server.handle = -1;
+		}
+		else {
+			mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," FreeCCcam server started on port %d\n",cfg->freecccam.server.port);
+			CHECK_IP_ADRESS(cfg->freecccam.server.handle);
+		}
+	}
 #endif
 
 #ifdef MGCAMD_SRV
@@ -6797,44 +7908,8 @@ int check_config(struct config_data *cfg)
 #endif
 
 
-	// ADD TO EPOLL
-	// Open port for Cache servers
-	struct cacheserver_data *cache = cfg->cache.server;
-	while (cache) {
-		if (cache->handle<=0) {
-			if ( (cache->port<1024)||(cache->port>0xffff) ) {
-				mlogf(LOGWARNING,getdbgflag(DBG_CONFIG,0,0)," Cache Server: invalid port value (%d)\n", cache->port);
-				cache->handle = -1;
-			}
-			else if ( (cache->handle=CreateServerSockUdp(cache->port, IP_ADRESS)) == -1) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," Cache Server: bind port failed (%d)\n", cache->port);
-				cache->handle = -1;
-			}
-			else {
-#ifdef EPOLL_CACHE
-//				epoll_add( prg.epoll.cache, cache->handle, cache );
-#endif
-				int n = 1024 * 1024;
-				if (setsockopt(cache->handle, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n)) == -1) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," setsockopt failure\n");
-				}
-				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," Cache server started on port %d\n",cache->port);
-				CHECK_IP_ADRESS(cache->handle);
-			}
-		}
-
-		// create cachepeer socket
-		struct cachepeer_data *peer = cache->peer;
-		while (peer) {
-			peer->outsock = cache->handle; //if (peer->outsock<=0) peer->outsock = CreateClientSockUdp(0,0);
-			peer = peer->next;
-		}
-
-		cache = cache->next;
-	}
-
 #ifdef CAMD35_SRV
-	// Open port for Camd35 server (UDP)
+	// Open port for MGcamd servers
 	struct camd35_server_data *camd35 = cfg->camd35.server;
 	while (camd35) {
 		if (camd35->handle<=0) {
@@ -6855,7 +7930,6 @@ int check_config(struct config_data *cfg)
 	}
 #endif
 #ifdef CS378X_SRV
-	// Open port for cs378x server (TCP)
 	struct camd35_server_data *cs378x = cfg->cs378x.server;
 	while (cs378x) {
 		if (cs378x->handle<=0) {
@@ -6875,6 +7949,46 @@ int check_config(struct config_data *cfg)
 		cs378x = cs378x->next;
 	}
 #endif
+
+
+	// ADD TO EPOLL
+	// Open port for Cache servers
+	struct cacheserver_data *cache = cfg->cache.server;
+	while (cache) {
+		if (cache->handle<=0) {
+			if ( (cache->port<1024)||(cache->port>0xffff) ) {
+				mlogf(LOGWARNING,getdbgflag(DBG_CONFIG,0,0)," Cache Server: invalid port value (%d)\n", cache->port);
+				cache->handle = -1;
+			}
+			else if ( (cache->handle=CreateServerSockUdp(cache->port, IP_ADRESS)) == -1) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," Cache Server: bind port failed (%d)\n", cache->port);
+				cache->handle = -1;
+			}
+			else {
+#ifdef EPOLL_CACHE
+//				epoll_add( prg.epoll.cache, cache->handle, cache );
+#endif
+#ifndef PUBLIC
+				int n = 1024 * 1024;
+				if (setsockopt(cache->handle, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n)) == -1) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," setsockopt failure\n");
+				}
+#endif
+				mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," Cache server started on port %d\n",cache->port);
+				CHECK_IP_ADRESS(cache->handle);
+			}
+		}
+
+		// create cachepeer socket
+		struct cachepeer_data *peer = cache->peer;
+		while (peer) {
+			peer->outsock = cache->handle; //if (peer->outsock<=0) peer->outsock = CreateClientSockUdp(0,0);
+			peer = peer->next;
+		}
+
+		cache = cache->next;
+	}
+
 
 
 	return 0;
@@ -6974,13 +8088,16 @@ void cfg_set_id_counters(struct config_data *cfg)
 	cfg->camd35.totalservers = 0;
 	struct camd35_server_data *camd35 = cfg->camd35.server;
 	while (camd35) {
+		//
 		if (!camd35->id) {
 			camd35->id = cfg->camd35.serverid;
 			cfg->camd35.serverid++;
 		}
+		// Normal Clients
 		camd35->totalclients = 0;
 		struct camd35_client_data *cli = camd35->client;
 		while (cli) {
+			//cli->srvid = camd35->id;
 			if (!cli->id) {
 				cli->id = cfg->camd35.clientid;
 				cfg->camd35.clientid++;
@@ -6988,8 +8105,10 @@ void cfg_set_id_counters(struct config_data *cfg)
 			camd35->totalclients++;
 			cli = cli->next;
 		}
+		// CacheEX Clients
 		cli = camd35->cacheexclient;
 		while (cli) {
+			//cli->srvid = camd35->id;
 			if (!cli->id) {
 				cli->id = cfg->camd35.clientid;
 				cfg->camd35.clientid++;
@@ -6997,6 +8116,7 @@ void cfg_set_id_counters(struct config_data *cfg)
 			camd35->totalclients++;
 			cli = cli->next;
 		}
+		//
 		cfg->camd35.totalservers++;
 		camd35 = camd35->next;
 	}
@@ -7012,8 +8132,10 @@ void cfg_set_id_counters(struct config_data *cfg)
 			cs378x->id = cfg->cs378x.serverid;
 			cfg->cs378x.serverid++;
 		}
+		// Normal Clients
 		struct camd35_client_data *cli = cs378x->client;
 		while (cli) {
+			//cli->srvid = cs378x->id;
 			if (!cli->id) {
 				cli->id = cfg->cs378x.clientid;
 				cfg->cs378x.clientid++;
@@ -7021,8 +8143,10 @@ void cfg_set_id_counters(struct config_data *cfg)
 			cs378x->totalclients++;
 			cli = cli->next;
 		}
+		// CacheEX Clients
 		cli = cs378x->cacheexclient;
 		while (cli) {
+			//cli->srvid = cs378x->id;
 			if (!cli->id) {
 				cli->id = cfg->cs378x.clientid;
 				cfg->cs378x.clientid++;
@@ -7030,6 +8154,7 @@ void cfg_set_id_counters(struct config_data *cfg)
 			cs378x->totalclients++;
 			cli = cli->next;
 		}
+		//
 		cfg->cs378x.totalservers++;
 		cs378x = cs378x->next;
 	}
@@ -7090,7 +8215,7 @@ void cfg_set_id_counters(struct config_data *cfg)
 // Close ports
 int done_config(struct config_data *cfg)
 {
-	// Close Newcamd Clients Connections & profiles ports
+	// Close Newcamd/Radegast Clients Connections & profiles ports
 	struct cardserver_data *cs = cfg->cardserver;
 	while (cs) {
 		if (cs->newcamd.handle>0) {
@@ -7101,6 +8226,16 @@ int done_config(struct config_data *cfg)
 				cscli = cscli->next;
 			}
 		}
+#ifdef RADEGAST_SRV
+		if (cs->radegast.handle>0) {
+			close(cs->radegast.handle);
+			struct rdgd_client_data *rdgdcli = cs->radegast.client;
+			while (rdgdcli) {
+				if (rdgdcli->handle>0) close(rdgdcli->handle);
+				rdgdcli = rdgdcli->next;
+			}
+		}
+#endif
 		cs = cs->next;
 	}
 
@@ -7132,6 +8267,18 @@ int done_config(struct config_data *cfg)
 #endif
 
 
+#ifdef FREECCCAM_SRV
+	if (cfg->freecccam.server.handle>0) {
+		close(cfg->freecccam.server.handle);
+		struct cc_client_data *fcccli = cfg->freecccam.server.client;
+		while (fcccli) {
+			if (fcccli->handle>0) close(fcccli->handle);
+			fcccli = fcccli->next;
+		}
+	}
+#endif
+
+
 #ifdef MGCAMD_SRV
 	struct mgcamdserver_data *mgcamd = cfg->mgcamd.server;
 	while (mgcamd) {
@@ -7145,6 +8292,39 @@ int done_config(struct config_data *cfg)
 	}
 #endif
 
+
+#ifdef CAMD35_SRV
+	struct camd35_server_data *camd35 = cfg->camd35.server;
+	while (camd35) {
+		if (camd35->handle>0) close(camd35->handle);
+/* no sockets for camd35 clients
+		struct camd35_client_data *cli = camd35->client;
+		while (cli) {
+			if (cli->handle>0) close(cli->handle);
+			cli = cli->next;
+		}
+*/
+		camd35 = camd35->next;
+	}
+#endif
+
+#ifdef CS378X_SRV
+	struct camd35_server_data *cs378x = cfg->cs378x.server;
+	while (cs378x) {
+		if (cs378x->handle>0) close(cs378x->handle);
+		struct camd35_client_data *cli = cs378x->client;
+		while (cli) {
+			if (cli->handle>0) close(cli->handle);
+			cli = cli->next;
+		}
+		cli = cs378x->cacheexclient;
+		while (cli) {
+			if (cli->handle>0) close(cli->handle);
+			cli = cli->next;
+		}
+		cs378x = cs378x->next;
+	}
+#endif
 
 	// Close Cache Servers
 	struct cacheserver_data *cache = cfg->cache.server;
@@ -7177,4 +8357,3 @@ int done_config(struct config_data *cfg)
 
 
 // check if any profile updated for caid:provider
-

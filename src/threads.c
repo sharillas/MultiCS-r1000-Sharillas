@@ -10,6 +10,13 @@
 #include <sys/time.h>
 #include <time.h>
 
+#ifdef WIN32
+
+#include <windows.h>
+#include <sys/types.h>
+
+#else
+
 #include <errno.h>
 #include <sched.h>
 #include <sys/time.h>
@@ -22,6 +29,8 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 
+#endif
+
 #ifndef  uint32_t
 typedef unsigned int uint32_t;
 #endif
@@ -29,6 +38,8 @@ typedef unsigned int uint32_t;
 #include "debug.h"
 #include "threads.h"
 
+
+#ifndef WIN32 
 
 int create_thread(pthread_t *tid, threadfn func, void *arg)
 {
@@ -40,3 +51,13 @@ int create_thread(pthread_t *tid, threadfn func, void *arg)
 	pthread_detach(*tid);
 	return 1;
 }
+
+#else
+
+int create_thread(pthread_t *tid, threadfn func, void *arg)
+{
+	CreateThread (NULL, 0, (LPTHREAD_START_ROUTINE) func, NULL, 0, tid);
+	return 1;
+}
+
+#endif

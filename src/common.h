@@ -9,11 +9,19 @@
 #endif
 #endif
 
+#ifdef RADEGAST_SRV
+#define RADEGAST
+#else
+#ifdef RADEGAST_CLI
+#define RADEGAST
+#endif
+#endif
+
 #define REVISION    1000
 #define REVISION_STR  "1000"
 
 #ifndef VERSION_STR
-#define VERSION_STR "1.47"
+#define VERSION_STR "1.27"
 #endif
 
 #ifndef GIT_COMMIT
@@ -23,11 +31,19 @@
 #define FALSE 0
 #define TRUE 1
 
+#ifdef WIN32
+
+#define pthread_t DWORD
+
+#else
+
 typedef int SOCKET;
 #define INVALID_HANDLE_VALUE -1
 #define INVALID_SOCKET       -1
 #define SOCKET_ERROR         -1
 #define closesocket          close
+
+#endif
 
 
 #define MAX_ECM_SIZE 700

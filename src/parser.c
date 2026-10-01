@@ -7,6 +7,12 @@
 #include <stdint.h>
 
 
+#ifdef WIN32
+
+#include <windows.h>
+
+#else
+
 #include <fcntl.h>
 #include <sys/time.h>
 #include <time.h>
@@ -18,6 +24,8 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <errno.h>
+
+#endif
 
 #include "parser.h"
 
