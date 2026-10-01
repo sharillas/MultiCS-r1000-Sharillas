@@ -9,5 +9,3 @@ projeto_final/
 deploy.secrets.ps1
 *.secrets.ps1
 .secrets/
-build/*.x64
-build/*.x32

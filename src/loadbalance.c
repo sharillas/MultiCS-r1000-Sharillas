@@ -32,81 +32,6 @@ int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid)
 	return 0;
 }
 
-// BAD CW CACHE (v1.40): regista que o reader entregou CW ma neste canal.
-// O reader e saltado SO neste canal durante o TTL do perfil (minutos).
-void srv_bad_record(struct server_data *srv, uint16_t caid, uint16_t sid)
-{
-	if (!srv) return;
-	uint32_t ticks = GetTickCount();
-	// evita recontar o mesmo canal repetidamente
-	int i;
-	for (i=0; i<BADCW_CACHE_MAX; i++) {
-		if (!srv->bad_time[i]) continue;
-		if ( (uint32_t)(ticks - srv->bad_time[i]) < 60000 && (srv->bad_caid[i]==caid) && (srv->bad_sid[i]==sid) ) {
-			srv->bad_time[i] = ticks; // renova o TTL sem recontar
-			return;
-		}
-	}
-	i = srv->bad_idx;
-	srv->bad_time[i] = ticks;
-	srv->bad_caid[i] = caid;
-	srv->bad_sid[i] = sid;
-	srv->bad_idx = (srv->bad_idx + 1) % BADCW_CACHE_MAX;
-	srv->badchannels++;
-}
-
-// 1 = o reader tem registo activo de CW ma neste canal (TTL em ms)
-int srv_bad_check(struct server_data *srv, uint16_t caid, uint16_t sid, uint32_t ttl)
-{
-	if (!srv) return 0;
-	uint32_t ticks = GetTickCount();
-	int i;
-	for (i=0; i<BADCW_CACHE_MAX; i++) {
-		if (!srv->bad_time[i]) continue;
-		if ( (uint32_t)(ticks - srv->bad_time[i]) > ttl ) { srv->bad_time[i] = 0; continue; }
-		if ( (srv->bad_caid[i]==caid) && (srv->bad_sid[i]==sid) ) return 1;
-	}
-	return 0;
-}
-
-// v1.41 FEEDBACK DO CLIENTE: marca a fonte que entregou uma CW que a box nao
-// conseguiu usar (o cliente repetiu o mesmo hash logo apos a entrega).
-void dcw_badmark(int srcid, uint16_t caid, uint16_t sid)
-{
-	struct server_data *s = getsrvbyid(srcid&0xffff);
-	if (!s) return;
-	s->cwbad++;
-	s->cwbad_time = GetTickCount();
-	srv_bad_record(s, caid, sid);
-	mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,s->id)," badmark: fonte %d marcada (feedback do cliente) ch %04x:%04x (cwbad=%d)\n",
-		s->id, caid, sid, s->cwbad);
-
-	// v1.44: reconexao forcada quando a fonte acumula CWs mas (auto-recuperacao)
-	// - cwbad efectivo (decay como no health) acima do limite -> desconectar o
-	//   reader (a thread reconecta de novo, sessao limpa junto do servidor remoto)
-	// - cooldown de 15min para nao entrar em loop de reconexoes
-	int recon = cfg_default_badcwrecon();
-	if (recon>0) {
-		int cwbad_eff = (int)s->cwbad;
-		if (s->cwbad_time) {
-			uint32_t el = (GetTickCount() - s->cwbad_time) / 1000;
-			if (el > 1800) cwbad_eff = 0;
-			else if (el > 600) cwbad_eff = cwbad_eff / 2;
-		}
-		if (cwbad_eff >= recon) {
-			uint32_t ticks = GetTickCount();
-			if ( (!s->badcw_lastrecon) || ((uint32_t)(ticks - s->badcw_lastrecon) > 900000) ) {
-				s->badcw_lastrecon = ticks;
-				mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,s->id)," badcw: fonte (%s:%d) com %d cws mas - reconexao forcada\n",
-					s->host->name, s->port, cwbad_eff);
-				disconnect_srv(s);
-				s->cwbad = 0;
-				s->cwbad_time = 0;
-			}
-		}
-	}
-}
-
 // 0: different ; 1:~equivalent
 int cs_cmp_card( struct cs_card_data *card, struct cardserver_data *cs){
 	int i,j,found;
@@ -156,7 +81,7 @@ int sidata_getval(struct server_data *srv, struct cardserver_data *cs, uint16_t 
 	struct cs_card_data *card = NULL;
 
 	*selcard = NULL;
-	if (srv->type==TYPE_NEWCAMD) {
+	if ( (srv->type==TYPE_NEWCAMD) || (srv->type==TYPE_RADEGAST) || (srv->type==TYPE_CAMD35) || (srv->type==TYPE_CS378X) ) {
 		card = srv->card;
 		while (card) {
 			if ( match_card(caid,prov,card) ) break;
@@ -212,6 +137,11 @@ int sidata_getval(struct server_data *srv, struct cardserver_data *cs, uint16_t 
 			card = card->next;
 		}
 		return selsidvalue;
+	}
+	else if (srv->type==TYPE_CCAM3) {
+		// CCcam3: carta sintetica (o protocolo nao envia lista de cards)
+		*selcard = srv->card;
+		return 0;
 	}
 #endif
 	return 0;
@@ -280,7 +210,7 @@ int srv_healthscore(struct cardserver_data *cs, struct server_data *srv)
 	int sta = (int)((uptime*1000)/600);
 	if (sta>1000) sta = 1000;
 
-	// Erros: timeouts + bad dcw + CWs suspeitas (nagra/cwlr/cwpk/stale) (20 = penalizacao maxima)
+	// Erros: timeouts + bad dcw (20 erros = penalizacao maxima)
 	// decay: se nao ha conflitos ha >10min, a penalizacao cai para metade;
 	// >30min sem conflitos, desaparece (o colega pode ter corrigido as CWs)
 	int errdcw_eff = srv->ecmerrdcw;
@@ -289,14 +219,7 @@ int srv_healthscore(struct cardserver_data *cs, struct server_data *srv)
 		if (el > 1800) errdcw_eff = 0;
 		else if (el > 600) errdcw_eff = errdcw_eff / 2;
 	}
-	// v1.30.1: cwbad (lixo inteligente) com o mesmo decay
-	int cwbad_eff = (int)srv->cwbad;
-	if (srv->cwbad_time) {
-		uint32_t el = (GetTickCount() - srv->cwbad_time) / 1000;
-		if (el > 1800) cwbad_eff = 0;
-		else if (el > 600) cwbad_eff = cwbad_eff / 2;
-	}
-	int err = (srv->ecmtimeout + errdcw_eff + cwbad_eff) * 50;
+	int err = (srv->ecmtimeout + errdcw_eff) * 50;
 	if (err>1000) err = 1000;
 
 	int score = (suc*wsuc + lat*wlat + sta*wsta - err*werr)/100;
@@ -310,15 +233,6 @@ int srv_healthscore(struct cardserver_data *cs, struct server_data *srv)
 inline int health_better(struct srvtab_data *a, struct srvtab_data *b)
 {
 	if (a->health && b->health && a->health!=b->health) return a->health < b->health;
-	return 0;
-}
-
-// v1.40: directa (hop 1) antes de circuito (hop>1); hop 0 = desconhecido (neutro)
-inline int hop_better(struct srvtab_data *a, struct srvtab_data *b)
-{
-	if (a->srv->hop==1 && b->srv->hop!=1) return 1;
-	if (b->srv->hop==1 && a->srv->hop!=1) return 0;
-	if (a->srv->hop && b->srv->hop && (a->srv->hop != b->srv->hop)) return a->srv->hop > b->srv->hop;
 	return 0;
 }
 
@@ -361,19 +275,14 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		if ( !IS_DISABLED(srv->flags)&&(srv->connection.status>0) )
 		if (
 			( cs->option.fallownewcamd && (srv->type==TYPE_NEWCAMD) )
-			|| ( cs->option.fallowcccam && (srv->type==TYPE_CCCAM) )
+			|| ( cs->option.fallowcccam && ( (srv->type==TYPE_CCCAM) || (srv->type==TYPE_CCAM3) ) )
+			|| ( cs->option.fallowradegast && (srv->type==TYPE_RADEGAST) )
+			|| ( cs->option.fallowcamd35 && (srv->type==TYPE_CAMD35) )
+			|| ( cs->option.fallowcs378x && (srv->type==TYPE_CS378X) )
 		)
 		// Remove Circular request: check for client ip & srv ip
 		if ( srv->nocheck || (srv->host->ip==0x0100007F) || ( !ecm_checkip(ecm, srv->host->ip) && !ecm_checksrvip(ecm, srv->host->ip) ) )
 		{
-			// v1.40 SERVERS: lista explicita de readers do perfil (0 = comportamento classico)
-			if ( cs->option.nbservers>0 ) {
-				int ok = 0;
-				for(i=0; i<cs->option.nbservers; i++) {
-					if (cs->option.servers[i]==srv->id) { ok = 1; break; }
-				}
-				if (!ok) { srv = srv->next; continue; }
-			}
 			// Check for CS PORTS
 			for(i=0; i<MAX_CSPORTS; i++ ) {
 				if (!srv->csport[i]) break;
@@ -502,6 +411,7 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		}
 	}
 
+#ifndef PUBLIC
 	// Store number of available servers, Runtime ADD SIDS
 	if (ecm->sid) {
 		for(i=0; i<1024; i++) {
@@ -516,13 +426,18 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 			}
 		}
 	}
+#endif
 
 
+#ifndef PUBLIC
 	// Check if there is no/few servers to decode, send decode failed to client
 	// dont get from few servers (for many cccam servers)
 	if (nbsrv<=cs->option.server.threshold) {
 		return -1;
 	}
+#else
+	if (!nbsrv) return -1;
+#endif
 
 
 	// Remove Busy Servers
@@ -554,26 +469,6 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		}
 	}
 
-	// BAD CW CACHE (v1.40): saltar readers que entregaram CW ma NESTE canal
-	// durante o TTL do perfil (o reader continua a servir os outros canais).
-	{
-		uint32_t ttl = (uint32_t)cs->option.dcw.badcwttl * 60000;
-		int bad = 0;
-		for(j=0; j<nbsrv; j++)
-			if ( srv_bad_check(psrvlist[j]->srv, ecm->caid, ecm->sid, ttl) ) bad++;
-		if (bad && (bad<nbsrv)) {
-			i=0;
-			for(j=0; j<nbsrv; j++) {
-				if ( !srv_bad_check(psrvlist[j]->srv, ecm->caid, ecm->sid, ttl) ) {
-					if (i<j) psrvlist[i] = psrvlist[j];
-					i++;
-				}
-			}
-			psrvlist[i] = NULL;
-			nbsrv = i;
-		}
-	}
-
 
 	// Arrange by ECM LAST SENT TIME
 	for(i=0; i<nbsrv-1; i++)
@@ -592,9 +487,9 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 	if (cs->option.health.enable) {
 		for(i=0; i<nbsrv; i++) {
 			psrvlist[i]->health = srv_healthscore(cs, psrvlist[i]->srv);
-			mlogf(LOGDEBUG,getdbgflagpro(DBG_SERVER,0,psrvlist[i]->srv->id,cs->id)," health: server (%s:%d) score=%d (ok=%d/%d tmo=%d baddcw=%d cwbad=%d)\n",
+			mlogf(LOGDEBUG,getdbgflagpro(DBG_SERVER,0,psrvlist[i]->srv->id,cs->id)," health: server (%s:%d) score=%d (ok=%d/%d tmo=%d baddcw=%d)\n",
 				psrvlist[i]->srv->host->name, psrvlist[i]->srv->port, psrvlist[i]->health,
-				psrvlist[i]->srv->ecmok, psrvlist[i]->srv->ecmnb, psrvlist[i]->srv->ecmtimeout, psrvlist[i]->srv->ecmerrdcw, psrvlist[i]->srv->cwbad);
+				psrvlist[i]->srv->ecmok, psrvlist[i]->srv->ecmnb, psrvlist[i]->srv->ecmtimeout, psrvlist[i]->srv->ecmerrdcw);
 		}
 
 		if (cs->option.health.dropoff>0) {
@@ -647,11 +542,6 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
 						}
-						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
-							srvtemp = psrvlist[i];
-							psrvlist[i] = psrvlist[j];
-							psrvlist[j] = srvtemp;
-						}
 						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
@@ -676,11 +566,6 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
 						}
-						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
-							srvtemp = psrvlist[i];
-							psrvlist[i] = psrvlist[j];
-							psrvlist[j] = srvtemp;
-						}
 						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
@@ -701,11 +586,6 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 					}
 					else {
 						if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
-							srvtemp = psrvlist[i];
-							psrvlist[i] = psrvlist[j];
-							psrvlist[j] = srvtemp;
-						}
-						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
@@ -743,11 +623,6 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;
 						}
-						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
-							srvtemp = psrvlist[i];
-							psrvlist[i] = psrvlist[j];
-							psrvlist[j] = srvtemp;
-						}
 						else if ( health_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
@@ -768,11 +643,6 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 					}
 					else if (psrvlist[j]->val==0) {
 						if ( psrvlist[i]->prorank > psrvlist[j]->prorank ) {
-							srvtemp = psrvlist[i];
-							psrvlist[i] = psrvlist[j];
-							psrvlist[j] = srvtemp;
-						}
-						else if ( hop_better(psrvlist[i], psrvlist[j]) ) {
 							srvtemp = psrvlist[i];
 							psrvlist[i] = psrvlist[j];
 							psrvlist[j] = srvtemp;

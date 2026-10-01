@@ -8,6 +8,7 @@
 
 void cc_senddcw_cli(struct cc_client_data *cli);
 void cccam_srv_accept2(struct cccam_server_data *cccam);
+int ccam3_send_cw_cli(struct cc_client_data *cli, ECM_DATA *ecm); // srv-ccam3.c
 
 
 struct cccam_server_data *getcccamserverbyid(uint32_t id)
@@ -305,12 +306,24 @@ void *cc_connect_cli(struct connect_cli_data *param)
 	for (i = 0; i < 4; i++) {
 		data[12 + i] = (data[i] + data[4 + i] + data[8 + i]) & 0xff;
 	}
+#ifdef DEBUG_NETWORK
+	if (flag_debugnet) {
+		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," CCcam%d: Send Random Key 16\n", cccam->id);
+		debughex(data, 16);
+	}
+#endif
 	if ( !send_nonb(sock, data, 16, 500) ) {
 		close(sock);
 		return NULL;
 	}
 	//XOR init bytes with 'CCcam'
 	cc_crypt_xor(data);
+#ifdef DEBUG_NETWORK
+	if (flag_debugnet) {
+		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0), " CCcam: XOR init bytes with 'CCcam'\n");
+		debughex(data, 16);
+	}
+#endif
 	//SHA1
 	SHA_CTX ctx;
 	SHA1_Init(&ctx);
@@ -325,9 +338,27 @@ void *cc_connect_cli(struct connect_cli_data *param)
 	cc_decrypt(&recvblock, buf, 20);
 		//mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," CCcam%d: recvblock:cc_crypt_init \n", cccam->id); debughex(recvblock.keytable,256);
 
+#ifdef DEBUG_NETWORK
+	if (flag_debugnet) {
+		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," CCcam: SHA1 hash\n");
+		debughex(buf,20);
+	}
+#endif
 	memcpy(usr,buf,20);
 	if ((i=recv_nonb(sock, buf, 20,5000)) == 20) {
+#ifdef DEBUG_NETWORK
+		if (flag_debugnet) {
+			mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," CCcam%d: receive SHA1 hash %d\n", cccam->id, i);
+			debughex(buf,i);
+		}
+#endif
 		cc_decrypt(&recvblock, buf, 20);
+#ifdef DEBUG_NETWORK
+		if (flag_debugnet) {
+			mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," Decrypted SHA1 hash (20):\n");
+			debughex(buf,20);
+		}
+#endif
 		if ( memcmp(buf,usr,20)!=0 ) {
 			//mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0)," cc_connect_cli(): wrong sha1 hash from client! (%s)\n",ip2string(ip));
 			close(sock);
@@ -341,6 +372,12 @@ void *cc_connect_cli(struct connect_cli_data *param)
 
 	// receive username
 	i = recv_nonb(sock, buf, 20,5000);
+#ifdef DEBUG_NETWORK
+	if (flag_debugnet) {
+		mlogf(LOGDEBUG,getdbgflag(DBG_CCCAM,cccam->id,0) , " CCcam%d: receive username %s -%d\n", cccam->id, ip2string(ip), i);
+		debughex(buf,i);
+	}
+#endif
 	if (i == 20) {
 		cc_decrypt(&recvblock, buf, i);
 		memcpy(usr,buf,20);
@@ -473,7 +510,9 @@ void *cc_connect_cli(struct connect_cli_data *param)
 	memcpy( tmpcli.build, buf+65, 31 );
 	mlogf(LOGINFO,getdbgflag(DBG_CCCAM,cli->parent->id,cli->id)," CCcam%d: client '%s' running version %s build %s\n", cccam->id, usr, tmpcli.version, tmpcli.build);  // cli->nodeid,8,
 	// Check for Nodeid/CCcam Version
+#ifndef PUBLIC
 	if (cli->option.checknodeid)
+#endif
 	if (cli->option.nodeid[0] && cli->option.nodeid[7]) {
 		if (memcmp(cli->option.nodeid, tmpcli.nodeid, 8)) { // diff nodeid
 			mlogf(LOGWARNING,getdbgflag(DBG_CCCAM,cli->parent->id,cli->id)," CCcam%d: login failed from client '%s' (%s), wrong nodeid\n", cccam->id, usr, ip2string(ip));
@@ -511,11 +550,13 @@ void *cc_connect_cli(struct connect_cli_data *param)
 	memcpy(&cli->sendblock, &tmpcli.sendblock,sizeof(tmpcli.sendblock));
 	memcpy(&cli->recvblock, &tmpcli.recvblock,sizeof(tmpcli.recvblock));
 	memcpy(cli->nodeid, tmpcli.nodeid, 8);
+#ifndef PUBLIC
 	// store nodeid if not set :)
 	if (!cli->option.nodeid[0] && !cli->option.nodeid[7]) {
 		memcpy(cli->option.nodeid, tmpcli.nodeid, 8);
 		prg.updatenodes = 1;
 	}
+#endif
 	memcpy(cli->version, tmpcli.version, 31);
 	memcpy(cli->build, tmpcli.build, 31 );
 
@@ -626,9 +667,12 @@ void cccam_srv_accept(struct cccam_server_data *srv)
 	}
 }
 
+#ifndef MONOTHREAD_ACCEPT
 void *cccam_accept_thread(void *param)
 {
+#ifndef PUBLIC
 	prctl(PR_SET_NAME,"CCcam Accept",0,0,0);
+#endif
 	sleep(5);
 
 	while(!prg.restart) {
@@ -662,6 +706,7 @@ void *cccam_accept_thread(void *param)
 	}
 	return NULL;
 }
+#endif
 
 
 
@@ -729,13 +774,22 @@ void cc_senddcw_cli(struct cc_client_data *cli)
 	if ( (ecm->dcwstatus==STAT_DCW_SUCCESS)&&(ecm->hash==cli->ecm.hash) ) {
 		memcpy( buf, ecm->cw, 16 );
 
-		cc_crypt_cw( cli->nodeid, cli->ecm.cardid , buf);
-		if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_REQUEST, 16, buf) ) {
-			cc_disconnect_cli( cli );
-			return;
+		if (cli->isccam3) {
+			// cliente CCcam3: framing propria (sem NOK no fail)
+			if (!ccam3_send_cw_cli(cli, ecm)) {
+				cc_disconnect_cli( cli );
+				return;
+			}
 		}
-		cc_encrypt(&cli->sendblock, buf, 16); // additional crypto step
-		mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," => cw to CCcam client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
+		else {
+			cc_crypt_cw( cli->nodeid, cli->ecm.cardid , buf);
+			if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_REQUEST, 16, buf) ) {
+				cc_disconnect_cli( cli );
+				return;
+			}
+			cc_encrypt(&cli->sendblock, buf, 16); // additional crypto step
+		}
+		mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," => cw to CCcam%s client '%s' ch %04x:%06x:%04x (%dms)\n", cli->isccam3?"3":"", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
 		//
 		cli->lastecm.dcwsrctype = ecm->dcwsrctype;
 		cli->lastecm.dcwsrcid = ecm->dcwsrcid;
@@ -747,12 +801,18 @@ void cc_senddcw_cli(struct cc_client_data *cli)
 		memcpy( cli->lastecm.dcw, ecm->cw, 16 );
 	}
 	else { //if (ecm->data->dcwstatus==STAT_DCW_FAILED)
-		if (enablefreeze) cli->freeze++;
-		if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
-			cc_disconnect_cli( cli );
-			return;
+		if (cli->isccam3) {
+			// CCcam3 nao tem NOK - o cliente fica a espera (timeout do lado dele)
+			mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam3 client '%s' ch %04x:%06x:%04x (%dms)\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime);
 		}
-		mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam client '%s' ch %04x:%06x:%04x (%dms)%s\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime, (ecm->cs&&ecm->cs->option.dcw.silentnok)?" [SILENT]":"");
+		else {
+			if (enablefreeze) cli->freeze++;
+			if ( !cc_msg_send( cli->handle, &cli->sendblock, CC_MSG_ECM_NOK1, 0, NULL) ) {
+				cc_disconnect_cli( cli );
+				return;
+			}
+			mlogf(LOGINFO,getdbgflagpro(DBG_CCCAM,cli->parent->id,cli->id,ecm->cs->id)," |> decode failed to CCcam client '%s' ch %04x:%06x:%04x (%dms)%s\n", cli->user, ecm->caid,ecm->provid,ecm->sid, ticks-cli->ecm.recvtime, (ecm->cs&&ecm->cs->option.dcw.silentnok)?" [SILENT]":"");
+		}
 		//
 		cli->lastecm.dcwsrctype = DCW_SOURCE_NONE;
 		cli->lastecm.dcwsrcid = 0;
@@ -847,8 +907,6 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 			uint16_t sid = buf[14]<<8 | buf[15];
 			uint32_t provid = ecm_getprovid( data, caid );
 			if (provid==0) provid = buf[6]<<24 | buf[7]<<16 | buf[8]<<8 | buf[9];
-			// CWFEED (estudo de CWs): pedido do cliente
-			cwfeed_add(caid, provid, sid, data, len-17, NULL, 0, 0, 0, 1, 0, cli->id);
 
 			// Check for Profile
 			struct cardserver_data *cs=getcsbyid( cardid );
@@ -937,12 +995,6 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 					}
 					// Check for Success/Timeout
 					if (!ecm->checktime) {
-						// v1.41 FEEDBACK: o cliente repetiu o hash que ja recebeu com sucesso
-						// => a CW entregue nao abriu na box => marca a fonte
-						if ( (cli->lastecm.status==1) && (cli->lastecm.dcwsrctype==DCW_SOURCE_SERVER)
-							&& ((ticks - cli->lastdcwtime) < 15000) ) {
-							dcw_badmark( cli->lastecm.dcwsrcid, caid, sid );
-						}
 						cc_senddcw_cli(cli);
 						pthread_mutex_unlock(&prg.lockecm);
 						break;
@@ -991,8 +1043,10 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 				else ecm->checktime = 1; // Check NOW
 				pipe_wakeup( prg.pipe.ecm[1] );
 
+#ifndef PUBLIC
 #if defined(CACHEEX) && defined(CS378X_SRV)
 				forward_cs378x(ecm);
+#endif
 #endif
 
 #ifdef TESTCHANNEL
@@ -1036,19 +1090,6 @@ inline void cc_cli_parsemsg(struct cc_client_data *cli, uint8_t *buf, int len)
 			//if ( !checkECMD5(cacheex.ecmd5) ) cli->cacheex.totalcsp++;
 			cacheex.hash = (buf[43]<<24) | (buf[42]<<16) | (buf[41]<<8) | buf[40];
 			if (!cacheex_check(&cacheex)) break;
-			// v1.46 A1+A2: validacao do motor + aprendizagem da cadencia pelo ritmo
-			{
-				ECM_DATA tmp;
-				memset(&tmp, 0, sizeof(tmp));
-				tmp.caid = cacheex.caid;
-				tmp.provid = cacheex.provid;
-				tmp.sid = cacheex.sid;
-				tmp.hash = cacheex.hash;
-				int anom = dcwchan_engine(&tmp, cw);
-				if (anom==1) { cli->cacheex.badcw++; break; }
-				if (anom==3) { cli->cacheex.badcw++; break; }
-				if (anom==2) cli->cacheex.badcw++;
-			}
 			cli->cacheex.got[0]++;
 			int uphop = buf[60];
 			if (uphop<10) cli->cacheex.got[uphop]++;
@@ -1210,9 +1251,11 @@ void *cc_recvmsg_thread(void *param)
 {
 	int i;
 
+#ifndef PUBLIC
 	cfg.cccam.pid_recvmsg = syscall(SYS_gettid);
 	prg.pid_cc_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"CCcam RecvMSG",0,0,0);
+#endif
 
 	struct epoll_event evlist[MAX_EPOLL_EVENTS]; // epoll recv events
 	prg.epoll.cccam = epoll_create( MAX_EPOLL_EVENTS );
@@ -1276,9 +1319,11 @@ void *cc_recvmsg_thread(void *param)
 	struct pollfd pfd[MAX_PFD];
 	int pfdcount;
 
+#ifndef PUBLIC
 	cfg.cccam.pid_recvmsg = syscall(SYS_gettid);
 	prg.pid_cc_msg = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"CCcam RecvMSG",0,0,0);
+#endif
 
 	while (!prg.restart) {
 		// SILENT NOK: enviar NOKs adiados que ja venceram o prazo
@@ -1374,8 +1419,10 @@ void *cc_recvmsg_thread(void *param)
 int start_thread_cccam()
 {
 	pthread_t tid;
+#ifndef MONOTHREAD_ACCEPT
 	create_thread(&tid, cccam_accept_thread,NULL);
 	create_thread(&tid, cccam_connector_thread,NULL);
+#endif
 
 	create_thread(&cfg.cccam.tid_recvmsg, cc_recvmsg_thread,NULL);
 	return 0;

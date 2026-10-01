@@ -63,9 +63,27 @@ void *cs_connect_srv_th(struct server_data *srv)
 			close(fd);
 		}
 	}
+	else if (srv->type==TYPE_CCAM3) {
+		if ( ccam3_connect_srv(srv,fd)!=0 ) {
+			mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," server: connection failed to CCcam3 server (%s:%d)\n", srv->host->name,srv->port);
+			srv->connection.status = 0;
+			close(fd);
+		}
+	}
+#endif
+#ifdef RADEGAST_CLI
+	else if (srv->type==TYPE_RADEGAST) {
+		//mlogf(LOGDEBUG,0," Connecting to Radegast server (%s:%d) ...\n", srv->host->name,srv->port);
+		if ( rdgd_connect_srv(srv,fd)!=0 ) {
+			mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," server: connection failed to Radegast server (%s:%d)\n", srv->host->name,srv->port);
+			srv->connection.status = 0;
+			close(fd);
+		}
+	}
 #endif
 #ifdef CS378X_CLI
 	else if (srv->type==TYPE_CS378X) {
+		//mlogf(LOGDEBUG,0," Connecting to CS378X server (%s:%d) ...\n", srv->host->name,srv->port);
 		if ( cs378x_connect_srv(srv,fd)!=0 ) {
 			mlogf(LOGWARNING,getdbgflag(DBG_SERVER,0,srv->id)," server: connection failed to cs378x server (%s:%d)\n", srv->host->name,srv->port);
 			srv->connection.status = 0;
@@ -84,13 +102,15 @@ void *camd35_connect_srv_th(struct server_data *srv)
 {
 	if (srv->type!=TYPE_CAMD35) return NULL;
 
+	//mlogf(LOGDEBUG,0," Connecting to camd35 server (%s:%d) ...\n", srv->host->name,srv->port);
+
 	srv->connection.status = -1;
 	srv->connection.time = GetTickCount();
 	struct host_data *host = srv->host;
 	uint32_t ip = host->ip;
 	if (!ip) ip = host->clip;
-
-	int fd =  CreateClientSockUdp( 0, 0 );
+	
+	int fd =  CreateClientSockUdp( 0, 0 ); //srv->port, ip);
 	if (fd<0) {
 		static char msg[]= "socket creation failed";
 		srv->statmsg = msg;
@@ -120,15 +140,15 @@ void connect_server(struct server_data *srv)
 	while (srv) {
 		if ( !IS_DISABLED(srv->flags) ) {
 			if ( ( (srv->host->ip)||(srv->host->clip) ) && !isblockedip(srv->host->ip) ) {
-			if ( !srv->connection.status ) {
-				if ( (srv->connection.time+srv->connection.delay) < ticks ) {
+				if ( !srv->connection.status ) {
+					if ( (srv->connection.time+srv->connection.delay) < ticks ) {
 #ifdef CAMD35_CLI
-					if (srv->type==TYPE_CAMD35) create_thread(&srv_tid, (threadfn)camd35_connect_srv_th, srv);
-					else
+						if (srv->type==TYPE_CAMD35) create_thread(&srv_tid, (threadfn)camd35_connect_srv_th, srv);
+						else
 #endif
-					create_thread(&srv_tid, (threadfn)cs_connect_srv_th, srv); // Lock server
+						create_thread(&srv_tid, (threadfn)cs_connect_srv_th, srv); // Lock server
+					}
 				}
-			}
 			}
 			else {
 				static char msg[]= "Invalid Address";
@@ -145,8 +165,10 @@ void connect_server(struct server_data *srv)
 
 void *connect_servers(void *param)
 {
+#ifndef PUBLIC
 	prg.pid_srv = syscall(SYS_gettid);
 	prctl(PR_SET_NAME,"Server Conn",0,0,0);
+#endif
 	while (!prg.restart) {
 		pthread_mutex_lock(&prg.locksrvth);
 

@@ -1,5 +1,9 @@
 //Don't pack structs on ARM processors like RPI. It causes unaligned access exceptions
+#ifdef NOPACK
+#define PACK
+#else
 #define PACK __attribute__ ((__packed__))
+#endif
 
 // CCcam Cryptage Functions
 

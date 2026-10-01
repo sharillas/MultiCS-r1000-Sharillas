@@ -40,6 +40,7 @@ typedef enum
 #define DCW_SOURCE_MGCLIENT  4
 #endif
 #define DCW_SOURCE_CCCLIENT  6
+#define DCW_SOURCE_EMU       7
 
 struct ecm_request {
 	struct ecm_request *next;
@@ -81,7 +82,6 @@ struct ecm_request {
 
 	char *statusmsg; // DCW status message
 	uint8_t nokbiss; // BISS NOK (sem chave/emulador desligado) -> NOK amarelo na GUI
-	uint8_t stalehold; // v1.30 STALE_CHECK: ja segurou 1x uma CW stale desta fonte
 
 #ifdef CHECK_NEXTDCW
 	// Last Successive ECM/DCW

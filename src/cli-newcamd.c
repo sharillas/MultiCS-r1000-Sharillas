@@ -81,8 +81,7 @@ int cs_connect_srv(struct server_data *srv, int fd)
 	//mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," passwdcrypt = %s\n",passwdcrypt);
 	strcpy((char*)buf+index, (char*)passwdcrypt);
 	index+=strlen(passwdcrypt)+1;
-	// v1.45: nao marcamos o provid multics (0x0057484F) - o servidor remoto
-	// mostra-nos como cliente newcamd/mgcamd simples em vez de "MCS"
+	if (ismultics) clicd.provid=0x0057484F;
 	if ( !cs_message_send(fd, &clicd, buf, index, sessionkey) ) return -1;
 	srv->ping = GetTickCount();
 	// 3.1 Get login answer

@@ -1,4 +1,6 @@
 
+#ifndef WIN32
+
 #include <sys/time.h>
 
 extern struct timeval startime;
@@ -7,6 +9,8 @@ uint64_t GetTickCount();
 unsigned int GetuTickCount();
 unsigned int GetTicks(struct timeval *tv);
 unsigned int getseconds();
+
+#endif
 
 
 struct table_average {

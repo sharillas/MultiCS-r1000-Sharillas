@@ -4,8 +4,23 @@
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
-#include <stdlib.h>
 
+
+#ifdef WIN32
+
+#include <windows.h>
+#include <sys/types.h>
+#include <sys/_default_fcntl.h>
+#include <sys/poll.h>
+#include <cygwin/types.h>
+#include <cygwin/socket.h>
+#include <sys/errno.h>
+#include <cygwin/in.h>
+#include <sched.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
+
+#else
 
 #include <fcntl.h>
 #include <sys/time.h>
@@ -19,6 +34,8 @@
 #include <netinet/tcp.h>
 #include <errno.h>
 #include <poll.h>
+
+#endif
 
 #include "debug.h"
 #include "convert.h"
@@ -306,6 +323,9 @@ struct ecm_request *store_ecmdata(struct cardserver_data *cs,uint8_t *ecm,int ec
 	//new->dcwsrvtype = DCW_SOURCE_NONE;
 
 	new->period = 1; // First try
+
+	// Emulator: se existe chave constante, acorda ja o check_ecm
+	if (emu_has_constcw(caid, provid, sid)) new->checktime = 1;
 
 #ifdef CHECK_NEXTDCW
 	//checkfreeze_storeECM(new);
