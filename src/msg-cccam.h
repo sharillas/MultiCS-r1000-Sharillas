@@ -1,9 +1,5 @@
 //Don't pack structs on ARM processors like RPI. It causes unaligned access exceptions
-#ifdef NOPACK
-#define PACK
-#else
 #define PACK __attribute__ ((__packed__))
-#endif
 
 // CCcam Cryptage Functions
 
@@ -40,6 +36,7 @@ typedef enum
   CC_MSG_CARD_ADD,			// server -> client
   CC_MSG_SRV_INFO,			// server -> client
   CC_MSG_CMD_0B = 0x0b,	// server -> client ???????
+  CC_MSG_CARD_REQ = 0x0d,	// client -> server: pedido da lista de cards (v1.48)
 #ifdef CACHEEX
   CC_MSG_CACHE_PUSH = 0x81, //CacheEx Cache-Push In/Out
 #ifdef CACHEEX_CWCYCLE

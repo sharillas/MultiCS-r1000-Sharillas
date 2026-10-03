@@ -569,6 +569,9 @@ int cc_connect_srv(struct server_data *srv, int fd)
 		mlogf(LOGWARNING,getdbgflag(DBG_SERVER, 0, srv->id), " CCcam: login failed to Server (%s:%d), could not send client data\n",srv->host->name,srv->port);
 		return -3;
 	}
+	// v1.48: pedido explicito da lista de cards (alguns servers so enviam
+	// os CARD_ADD depois de o cliente pedir - ex.: linhas quase diretas do oscam)
+	cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_CARD_REQ, 0, NULL );
 	// Update Server data
 	static char msg[]= "Connected";
 	srv->statmsg = msg;
