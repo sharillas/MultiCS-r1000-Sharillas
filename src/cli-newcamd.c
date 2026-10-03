@@ -22,7 +22,7 @@ int cs_sendecm_srv(struct cardserver_data *cs, struct server_data *srv, ECM_DATA
 	srvcd.msgid = srv->ecm.msgid;
 	srvcd.sid = ecm->sid;
 	srvcd.caid = ecm->caid;
-	srvcd.provid = ecm->provid;
+	srvcd.provid = srv->providrewrite ? 0 : ecm->provid; // v1.48 providrewrite
 
 	memcpy( &buf[0], &ecm->ecm[0], ecm->ecmlen );
 	return cs_message_send(  srv->handle, &srvcd, buf, ecm->ecmlen, srv->sessionkey);
@@ -81,7 +81,8 @@ int cs_connect_srv(struct server_data *srv, int fd)
 	//mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," passwdcrypt = %s\n",passwdcrypt);
 	strcpy((char*)buf+index, (char*)passwdcrypt);
 	index+=strlen(passwdcrypt)+1;
-	if (ismultics) clicd.provid=0x0057484F;
+	// v1.45: nao marcamos o provid multics (0x0057484F) - o servidor remoto
+	// mostra-nos como cliente newcamd/mgcamd simples em vez de "MCS"
 	if ( !cs_message_send(fd, &clicd, buf, index, sessionkey) ) return -1;
 	srv->ping = GetTickCount();
 	// 3.1 Get login answer
@@ -306,6 +307,7 @@ void cs_srv_recvmsg(struct server_data *srv)
 						if ( memcmp(ecm->cw, buf+3, 16) ) {
 							mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,srv->id,ecm->cs->id)," !!! different dcw from server (%s:%d)\n",srv->host->name,srv->port);
 							srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount(); // CW divergente da aceite: reader a produzir CW errada (cartao marcado / CAK7 mal) -> penaliza no health
+							srv->divcount++; srv->div_caid = ecm->caid; srv->div_sid = ecm->sid; srv->div_time = GetTickCount(); // v1.48
 						}
 					}
 #ifdef SID_FILTER

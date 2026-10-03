@@ -34,10 +34,6 @@
 #ifdef CCCAM
 #include "msg-cccam.h"
 #endif
-#ifdef RADEGAST
-#include "msg-radegast.h"
-#endif
-
 #include "ecmdata.h"
 #include "parser.h"
 #include "config.h"
@@ -50,9 +46,6 @@
 #include "cacheex.h"
 
 #include "main.h"
-#include "emu.h"
-#include "cwc.h"
-#include "chnbudget.h"
 #include "nagra.h"
 #include "ipblock.h"
 #include "lite.h"
@@ -64,9 +57,6 @@
 char config_file[256] = "/var/etc/multics.cfg";
 
 int flag_debugscr;
-#ifdef DEBUG_NETWORK
-int flag_debugnet;
-#endif
 int flag_debugfile;
 char debug_file[256];
 char sms_file[256];
@@ -427,15 +417,14 @@ int cs_check_ecmlen(struct cardserver_data *cs, int len)
 
 // protection.c (incluido mais abaixo) - prototipos para o aceite do ECM
 void dcw_cak7_apply(uint8_t cw[16]);
+void dcw_cak7_apply_inv(uint8_t cw[16]); // v1.48: permutacao inversa
 char *ecm_filter_check(struct cardserver_data *cs, uint8_t *ecmdata, uint16_t ecmlen);
-int dcw_filter_check(struct cardserver_data *cs, uint8_t dcw[16]);
 void failban_bad(uint32_t ip, int proto, char *reason, uint8_t *badcw);
 int anticascade_zap(uint32_t ip);
 char *ratelimit_check(struct cardserver_data *cs, uint16_t sid);
 void prot_event_add(const char *fmt, ...);
 char *prot_event_get(int n, uint32_t *age_ms);
 uint32_t prot_uptime_ticks(void);
-int dcw_filter_learned_count(void);
 
 char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, uint16_t sid, uint16_t chid, uint16_t ecmlen, uint8_t *ecmdata, uint8_t *cw1cycle )
 {
@@ -454,6 +443,8 @@ char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, 
 	if ( !accept_prov(cs,provid) ) return("Wrong provider");
 	// Check for sid
 	if ( !accept_sid(cs, provid, sid, chid, ecmlen, cw1cycle) ) return("Channel denied");
+	// v1.46 B8: ident aprendido como mau pelo motor (anomalias repetidas)
+	if ( dcwchan_badident_check(caid, provid) ) return("Bad ident (aprendido)");
 	// BUILD LITE: ignorar canais fora da lista
 	if ( cs->option.fenablelite && !lite_check(caid, provid, sid) ) return("Ignored (lite)");
 	// check for length
@@ -480,6 +471,9 @@ char *cs_accept_ecm(struct cardserver_data *cs, uint16_t caid, uint32_t provid, 
 ///////////////////////////////////////////////////////////////////////////////
 void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid);
 int pipe_send_cacheex_push_cache(struct cache_data *pcache, uint8_t *cw, uint8_t *nodeid);
+#if defined(CACHEEX) && defined(CS378X_SRV)
+void forward_cs378x(ECM_DATA *ecm);
+#endif
 
 #include "clustredcache.c"
 
@@ -487,16 +481,13 @@ int pipe_send_cacheex_push_cache(struct cache_data *pcache, uint8_t *cw, uint8_t
 #include "cli-newcamd.c"
 #ifdef CCCAM_CLI
 #include "cli-cccam.c"
-#include "cli-ccam3.c"
-#include "ccam3_crypto.c"
 #endif
 
+#include "crc32.c"
 
 #if defined(CAMD35_SRV) || defined(CAMD35_CLI) || defined(CS378X_SRV) || defined(CS378X_CLI)
-#include "crc32.c"
 #include "msg-camd35.c"
 #endif
-
 #ifdef CAMD35_CLI
 #include "cli-camd35.c"
 #endif
@@ -504,13 +495,11 @@ int pipe_send_cacheex_push_cache(struct cache_data *pcache, uint8_t *cw, uint8_t
 #include "cli-cs378x.c"
 #endif
 
-
 struct connect_cli_data {
 	void *server;
 	int sock;
 	uint32_t ip;
 };
-void forward_cs378x(ECM_DATA *ecm);
 
 
 #include "srv-newcamd.c"
@@ -520,25 +509,10 @@ void forward_cs378x(ECM_DATA *ecm);
 
 #ifdef CCCAM_SRV
 #include "srv-cccam.c"
-#include "srv-ccam3.c"
 #endif
-
-#ifdef FREECCCAM_SRV
-#include "srv-freecccam.c"
-#endif
-
-#ifdef RADEGAST_CLI
-#include "cli-radegast.c"
-#endif
-
-#ifdef RADEGAST_SRV
-#include "srv-radegast.c"
-#endif
-
 #ifdef CAMD35_SRV
 #include "srv-camd35.c"
 #endif
-
 #ifdef CS378X_SRV
 #include "srv-cs378x.c"
 #endif
@@ -552,19 +526,15 @@ void forward_cs378x(ECM_DATA *ecm);
 #include "th-srv.c"  // Servers Connnection
 #include "th-dns.c"  // Dns Resolving
 #include "th-ecm.c"  // Check/send ecm request to servers & Check/send dcw to clients
-#ifndef WIN32 
 #include "th-cfg.c"  // Reread Config
-#endif
 #ifdef EXPIREDATE
 #include "th-date.c"
 #endif
-#include "emu.c"   // Emulator (constcw / BISS)
-#include "cwc.c"   // CW Cycle Check (estilo OSCam)
-#include "chnbudget.c" // Timing budget por canal (cryptoperiod adaptativo)
 #include "nagra.c" // NAGRA protection (18xx/19xx)
 #include "lite.c"  // BUILD LITE: filtro de canais CCcam.lite
 #include "ipblock.c" // Lista de IPs bloqueados (Iptables)
 #include "protection.c" // ECM/DCW filters, FAILBAN, ANTICASCADE, RATELIMIT, CAK7
+#include "cwfeed.c"   // Feed live ECM/CW para estudo na GUI
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -575,15 +545,12 @@ char *src2string(int srctype, int srcid, char *ret)
 	static char ss2[] = "cache peer";
 	static char ss3[] = "newcamd client";
 
-	if (srctype==DCW_SOURCE_EMU) {
-		sprintf( ret, "emulator (constcw)" );
-		return "emulator";
-	}
-
 	if (srctype==DCW_SOURCE_SERVER) {
 		struct server_data *srv = getsrvbyid(srcid&0xFFFF);
-		if (srv)
-			sprintf( ret,"server (%s:%d)", srv->host->name, srv->port);
+		if (srv) {
+			if (srv->name[0]) sprintf( ret,"server %s", srv->name);
+			else sprintf( ret,"server (%s:%d)", srv->host->name, srv->port);
+		}
 		else
 			sprintf( ret,"Unknow server (id=%d)", srcid);
 		return ss1;
@@ -607,28 +574,6 @@ char *src2string(int srctype, int srcid, char *ret)
 			return "CacheEx CCcam client";
 		}
 
-#ifdef CAMD35_SRV
-		else if (srcid&PEER_CAMD35_CLIENT) {
-			struct camd35_client_data *cli = getcamd35clientbyid(srcid&0xFFFF);
-			if (cli)
-				sprintf( ret,"CacheEx Camd35 client '%s'", cli->user);
-			else
-				sprintf( ret,"Unknown CacheEx Camd35 client (id=%d)", srcid);
-			return "CacheEx Camd35 client";
-		}
-#endif
-
-#ifdef CS378X_SRV
-		else if (srcid&PEER_CS378X_CLIENT) {
-			struct camd35_client_data *cli = getcs378xclientbyid(srcid&0xFFFF);
-			if (cli)
-				sprintf( ret,"CacheEx cs378x client '%s'", cli->user);
-			else
-				sprintf( ret,"Unknown CacheEx cs378x client (id=%d)", srcid);
-			return "CacheEx cs378x client";
-		}
-#endif
-
 		else if (srcid&PEER_CACHEEX_SERVER) {
 			struct server_data *srv = getcesrvbyid(srcid&0xFFFF);
 			if (srv)
@@ -637,8 +582,20 @@ char *src2string(int srctype, int srcid, char *ret)
 				sprintf( ret,"Unknow CacheEx server (id=%d)", srcid);
 			return "CacheEx Server";
 		}
+#ifdef CAMD35_SRV
+		else if (srcid&PEER_CAMD35_CLIENT) {
+			sprintf( ret,"CacheEx Camd35 client (id=%d)", srcid);
+			return "CacheEx Camd35 client";
+		}
 #endif
-	}
+#ifdef CS378X_SRV
+		else if (srcid&PEER_CS378X_CLIENT) {
+			sprintf( ret,"CacheEx Cs378x client (id=%d)", srcid);
+			return "CacheEx Cs378x client";
+		}
+#endif
+		}
+#endif
 #ifdef SRV_CSCACHE
 	else if (srctype==DCW_SOURCE_CSCLIENT) {
 		// srcid =  (csid<<16)|cliid;
@@ -697,11 +654,9 @@ uint8_t fastrnd2()
 
 void mainprocess()
 {
-#ifndef WIN32
 	gettimeofday( &startime, NULL );
 	//if (startime.tv_sec>1380237152) exit(0);
 	//printf(" %ld\n", startime.tv_sec + (24*3600*5) ); exit(0);
-#endif
 // INIT
 	pthread_mutex_init(&prg.lock, NULL);
 	pthread_mutex_init(&prg.lockecm, NULL);
@@ -713,19 +668,10 @@ void mainprocess()
 	pthread_mutex_init(&prg.locksrvcc, NULL); // CC Client connection
 	pthread_mutex_init(&prg.lockcccli, NULL);
 #endif
-#ifdef FREECCCAM_SRV
-	pthread_mutex_init(&prg.locksrvfreecc, NULL); // CC Client connection
-	pthread_mutex_init(&prg.lockfreecccli, NULL);
-#endif
 
 #ifdef MGCAMD_SRV
 	pthread_mutex_init(&prg.locksrvmg, NULL); // Client connection
 	pthread_mutex_init(&prg.lockclimg, NULL);
-#endif
-
-#ifdef RADEGAST_SRV
-	pthread_mutex_init(&prg.lockrdgdsrv, NULL); // Client connection
-	pthread_mutex_init(&prg.lockrdgdcli, NULL);
 #endif
 
 	// Main Loops(THREADS)
@@ -769,12 +715,16 @@ void mainprocess()
 	SetSoketNonBlocking(prg.pipe.cacheex[1]);
 #endif
 
+#if defined(CS378X_SRV) || defined(CS378X_CLI)
 	if ( pipe(prg.pipe.cs378x) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(prg.pipe.cs378x[0]);
 	SetSoketNonBlocking(prg.pipe.cs378x[1]);
+#ifdef CS378X_SRV
 	if ( pipe(prg.pipe.cs378x_cex) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(prg.pipe.cs378x_cex[0]);
 	SetSoketNonBlocking(prg.pipe.cs378x_cex[1]);
+#endif
+#endif
 
 	if ( pipe(prg.pipe.cccam) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(prg.pipe.cccam[0]);
@@ -787,10 +737,6 @@ void mainprocess()
 	if ( pipe(prg.pipe.newcamd) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(prg.pipe.newcamd[0]);
 	SetSoketNonBlocking(prg.pipe.newcamd[1]);
-
-	if ( pipe(prg.pipe.freecccam) < 0 ) { perror("pipe()"); exit(1); }
-	SetSoketNonBlocking(prg.pipe.freecccam[0]);
-	SetSoketNonBlocking(prg.pipe.freecccam[1]);
 
 	if ( pipe(dcwpipe) < 0 ) { perror("pipe()"); exit(1); }
 	SetSoketNonBlocking(dcwpipe[0]);
@@ -814,20 +760,19 @@ void mainprocess()
 	srand (time(NULL));
 
 #ifdef CCCAM 
-// NODE ID: 8675e141 217e6912
-	prg.nodeid[0] = 'R';
-	prg.nodeid[1] = '8';
-	prg.nodeid[2] = '2';
-	prg.nodeid[3] = 'N';
+// NODE ID: aleatorio como uma box CCcam real (sem a assinatura "RxxN" do
+// multics - os servidores remotos mostram-nos como cliente normal)
+	prg.nodeid[0] = 0xff & fastrnd2();
+	prg.nodeid[1] = 0xff & fastrnd2();
+	prg.nodeid[2] = 0xff & fastrnd2();
+	prg.nodeid[3] = 0xff & fastrnd2();
 	prg.nodeid[4] = 0xff & fastrnd2();
 	prg.nodeid[5] = 0xff & fastrnd2();
 	prg.nodeid[6] = 0xff & fastrnd2();
 	prg.nodeid[7] = 0xff & fastrnd2();
 #endif
 
-#ifndef WIN32
 	start_thread_config();
-#endif
 
 	usleep(100000);
 
@@ -853,11 +798,6 @@ void mainprocess()
 
 	sleep(3);
 
-	pthread_t cli_tid;
-#ifdef RADEGAST_SRV
-	create_thread(&cli_tid, (threadfn)rdgd_connect_cli_thread, NULL); // Lock server
-#endif
-
 	start_thread_newcamd();
 
 #ifdef MGCAMD_SRV
@@ -868,10 +808,6 @@ void mainprocess()
 	start_thread_cccam();
 #endif
 
-#ifdef FREECCCAM_SRV
-	start_thread_freecccam();
-#endif
-
 #ifdef CS378X_SRV
 	start_thread_cs378x();
 #endif
@@ -880,14 +816,27 @@ void mainprocess()
 	start_thread_camd35();
 #endif
 
-#ifdef MONOTHREAD_ACCEPT
-	create_thread(&cli_tid, (threadfn)connect_cli_thread, NULL); // Lock server
-#endif
-
 	start_thread_http();
 
+	// v1.43: amostrador do historico para a CW Monitoring (janela 15min, anel 24h)
+	uint32_t lasthist = GetTickCount();
 	while (!prg.restart) {
 		sleep(5);
+		if ( (uint32_t)(GetTickCount() - lasthist) >= 900000 ) {
+			lasthist = GetTickCount();
+			struct server_data *hs = cfg.server;
+			while (hs) {
+				uint8_t hidx = hs->hist_idx;
+				hs->hist_nb[hidx]    = (hs->ecmnb > hs->hist_prevnb) ? (hs->ecmnb - hs->hist_prevnb) : 0;
+				hs->hist_ok[hidx]    = (hs->ecmok > hs->hist_prevok) ? (hs->ecmok - hs->hist_prevok) : 0;
+				hs->hist_cwbad[hidx] = (hs->cwbad > hs->hist_prevcwbad) ? (hs->cwbad - hs->hist_prevcwbad) : 0;
+				hs->hist_prevnb  = hs->ecmnb;
+				hs->hist_prevok  = hs->ecmok;
+				hs->hist_prevcwbad = hs->cwbad;
+				hs->hist_idx = (hidx+1) % HIST_MAX;
+				hs = hs->next;
+			}
+		}
 	}
 
 }
@@ -1015,9 +964,6 @@ int main(int argc, char *argv[])
 
 	flag_debugscr = 0;
 	flag_debugfile = 0;
-#ifdef DEBUG_NETWORK
-	flag_debugnet = 0;
-#endif
 
 	if (IP_ADRESS) printf("*Server IP: %s\n", ip2string(IP_ADRESS)); 	// Extract filename
 	char *p = argv[0];
@@ -1031,14 +977,6 @@ int main(int argc, char *argv[])
 	char path[255];
 	if (dot>slash) memcpy( path, slash, dot-slash); else strcpy(path, slash);
 
-#ifdef WIN32
-	// Set Config name
-	sprintf( config_file, "%s.cfg", path);
-//	sprintf( sid_file, "/var/etc/%s.sid", path);
-//	sprintf( card_file, "/var/etc/%s.card", path);
-	sprintf( debug_file, "%s.log", path);
-	sprintf( sms_file, "%s.sms", path);
-#else
 	// Set Config name
 	sprintf( config_file, "/var/etc/%s.cfg", path);
 //	sprintf( sid_file, "/var/etc/%s.sid", path);
@@ -1046,7 +984,6 @@ int main(int argc, char *argv[])
 	sprintf( debug_file, "/var/tmp/%s.log", path);
 	sprintf( sms_file, "/var/tmp/%s.sms", path);
 	sprintf( ecm_file, "/var/tmp/%s.ecm", path);
-#endif
 	loglevel=LOGINFO; // Default initial loglevel
 
 	// Parse Options
@@ -1075,9 +1012,6 @@ OPTIONS\n\
 				for(j=1; j<strlen(args); j++) {
 					if (args[j]=='b') option_background = 1;
 					else if (args[j]=='v') flag_debugscr = 1;
-#ifdef DEBUG_NETWORK
-					else if (args[j]=='n') flag_debugnet = 1;
-#endif
 					else if (args[j]=='f') flag_debugfile = 1;
 				}
 			}

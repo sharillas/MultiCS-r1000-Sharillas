@@ -29,10 +29,13 @@ int cc_sendecm_srv(struct server_data *srv, ECM_DATA *ecm)
 		//mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " -> ecm to CCcam server (%s:%d) ch %04x:%06x:%04x shareid %x\n", srv->host->name, srv->port,ecm->caid,ecm->provid,ecm->sid,srv->busycardid);
 	buf[0] = ecm->caid>>8;
 	buf[1] = ecm->caid&0xff;
-	buf[2] = ecm->provid>>24;
-	buf[3] = ecm->provid>>16;
-	buf[4] = ecm->provid>>8;
-	buf[5] = ecm->provid&0xff;
+	{
+		uint32_t prov = srv->providrewrite ? 0 : ecm->provid; // v1.48 providrewrite
+		buf[2] = prov>>24;
+		buf[3] = prov>>16;
+		buf[4] = prov>>8;
+		buf[5] = prov&0xff;
+	}
 	// srv->busycardid is saved from srvtab_arrange()
 	buf[6] = srv->busycardid>>24;
 	buf[7] = srv->busycardid>>16;
@@ -175,6 +178,11 @@ void cc_srv_recvmsg(struct server_data *srv)
                 				mlogf(LOGDEBUG,getdbgflagpro(DBG_SERVER, 0, srv->id,cs->id)," <= cw from CCcam server (%s:%d)- %04x:%06x:%04x/%s => %s\n", srv->host->name,srv->port, ecm->caid, ecm->provid, ecm->sid, dumpecm, dumpcw);
 					}
 					ecm_setdcw( ecm, dcw, DCW_SOURCE_SERVER, srv->id );
+				}
+				else if ( memcmp(ecm->cw, dcw, 16) ) {
+					srv->ecmerrdcw++;
+					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,srv->id,cs->id)," !!! different dcw from CCcam server (%s:%d)\n",srv->host->name,srv->port);
+					srv->divcount++; srv->div_caid = ecm->caid; srv->div_sid = ecm->sid; srv->div_time = GetTickCount(); // v1.48
 				}
 
 				pthread_mutex_unlock(&prg.lockecm); //###
@@ -462,11 +470,10 @@ int cc_sendinfo_srv(struct server_data *srv, int ismultics)
 	memset(buf, 0, CC_MAXMSGSIZE);
 	memcpy(buf, srv->user, 20);
 	memcpy(buf + 20, cfg.nodeid, 8 );
-	buf[28] = 0; //srv->wantemus;
+	buf[28] = 0;
 	memcpy(buf + 29, cfg.cccam.version, 32);	// cccam version (ascii)
-	if (ismultics) {
-		buf[57]='W'; buf[58]='H'; buf[59]='O';
-	}
+	// v1.45: nao marcamos o flag WHO (buf[57..59]) - o servidor remoto mostra-nos
+	// como "CCcam v2.3.0" simples em vez de "CCcam/MCS r-XX"
 	memcpy(buf + 61, cfg.cccam.build, 32);	// build number (ascii)
 	mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " Server: send client info User: '%s', Version: '%s', Build: '%s'.\n", srv->user, cfg.cccam.version, cfg.cccam.build);
 	return cc_msg_send( srv->handle, &srv->sendblock, CC_MSG_CLI_INFO, 20 + 8 + 1 + 64, buf);
@@ -491,13 +498,6 @@ int cc_connect_srv(struct server_data *srv, int fd)
 		mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " Server (%s:%d) does not return 16 bytes\n", srv->host->name,srv->port);
 		return -2;
 	}
-
-#ifdef DEBUG_NETWORK
-	if (flag_debugnet) {
-		mlogf(LOGINFO,getdbgflag(DBG_SERVER, 0, srv->id), " CCcam: receive server init seed (%d)\n",n);
-		debughex(data,n);
-	}
-#endif
 
 	// Check Multics
 	int ismultics = 0;

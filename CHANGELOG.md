@@ -1,3 +1,15 @@
+## v1.48 (2026-10-03)
+- **DEADCHAN**: canais mortos (sem resposta ha N minutos) deixam de martelar os readers - NOK rapido ao cliente + 1 probe de recuperacao a cada RETRY segundos. Config: `DCW DEADCHAN: YES`, `DCW DEADCHAN MINTIME: 5`, `DCW DEADCHAN RETRY: 60`. Lista na pagina CW Monitoring.
+- **PACING**: intervalo minimo entre pedidos do MESMO canal ao MESMO reader (`DCW PACING: 2000`) - anti rate-limit upstream (1 pedido por janela em vez do storm de retries).
+- **VERDICT**: endpoint HTTP `/verdict` + anel das ultimas 128 CWs servidas - a box reporta se a CW abriu (OK) ou ficou preta (BLACK); BLACK marca a fonte exacta (dcw_badmark) e regista em `/var/log/multics-verdict.log`. Agente de exemplo para boxes Enigma2: le /tmp/ecm.info + estado do decoder vmpeg1 e reporta de 8 em 8s.
+- **RAWLOG**: `DCW RAWLOG: YES` captura a CW crua PRE-transformacao em `/var/log/multics-raw.log` com classificacao RAW/WRAP pelos checksums de quad + detector de periodos de graca 1802 (eventos GRACE ON/OFF no dashboard).
+- **Oráculo CWPK (telnet)**: comando `CWPKTEST <32hex>` testa uma chave candidata (3DES-EDE, 4 variantes de layout) contra as CWs 1802 WRAP capturadas - validacao instantanea quando aparecer um candidato (dump/leak/EMM).
+- **CAK7 INVERSE**: `DCW CAK7 INVERSE: YES` usa a permutacao inversa (para fontes que entregam a CW ja icam-scrambled nos premium).
+- **Divergencia entre readers**: contador por reader de CWs diferentes da aceite (coluna Div na CW Monitoring) - deteta readers a produzir CW errada.
+- **Nanos por canal**: seccao na CW Monitoring com os nanos (ECM[2]) vistos por canal - deteta streams especiais (ex.: sport com nano 67 vs 66 nos basicos).
+- **PROVID REWRITE**: opcao de reader `providrewrite=YES` reescreve o provid para 0 nos pedidos (rota do cartao real em servers que encaminham o ident para cacheex).
+- Fix: probe de recuperacao do DEADCHAN (antes o canal marcado nunca voltava); TESTCHANNEL ja existia na GUI (pagina /testchannel).
+
 ## v1.28 (2026-09-14)
 - **Novo tema "Stats Tiles"** (dark + light mode) com **menu lateral** (sidebar fixa): as 14 páginas ficam em coluna à esquerda com badges; dashboard com **tiles de números grandes** (Uptime, Servers, Clients, ECM Totais, RAM, Softcam) e barras de carga.
 - **Tabela de Servers**: coluna EcmTime removida; Cards continua na última coluna com **chips coloridos por CAID:PROVID** (ident + nome do provider MEO/NOS/etc).
