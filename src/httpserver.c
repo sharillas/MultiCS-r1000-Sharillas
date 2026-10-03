@@ -1,4 +1,4 @@
-﻿#include "common.h"
+#include "common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,33 +12,18 @@ char *prot_event_get(int n, unsigned int *age_ms);
 unsigned int prot_uptime_ticks(void);
 int dcw_filter_learned_count(void);
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <signal.h>
 #include <errno.h>
 #include <pthread.h>
+
+// setdcw.c (unidade do th-ecm.c) - v1.48 veredicto
+int verdict_report(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, int ok);
 #include <poll.h>
 #include <sys/prctl.h>
 #include <poll.h>
-
-#endif
 
 #include "debug.h"
 #include "convert.h"
@@ -58,7 +43,6 @@ int dcw_filter_learned_count(void);
 #include "dyn_buffer.c"
 
 #include "main.h"
-#include "emu.h"
 #include "ipblock.h"
 
 const unsigned char *boyermoore_horspool_memmem(const unsigned char* haystack, ssize_t hlen, const unsigned char* needle, ssize_t nlen);
@@ -84,14 +68,6 @@ struct mg_client_data *getmgcamdclientbyname(struct mgcamdserver_data *mgcamd, c
 void mg_disconnect_cli(struct mg_client_data *cli);
 #endif
 
-#ifdef CS378X_SRV
-struct camd35_client_data *getcs378xclientbyid(uint32_t id);
-#endif
-
-#ifdef CAMD35_SRV
-struct camd35_client_data *getcamd35clientbyid(uint32_t id);
-#endif
-
 
 #define LIST_ACTIVE       0
 #define LIST_CONNECTED    1
@@ -113,7 +89,7 @@ struct camd35_client_data *getcamd35clientbyid(uint32_t id);
 
 
 
-char HTTP_UPDATE_DIV[] = "\nvar autorefresh=%d;\nvar tautorefresh;\nfunction setautorefresh(t)\n{\n	clearTimeout(tautorefresh);\n	autorefresh = t;\n	if (t>0) tautorefresh = setTimeout('updateDiv()',autorefresh);\n}\nfunction updateDiv()\n{\n	var d = document.getElementById('mainDiv');\n	if (d && d.matches && d.matches(':hover')) { tautorefresh = setTimeout('updateDiv()',autorefresh); return; }\n	var httpRequest;\n	try {\n		httpRequest = new XMLHttpRequest();  // Mozilla, Safari, etc\n	}\n	catch(trymicrosoft) {\n		try {\n			httpRequest = new ActiveXObject('Msxml2.XMLHTTP');\n		}\n		catch(oldermicrosoft) {\n			try {\n				httpRequest = new ActiveXObject('Microsoft.XMLHTTP');\n			}\n			catch(failed) {\n				httpRequest = false;\n			}\n		}\n	}\n	if (!httpRequest) {\n		alert('Your browser does not support Ajax.');\n		return false;\n	}\n	// Action http_request\n	httpRequest.onreadystatechange = function()\n	{\n		if (httpRequest.readyState == 4) {\n			if(httpRequest.status == 200) {\n				requestError=0;\n				document.getElementById('mainDiv').innerHTML = httpRequest.responseText;\n				if (window.bindSortable) bindSortable();\n			}\n			tautorefresh = setTimeout('updateDiv()',autorefresh);\n		}\n	}\n	httpRequest.open('GET', '%s',true);\n	httpRequest.send(null);\n}\n";
+char HTTP_UPDATE_DIV[] = "\nvar autorefresh=%d;\nvar tautorefresh;\nfunction setautorefresh(t)\n{\n	clearTimeout(tautorefresh);\n	autorefresh = t;\n	if (t>0) tautorefresh = setTimeout('updateDiv()',autorefresh);\n}\nfunction updateDiv()\n{\n	var d = document.getElementById('mainDiv');\n	if (d && d.matches && d.matches(':hover')) { tautorefresh = setTimeout('updateDiv()',autorefresh); return; }\n	var httpRequest;\n	try {\n		httpRequest = new XMLHttpRequest();  // Mozilla, Safari, etc\n	}\n	catch(trymicrosoft) {\n		try {\n			httpRequest = new ActiveXObject('Msxml2.XMLHTTP');\n		}\n		catch(oldermicrosoft) {\n			try {\n				httpRequest = new ActiveXObject('Microsoft.XMLHTTP');\n			}\n			catch(failed) {\n				httpRequest = false;\n			}\n		}\n	}\n	if (!httpRequest) {\n		alert('Your browser does not support Ajax.');\n		return false;\n	}\n	// Action http_request\n	httpRequest.onreadystatechange = function()\n	{\n		if (httpRequest.readyState == 4) {\n			if(httpRequest.status == 200) {\n				requestError=0;\n				document.getElementById('mainDiv').innerHTML = httpRequest.responseText;\n				if (window.bindSortable) bindSortable();\n				if (window.reopenDbg) reopenDbg();\n			}\n			tautorefresh = setTimeout('updateDiv()',autorefresh);\n		}\n	}\n	httpRequest.open('GET', '%s',true);\n	httpRequest.send(null);\n}\n";
 char HTTP_UPDATE_ROW[] = "\nvar idx = 0;\nvar tupdateRow;\n\nfunction setupdateRow(id)\n{\n	clearTimeout(tupdateRow);\n	idx = id;\n	if (id>0) tupdateRow = setTimeout('updateRow()',1000);\n}\n\nvar lastidx = 0;\nvar requestError = 0;\nfunction updateRow()\n{\n	if (lastidx!=idx) {\n		requestError = 0;\n		lastidx = idx;\n	}\n	if ( !requestError && (idx>0) ) {\n		var httpRequest;\n		try {\n			httpRequest = new XMLHttpRequest();  // Mozilla, Safari, etc\n		}\n		catch(trymicrosoft) {\n			try {\n				httpRequest = new ActiveXObject('Msxml2.XMLHTTP');\n			}\n			catch(oldermicrosoft) {\n				try {\n					httpRequest = new ActiveXObject('Microsoft.XMLHTTP');\n				}\n				catch(failed) {\n					httpRequest = false;\n				}\n			}\n		}\n		if (!httpRequest) {\n			alert('Your browser does not support Ajax.');\n			return false;\n		}\n		var savedidx = idx;\n		// Action http_request\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) {\n				if (httpRequest.status == 200) {\n					requestError=0;\n					xmlupdateRow( httpRequest.responseXML, 'Row'+savedidx );\n				}\n				else {\n					requestError++;\n				}\n				tupdateRow = setTimeout('updateRow()',1000);\n			}\n		}\n		httpRequest.open('GET', %s, true);\n		httpRequest.send(null);\n		requestError++;\n	}\n}\n";
 
 
@@ -485,6 +461,12 @@ char *getchname(uint16_t caid, uint32_t prov, uint16_t sid )
 		if ( (chn->caid==caid)&&(chn->prov==prov)&&(chn->sid==sid) ) return chn->name;
 		chn = chn->next;
 	}
+	// v1.41: fallback prov 0 (wildcard) - cobre canais sem ident conhecido no channelinfo
+	chn= cfg.chninfo;
+	while (chn) {
+		if ( (chn->caid==caid)&&(chn->prov==0)&&(chn->sid==sid) ) return chn->name;
+		chn = chn->next;
+	}
 	sprintf(channelname, "%04X:%06X:%04X", caid, prov, sid );
 	return channelname;
 }
@@ -615,34 +597,6 @@ int connected_mg_clients()
 }
 #endif
 
-#ifdef CAMD35_SRV
-int total_c35_clients()
-{
-	int nb=0;
-	struct camd35_server_data *c35srv=cfg.camd35.server;
-	while (c35srv) {
-		struct camd35_client_data *cli=c35srv->client;
-		while (cli) { nb++; cli=cli->next; }
-		c35srv=c35srv->next;
-	}
-	return nb;
-}
-#endif
-
-#ifdef CS378X_SRV
-int total_cs378x_nb()
-{
-	int nb=0;
-	struct camd35_server_data *csxsrv=cfg.cs378x.server;
-	while (csxsrv) {
-		struct camd35_client_data *cli=csxsrv->client;
-		while (cli) { nb++; cli=cli->next; }
-		csxsrv=csxsrv->next;
-	}
-	return nb;
-}
-#endif
-
 #ifdef CACHEEX
 int total_cacheex_servers()
 {
@@ -661,28 +615,6 @@ int total_cacheex_servers()
 		}
 		cccam=cccam->next;
 	}
-#ifdef CAMD35_SRV
-	struct camd35_server_data *c35=cfg.camd35.server;
-	while (c35) {
-		struct camd35_client_data *cli=c35->cacheexclient;
-		while (cli) {
-			if (cli->cacheex_mode) nb++;
-			cli=cli->next;
-		}
-		c35=c35->next;
-	}
-#endif
-#ifdef CS378X_SRV
-	struct camd35_server_data *c37=cfg.cs378x.server;
-	while (c37) {
-		struct camd35_client_data *cli=c37->cacheexclient;
-		while (cli) {
-			if (cli->cacheex_mode) nb++;
-			cli=cli->next;
-		}
-		c37=c37->next;
-	}
-#endif
 	return nb;
 }
 #endif
@@ -779,7 +711,90 @@ void total_cache_peers( int *total, int *active )
 ///////////////////////////////////////////////////////////////////////////////
 
 //color: #000000; background-color: #FFFFFF;
+// v1.45: helpers globais (restaurados)
+char *xmlescape( char *str )
+{
+// "   &quot;
+// '   &apos;
+// <   &lt;
+// >   &gt;
+// &   &amp;
+	char exml[5000];
+	char *src = str;
+	char *dest = exml;
+	while (*src) {
+		switch (*src) {
+			case '&':
+				memcpy(dest,"&amp;", 5);
+				dest +=5;
+				break;
+			case '<':
+				memcpy(dest,"&lt;", 4);
+				dest +=4;
+				break;
+			case '>':
+				memcpy(dest,"&gt;", 4);
+				dest +=4;
+				break;
+			case '"':
+				memcpy(dest,"&quot;", 6);
+				dest +=6;
+				break;
+			case '\'':
+				memcpy(dest,"&apos;", 6);
+				dest +=6;
+				break;
+			default:
+				*dest = *src;
+				dest++;
+		}
+		src++;
+	}
+	*dest = 0;
+	strcpy( str, exml);
+	return str;
+}
+
+#ifdef CAMD35_SRV
+int total_c35_clients()
+{
+	int nb=0;
+	struct camd35_server_data *c35srv=cfg.camd35.server;
+	while (c35srv) {
+		struct camd35_client_data *cli=c35srv->client;
+		struct camd35_client_data *cx=c35srv->cacheexclient;
+		if (!cli && cx) { cli = cx; cx = NULL; }
+		while (cli) { nb++; cli=cli->next; if (!cli) { cli = cx; cx = NULL; } }
+		c35srv=c35srv->next;
+	}
+	return nb;
+}
+#endif
+
+#ifdef CS378X_SRV
+int total_cs378x_nb()
+{
+	int nb=0;
+	struct camd35_server_data *csxsrv=cfg.cs378x.server;
+	while (csxsrv) {
+		struct camd35_client_data *cli=csxsrv->client;
+		struct camd35_client_data *cx=csxsrv->cacheexclient;
+		if (!cli && cx) { cli = cx; cx = NULL; }
+		while (cli) { nb++; cli=cli->next; if (!cli) { cli = cx; cx = NULL; } }
+		csxsrv=csxsrv->next;
+	}
+	return nb;
+}
+#endif
+
+// v1.45: estado dos ultimos decodes (paginas cs378x/camd35)
+char* str_laststatus[] = { "NOK", "OK", "BISS EMU" };
+// v1.45: getters dos clientes cs378x/camd35 (definidos em srv-cs378x.c/srv-camd35.c)
+struct camd35_client_data *getcs378xclientbyid(uint32_t id);
+struct camd35_client_data *getcamd35clientbyid(uint32_t id);
+
 char http_replyok[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\n\r\n";
+
 
 char http_html[] = "<HTML>\n";
 char http_html_[] = "</HTML>\n";
@@ -794,9 +809,9 @@ char html_title[] = "<title>%s - %s</title>\n";
 
 char http_link[] = "<meta http-equiv=\"Content-type\" content=\"text/html; charset=utf-8\"/>\n";
 
-char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1109\" type=\"text/css\" />\n";
+char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1140\" type=\"text/css\" />\n";
 
-char http_javascript[] = "<script src=\"/customjs.js\"></script>\n";
+char http_javascript[] = "<script src=\"/customjs.js?v=1202\"></script>\n";
 
 #define PAGE_HOME      1
 #define PAGE_SERVERS   2
@@ -804,19 +819,18 @@ char http_javascript[] = "<script src=\"/customjs.js\"></script>\n";
 #define PAGE_PROFILES  4
 #define PAGE_NEWCAMD   5
 #define PAGE_CCCAM     6
-#define PAGE_FREECCCAM 7
 #define PAGE_MGCAMD    8
 #define PAGE_EDITOR    9
 #define PAGE_RESTART   10
 #define PAGE_CACHEEX   11
-
 #define PAGE_CAMD35    12
 #define PAGE_CS378X    13
+
 #define PAGE_DEBUG     14
-#define PAGE_EMULATOR  15
 #define PAGE_IPTABLES  16
 #define PAGE_CONFIGURATIONS 17
 #define PAGE_PACKAGES  18
+#define PAGE_WATCHDOG  19
 
 
 char *yesno( int a )
@@ -828,8 +842,8 @@ char *yesno( int a )
 
 char *onoff( int a )
 {
-	static char yes[] ="ON";
-	static char no[] ="OFF";
+	static char yes[] ="<span class='sw sw-on'>ON</span>";
+	static char no[] ="<span class='sw sw-off'>OFF</span>";
 	if (a) return yes; else return no;
 }
 
@@ -867,7 +881,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (cfg.server!=NULL) {
 			if (selected==PAGE_SERVERS) class = cSelected; else class = cNormal;
 		} else class = cDisabled;
-		sprintf( label, "Servers [<span class='badge-count'> %d </span>]", total_servers());
+		sprintf( label, "Servers <span class='badge-count'> %d </span>", total_servers());
 		sprintf( buf, class, "/servers", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Cache
@@ -875,14 +889,14 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (cfg.cache.server) {
 			if (selected==PAGE_CACHE) class = cSelected; else class = cNormal;
 		} else class = cDisabled;
-		sprintf( label, "Cache [<span class='badge-count'> %d </span>]", cfg.cache.totalservers);
+		sprintf( label, "Cache <span class='badge-count'> %d </span>", cfg.cache.totalservers);
 		sprintf( buf, class, "/cache", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #ifdef CACHEEX
 	// CacheEX
 	if ( !cfg.http.show.nocacheex ) {
 		if (selected==PAGE_CACHEEX) class = cSelected; else class = cNormal;
-		sprintf( label, "CacheEX [<span class='badge-count'> %d </span>]", total_cacheex_servers());
+		sprintf( label, "CacheEX <span class='badge-count'> %d </span>", total_cacheex_servers());
 		sprintf( buf, class, "/cacheex", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #endif
@@ -891,13 +905,13 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (cfg.cardserver!=NULL) {
 			if (selected==PAGE_NEWCAMD) class = cSelected; else class = cNormal;
 		} else class = cDisabled;
-		sprintf( label, "Newcamd [<span class='badge-count'> %d </span>]", total_cs_clients(TYPE_NEWCAMD));
+		sprintf( label, "Newcamd <span class='badge-count'> %d </span>", total_cs_clients(TYPE_NEWCAMD));
 		sprintf( buf, class, "/newcamd", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #ifdef MGCAMD_SRV
 	if ( !cfg.http.show.noservers && (cfg.mgcamd.server!=NULL) ) {
 		if (selected==PAGE_MGCAMD) class = cSelected; else class = cNormal;
-		sprintf( label, "Mgcamd [<span class='badge-count'> %d </span>]", total_mg_clients());
+		sprintf( label, "Mgcamd <span class='badge-count'> %d </span>", total_mg_clients());
 		sprintf( buf, class, "/mgcamd", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #endif
@@ -906,34 +920,24 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	// CCcam
 	if ( !cfg.http.show.nocccam && (cfg.cccam.server!=NULL) ) {
 		if (selected==PAGE_CCCAM) class = cSelected; else class = cNormal;
-		sprintf( label, "CCcam [<span class='badge-count'> %d </span>]", total_cc_clients());
+		sprintf( label, "CCcam <span class='badge-count'> %d </span>", total_cc_clients());
 		sprintf( buf, class, "/cccam", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 #endif
 
-#ifdef CS378X_SRV
-	// cs378x (incluido na pagina Cs357x/Camd35)
-#endif
-
-#ifdef CAMD35_SRV
-	// camd35 (UDP) + cs378x (TCP) - mesma familia de protocolo
-	if (cfg.camd35.server!=NULL) {
-		if (selected==PAGE_CAMD35) class = cSelected; else class = cNormal;
-#ifdef CS378X_SRV
-		sprintf( label, "Cs358x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients()+total_cs378x_nb());
-#else
-		sprintf( label, "Cs358x/Camd35 [<span class='badge-count'> %d </span>]", total_c35_clients());
-#endif
+	// Cs378x/Camd35 (clientes dos protocolos de cacheex - v1.45)
+	{
+		if (selected==PAGE_CS378X) class = cSelected; else class = cNormal;
+		sprintf( label, "Cs378x/Camd35 <span class='badge-count'> %d </span>", total_c35_clients()+total_cs378x_nb() );
 		sprintf( buf, class, "/camd35", label); tcp_writestr(tcpbuf, sock, buf);
 	}
-#endif
 
 	// Profiles
 	if (!cfg.http.show.noprofiles) {
 		if (cfg.cardserver!=NULL) {
 			if (selected==PAGE_PROFILES) class = cSelected; else class = cNormal;
 		} else class = cDisabled;
-		sprintf( label, "Profiles [<span class='badge-count'> %d </span>]", cfg.totalprofiles);
+		sprintf( label, "Profiles <span class='badge-count'> %d </span>", cfg.totalprofiles);
 		sprintf( buf, class, "/profiles", label); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Packages (dashboard por satelite/pacote)
@@ -941,11 +945,10 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		if (selected==PAGE_PACKAGES) class = cSelected; else class = cNormal;
 		sprintf( buf, class, "/packages", "Packages"); tcp_writestr(tcpbuf, sock, buf);
 	}
-	// Softcam
+	// Vigia (reputacao das fontes + cycle engine - v1.41)
 	{
-		if (selected==PAGE_EMULATOR) class = cSelected; else class = cNormal;
-		sprintf( label, "Softcam [<span class='badge-count'> %d </span>]", emu_keycount);
-		sprintf( buf, class, "/emulator", label); tcp_writestr(tcpbuf, sock, buf);
+		if (selected==PAGE_WATCHDOG) class = cSelected; else class = cNormal;
+	 sprintf( buf, class, "/watchdog", "CW Monitoring"); tcp_writestr(tcpbuf, sock, buf);
 	}
 	// Configurations (Iptables + Edit Config)
 	{
@@ -1257,24 +1260,6 @@ void flagdebugvalue( char *str )
 				else sprintf( str, "Unknown Mgcamd Client ID=%d", k);
 			}
 			break;
-		case DBG_CS378X:
-			if (!k) strcpy( str, "CS378X");
-			else {
-				struct camd35_client_data *cli = getcs378xclientbyid(k);
-				if (cli)
-					sprintf( str, "Cs378x Client (%s)", cli->user);
-				else sprintf( str, "Unknown Cs378x Client ID=%d", k);
-			}
-			break;
-		case DBG_CAMD35:
-			if (!k) strcpy( str, "CAMD35");
-			else {
-				struct camd35_client_data *cli = getcamd35clientbyid(k);
-				if (cli)
-					sprintf( str, "Camd35 Client (%s)", cli->user);
-				else sprintf( str, "Unknown Camd35 Client ID=%d", k);
-			}
-			break;
 		case DBG_ERROR:
 			strcpy( str, "ERROR");
 			break;
@@ -1429,10 +1414,6 @@ void http_send_index(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf, "<span class=stat-label>Total Mgcamd Servers:</span> %d<br>", cfg.mgcamd.totalservers );
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>Total Camd35 Servers:</span> %d<br>", cfg.camd35.totalservers );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>Total cs378x Servers:</span> %d<br>", cfg.cs378x.totalservers );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "</div></div>");
 
 	// Clients
@@ -1454,6 +1435,29 @@ void http_send_index(int sock, http_request *req)
 	sprintf( http_buf,"<span class=stat-label>NodeID =</span> %02x%02x%02x%02x%02x%02x%02x%02x", cfg.nodeid[0], cfg.nodeid[1], cfg.nodeid[2], cfg.nodeid[3], cfg.nodeid[4], cfg.nodeid[5], cfg.nodeid[6], cfg.nodeid[7]);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "</div></div></div>");
+
+	// === tiles (Stats Tiles v1.28) ===
+	{
+		int rampct = 0;
+		if (memtotal) {
+			unsigned long used = (memavail && memavail<memtotal) ? (unsigned long)(memtotal-memavail) : (unsigned long)(memtotal-memfree);
+			rampct = (int)(used*100/memtotal);
+			if (rampct<0) rampct = 0; if (rampct>100) rampct = 100;
+		}
+		tcp_writestr(&tcpbuf, sock, "<div class='trow'>");
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Uptime</div><div class='big c-cyan'>%02dd %02dh</div><div class='sub'>desde o ultimo boot</div></div>", d/(3600*24), (d/3600)%24);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Servers</div><div class='big c-violet'>%d</div><div class='sub'>%d profiles configurados</div></div>", cfg.totalservers, cfg.totalprofiles);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Clients</div><div class='big c-blue'>%d</div><div class='sub'>conectados agora</div></div>", connected_all_clients());
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>ECM Totais</div><div class='big c-green'>%d</div><div class='sub'>%d activos neste ciclo</div></div>", totalecm, activeecm);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>RAM</div><div class='big c-amber'>%d%%</div><div class='sub'>%d / %d MB</div></div>", rampct, memtotal?((memtotal-memavail>0&&memavail)?(memtotal-memavail):(memtotal-memfree))/1024:0, memtotal/1024);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_writestr(&tcpbuf, sock, "</div>");
+	}
+
 
 	// Current Ecm Request
 	ECM_DATA *ecmreq = NULL;
@@ -1518,11 +1522,10 @@ void http_send_index(int sock, http_request *req)
 		sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Protecoes &amp; Eventos</h3>"
 			"<table class=maintable><tr><th>Metric</th><th>Value</th></tr>"
 			"<tr><td>Uptime do processo</td><td>%02dd %02d:%02d:%02d</td></tr>"
-			"<tr><td>ECMs totais</td><td>%d (OK: %d | NOK: %d)</td></tr>"
-			"<tr><td>Regras CWPK aprendidas</td><td>%d</td></tr></table>"
+			"<tr><td>ECMs totais</td><td>%d (OK: %d | NOK: %d)</td></tr></table>"
 			"<div style='margin-top:8px;max-height:220px;overflow-y:auto;font-size:12px;'>",
 			up/(3600*24), (up/3600)%24, (up/60)%60, up%60,
-			gecm, gok, gnok, dcw_filter_learned_count());
+			gecm, gok, gnok);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		int evn = 0;
 		uint32_t age = 0;
@@ -1554,15 +1557,10 @@ void http_send_index(int sock, http_request *req)
 	if (sel==DBG_NEWCAMD) tcp_writestr(&tcpbuf, sock, "<option value='NEWCAMD' selected>PROFILES</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='NEWCAMD'>PROFILES</option>");
 	if (sel==DBG_MGCAMD) tcp_writestr(&tcpbuf, sock, "<option value='MGCAMD' selected>MGCAMD</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='MGCAMD'>MGCAMD</option>");
 	if (sel==DBG_CCCAM) tcp_writestr(&tcpbuf, sock, "<option value='CCCAM' selected>CCCAM</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='CCCAM'>CCCAM</option>");
-#ifdef CS378X_SRV
-	if (sel==DBG_CS378X) tcp_writestr(&tcpbuf, sock, "<option value='CS378X' selected>CS378X</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='CS378X'>CS378X</option>");
-#endif
 #ifdef CACHEEX
 	if (sel==DBG_CACHEEX) tcp_writestr(&tcpbuf, sock, "<option value='CACHEEX' selected>CACHEEX</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='CACHEEX'>CACHEEX</option>");
 #endif
-#ifndef PUBLIC
 	if (sel==DBG_ERROR) tcp_writestr(&tcpbuf, sock, "<option value='ERROR' selected>ERROR</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='ERROR'>ERROR</option>");
-#endif
 	tcp_writestr(&tcpbuf, sock, "</select><div id='dbglog'><pre style=\"font-size:13px;\">");
 	int current = idbgline;
 	int i = current - 25;
@@ -1580,6 +1578,1693 @@ void http_send_index(int sock, http_request *req)
 
 
 static uint32_t viewdbgflag = 0;
+
+// CWFEED: feed live ECM/CW (estudo de CWs) - fragmento HTML para o painel DBG
+void http_send_cwfeed(int sock, http_request *req)
+{
+	int srv = 0, cli = 0, caid = 0;
+	char *v = isset_get(req, "srv");
+	if (v) srv = atoi(v);
+	v = isset_get(req, "cli");
+	if (v) cli = atoi(v);
+	v = isset_get(req, "caid");
+	if (v) caid = (int)strtol(v, NULL, 16);
+
+	char buf[32768];
+	int len = 0;
+	len += snprintf(buf + len, sizeof(buf) - len,
+		"<div class='cwfeed'>\n<div class='cwfeed-head'>"
+		"<span class='cwfeed-t'>age</span>"
+		"<span class='cwfeed-n'>canal</span><span class='cwfeed-e'>ECM</span>"
+		"<span class='cwfeed-c'>CW0 CW1</span><span class='cwfeed-ms'>ms</span>"
+		"<span class='cwfeed-s'>st</span><span class='cwfeed-src'>fonte</span></div>\n");
+	len += cwfeed_render(buf + len, sizeof(buf) - len - 64, srv, cli, (uint16_t)caid);
+	len += snprintf(buf + len, sizeof(buf) - len, "</div>");
+	http_send_text(sock, buf);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+// v1.45: paginas Cs378x/Camd35 (restauradas da v1.30)
+///////////////////////////////////////////////////////////////////////////////
+
+#ifdef CS378X_SRV
+
+void getcs378xcells(struct camd35_client_data *cli, char cell[10][2048])
+{
+	char temp[2048];
+
+	// CELL0 # NAME
+	sprintf( cell[0],"<a href='/cs378xclient?id=%d'>%s</a>",cli->id,cli->user);
+
+	// CELL1 # IP
+	if ( cli->ip ) { // Get Last IP
+		char *p = getcountrycodebyip(cli->ip);
+		if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(cli->ip) ); else sprintf( cell[1],"%s",(char*)ip2string(cli->ip) );
+	}
+	else strcpy( cell[1], " ");
+
+	// CELL2 # Connection Time
+	if (cli->connection.status>0) {
+		if (cli->ecm.busy) sprintf( cell[9],"busy"); else sprintf( cell[9],"online");
+		uint32_t d = (GetTickCount()-cli->connection.time)/1000;
+		sprintf( cell[2], "%02dd %02d:%02d:%02d", d/(3600*24), (d/3600)%24, (d/60)%60, d%60);
+	}
+	else {
+		sprintf( cell[9],"offline");
+		if (cli->flags&FLAG_DELETE) sprintf( cell[2],"Removed");
+		else if (cli->flags&FLAG_EXPIRED) sprintf( cell[2],"Expired");
+		else if (cli->flags&FLAG_DISABLE) sprintf( cell[2],"Disabled");
+		else sprintf( cell[2],"offline");
+	}
+	// CELL3+4+5 # ECM STAT: TOTAL/ACCEPTED/OK
+	// ECM STAT
+	sprintf( cell[3], "%d", cli->ecmnb );
+
+	int ecmaccepted = cli->ecmnb-cli->ecmdenied;
+	getstatcell( ecmaccepted, cli->ecmnb, cell[4]);
+	getstatcell( cli->ecmok, ecmaccepted, cell[5]);
+
+	// CELL6 # Ecm Time
+	if (cli->ecmok) sprintf( cell[6],"%d ms",(cli->ecmoktime/cli->ecmok) ); else sprintf( cell[6],"-- ms");
+
+	// CELL7 # Last Used Share
+/*
+	if ( srv->connection.status<=0 && srv->connection.lastseen) {
+		int d = (GetTickCount()-cli->connection.lastseen)/1000;
+		sprintf( cell[7],"Last Seen %02dd %02d:%02d:%02d", d/(3600*24),(d/3600)%24,(d/60)%60,d%60);
+	}
+	else
+*/
+	if ( cli->lastecm.caid ) {
+		if (cli->lastecm.status)  strcpy( cell[7],"<span class=success"); else strcpy( cell[7],"<span class=failed");
+		sprintf( temp," title='%04x:%06x:%04x'>ch %s (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
+		strcat( cell[7], temp );
+		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
+			// From ???
+			if (cli->lastecm.status) {
+				strcat( cell[7], " / from ");
+				src2string(cli->lastecm.dcwsrctype, cli->lastecm.dcwsrcid, temp);
+				strcat( cell[7], temp);
+			}
+		}
+		strcat( cell[7], "</span>" );
+	}
+	else strcpy( cell[7], " ");
+
+	strcat( cell[7], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
+	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
+		if (cli->flags&FLAG_DISABLE) {
+			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cs378xclient?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
+			strcat( cell[7], temp );
+		}
+		else {
+			sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/cs378xclient?id=%d&action=disable',this);setTimeout('updateDiv()',600)\">OFF</span>",cli->id);
+			strcat( cell[7], temp );
+		}
+	}
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cs378xclient?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
+	strcat( cell[7], temp );
+	strcat( cell[7], "</span>");
+}
+
+void total_cs378x_clients( int *total, int *connected, int *active )
+{
+	*total = 0;
+	*connected = 0;
+	*active = 0;
+	struct camd35_server_data *cs378x = cfg.cs378x.server;
+	while (cs378x) {
+		struct camd35_client_data *cli = cs378x->client;
+				struct camd35_client_data *cx = cs378x->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+		while (cli) {
+			(*total)++;
+			if (cli->connection.status>0) {
+				(*connected)++;
+				if ( (GetTickCount()-cli->lastecmtime) < 20000 ) (*active)++;
+			}
+			cli=cli->next; if (!cli) { cli = cx; cx = NULL; }
+		}
+		cs378x = cs378x->next;
+	}
+}
+
+void cs378x_clients( struct camd35_server_data *cs378x, int *total, int *connected, int *active )
+{
+	*total = 0;
+	*connected = 0;
+	*active = 0;
+	struct camd35_client_data *cli = cs378x->client;
+				struct camd35_client_data *cx = cs378x->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+	while (cli) {
+		(*total)++;
+		if (cli->connection.status>0) {
+			(*connected)++;
+			if ( (GetTickCount()-cli->lastecmtime) < 20000 ) (*active)++;
+		}
+		cli=cli->next; if (!cli) { cli = cx; cx = NULL; }
+	}
+}
+
+void http_send_cs378x(int sock, http_request *req)
+{
+	char http_buf[4096];
+	struct tcp_buffer_data tcpbuf;
+	char cell[10][2048];
+
+	// Get Params
+	char *str_action = isset_get( req, "action");
+	char *str_list = isset_get( req, "list");
+	char *str_id = isset_get( req, "id"); // server ID
+	char *str_clid = isset_get( req, "clid"); // Client ID
+	// Param 'action'
+	int get_action;
+	if (str_action) {
+		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
+		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
+#ifndef PUBLIC
+		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
+#endif
+		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
+		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
+		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
+		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
+		else str_action = NULL;
+	}
+	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
+	/////////////////////////////////////////////
+	if (get_action==ACTION_ROW) {
+		// Check for XML ROW
+		if (str_clid) {
+			int id = atoi(str_clid);
+			struct camd35_server_data *cs378x = cfg.cs378x.server;
+			while (cs378x) {
+				if (!(cs378x->flags&FLAG_DELETE)) {
+					struct camd35_client_data *cli = cs378x->client;
+				struct camd35_client_data *cx = cs378x->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+					while (cli) {
+						if ( !(cli->flags&FLAG_DELETE) && (cli->id==id) ) {
+							// Send XML CELLS
+							getcs378xcells(cli,cell);
+							int i; for(i=0; i<10; i++) xmlescape( cell[i] );
+							sprintf( http_buf, "<cs378x>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2_c>%s</c2_c>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n</cs378x>\n",cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7] );
+							http_send_xml( sock, req, http_buf, strlen(http_buf));
+						}
+						cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+					}
+				}
+				cs378x = cs378x->next;
+			}
+		}
+		return;
+	}			
+
+	// Param 'list'
+	int get_list = LIST_ALL;
+	if (str_list) {
+		if (!strcmp(str_list,"connected")) get_list = LIST_CONNECTED;
+		else if (!strcmp(str_list,"all")) get_list = LIST_ALL;
+		else str_list = NULL;
+	}
+	if (!str_list) str_list = "all";
+	// Param 'id'
+	int get_id = 0;
+	struct camd35_server_data *cs378x = NULL;
+	if (str_id)	{
+		get_id = atoi(str_id);
+		cs378x = cfg.cs378x.server;
+		while (cs378x) {
+			if (cs378x->id == get_id) break;
+			cs378x = cs378x->next;
+		}
+		if (!cs378x) get_id = 0;
+	}
+	//
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
+	if (get_action==ACTION_PAGE) {
+
+		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+		sprintf( http_buf, html_title, cfg.http.title, "cs378x"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+		// JS
+        tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
+		// ACTIONS REQUEST
+		tcp_writestr(&tcpbuf, sock, "\nfunction imgrequest( url, el )\n{\n	var httpRequest;\n	try { httpRequest = new XMLHttpRequest(); }\n	catch (trymicrosoft) { try { httpRequest = new ActiveXObject('Msxml2.XMLHTTP'); } catch (oldermicrosoft) { try { httpRequest = new ActiveXObject('Microsoft.XMLHTTP'); } catch(failed) { httpRequest = false; } } }\n	if (!httpRequest) { alert('Your browser does not support Ajax.'); return false; }\n	if ( typeof(el)!='undefined' ) {\n		el.onclick = null;\n		el.style.opacity = '0.7';\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) if (httpRequest.status == 200) el.style.opacity = '0.3';\n		}\n	}\n	httpRequest.open('GET', url, true);\n	httpRequest.send(null);\n}\n");
+		// UPD ROW
+		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id ) \n{\n    var row = document.getElementById(id);\n    	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n    row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n    row.cells.item(2).className = xmlDoc.getElementsByTagName('c2_c')[0].childNodes[0].nodeValue;\n    row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n    row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n    row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n    row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n    row.cells.item(6).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n    row.cells.item(7).innerHTML = xmlDoc.getElementsByTagName('c7')[0].childNodes[0].nodeValue;\n}");
+		char url[256];
+		sprintf( url, "'/cs378x?action=row&clid='+idx");
+		sprintf( http_buf, HTTP_UPDATE_ROW, url);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		// UPD DIV
+		sprintf( url, "/cs378x?action=div&id=%d&list=%s", get_id, str_list);
+		sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		//
+		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	setautorefresh(autorefresh);\n}");
+		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
+		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
+		tcp_write_menu(&tcpbuf, sock,PAGE_CS378X);
+		// Info de servidores (acima da div principal)
+		{
+			tcp_writestr(&tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
+			sprintf( http_buf, "<h3 class=stitle>cs378x Servers (%d)</h3>", cfg.cs378x.totalservers);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
+			int itotal, iconnected, iactive;
+			total_cs378x_clients( &itotal, &iconnected, &iactive );
+			sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			struct camd35_server_data *box = cfg.cs378x.server;
+			while ( box ) {
+				int btotal, bconnected, bactive;
+				cs378x_clients( box, &btotal, &bconnected, &bactive );
+				if (box->handle>0) sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
+				else sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				box = box->next;
+			}
+			tcp_writestr(&tcpbuf, sock, "</table></div></div>");
+		}
+		// DIV
+		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+	}
+
+	int total, connected, active;
+	tcp_writestr(&tcpbuf, sock, "<select style=\"width:200px;\" onchange=\"parent.location.href='/cs378x?id='+this.value\">");
+	sprintf( http_buf, "<option value=0>ALL (%d)</option>", cfg.cs378x.totalservers);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	struct camd35_server_data *tmp = cfg.cs378x.server;
+	while (tmp) {
+		if (get_id==tmp->id) sprintf( http_buf, "<option value=%d selected>[%d] cs378x %d</option>",tmp->id,tmp->port, tmp->id );
+		else sprintf( http_buf, "<option value=%d>[%d] cs378x %d</option>",tmp->id,tmp->port, tmp->id );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tmp = tmp->next;
+	}
+	tcp_writestr(&tcpbuf, sock, "</select> ");
+	//
+	if (cs378x) cs378x_clients( cs378x, &total, &connected, &active ); else total_cs378x_clients( &total, &connected, &active );
+	char *class1 = "button"; char *class2 = "sbutton";
+	char *class;
+	if (get_list==LIST_ACTIVE) class = class2; else class = class1;
+	sprintf( http_buf, "<input type=button class=%s onclick=\"parent.location='/cs378x?id=%d&amp;list=active'\" value='Active Clients (%d)'>", class, get_id, active);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	if (get_list==LIST_CONNECTED) class = class2; else class = class1;
+	sprintf( http_buf, " <input type=button class=%s onclick=\"parent.location='/cs378x?id=%d&amp;list=connected'\" value='Connected Clients (%d)'>", class, get_id, connected);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	if (get_list==LIST_ALL) class = class2; else class = class1;
+	sprintf( http_buf, " <input type=button class=%s onclick=\"parent.location='/cs378x?id=%d&amp;list=all'\" value='All Clients (%d)'>", class, get_id, total);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	//
+	if (get_id) { // One Server Selected
+		// Table
+		sprintf( http_buf, "\n<table class=maintable width=100%%><tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		struct camd35_client_data *cli = cs378x->client;
+				struct camd35_client_data *cx = cs378x->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+		int alt=0;
+		if (get_list==LIST_ACTIVE) {
+			while (cli) {
+				if ( (cli->connection.status>0)&&((GetTickCount()-cli->lastecmtime) < 20000) ) {
+					if (alt==1) alt=2; else alt=1;
+					getcs378xcells(cli,cell);
+					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				}
+				cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+			}
+		}
+		else if (get_list==LIST_CONNECTED) {
+			while (cli) {
+				if (cli->connection.status>0) {
+					if (alt==1) alt=2; else alt=1;
+					getcs378xcells(cli,cell);
+					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				}
+				cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+			}
+		}
+		else { // ALL
+			while (cli) {
+				if (alt==1) alt=2; else alt=1;
+				getcs378xcells(cli,cell);
+				snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+			}
+		}
+		sprintf( http_buf, "\n</table>");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+
+	else {
+		// Table
+		tcp_writestr(&tcpbuf,sock, "\n<table class=maintable width=100%>");
+		tcp_writestr(&tcpbuf,sock, "\n<tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
+		int alt=0;
+		cs378x = cfg.cs378x.server;
+		while (cs378x) {
+			int total, connected, active;
+			cs378x_clients( cs378x, &total, &connected, &active );
+			if ( (get_list==LIST_ACTIVE) && active ) {
+				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", cs378x->id, active); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				struct camd35_client_data *cli = cs378x->client;
+				struct camd35_client_data *cx = cs378x->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+				while (cli) {
+					if ( (cli->connection.status>0)&&((GetTickCount()-cli->lastecmtime) < 20000) ) {
+						if (alt==1) alt=2; else alt=1;
+						getcs378xcells(cli,cell);
+						snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					}
+					cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+				}
+			}
+			else if ( (get_list==LIST_ALL) && total ) {
+				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", cs378x->id, total); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				struct camd35_client_data *cli = cs378x->client;
+				struct camd35_client_data *cx = cs378x->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+				while (cli) {
+					if (alt==1) alt=2; else alt=1;
+					getcs378xcells(cli,cell);
+					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+				}
+			}
+			else if ( (get_list==LIST_CONNECTED) && connected ) {
+				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", cs378x->id, connected); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				struct camd35_client_data *cli = cs378x->client;
+				struct camd35_client_data *cx = cs378x->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+				while (cli) {
+					if (cli->connection.status>0) {
+						if (alt==1) alt=2; else alt=1;
+						getcs378xcells(cli,cell);
+						snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					}
+					cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+				}
+			}
+			cs378x = cs378x->next;
+		}
+		sprintf( http_buf, "</table>");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+	if (get_action==ACTION_PAGE) {
+		tcp_writestr(&tcpbuf, sock, "</div>");
+		tcp_writestr(&tcpbuf, sock, "</body></html>");
+	}
+
+	tcp_flush(&tcpbuf, sock);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void http_send_cs378x_client(int sock, http_request *req)
+{
+	char http_buf[2048];
+	struct tcp_buffer_data tcpbuf;
+
+	// Get Params
+	char *str_action = isset_get( req, "action");
+	char *str_id = isset_get( req, "id"); // Client ID
+	char *str_name = isset_get( req, "name"); // Client NAME
+	char *str_srvid = isset_get( req, "srvid"); // CCcam Server ID
+
+	// Action
+	int get_action = ACTION_PAGE;
+	if (str_action) {
+		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
+		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
+		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
+		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
+		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
+		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
+		else if (!strcmp(str_action,"dbginfo")) get_action = ACTION_DBGINFO;
+		else if (!strcmp(str_action,"update")) get_action = ACTION_UPDATE;
+		else str_action = NULL;
+	}
+	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
+
+	/////////////////////////////////////////////
+
+	// GET CLIENT
+	struct camd35_client_data *cli = NULL;
+	if (str_id) cli = getcs378xclientbyid( atoi(str_id) );
+	if (!cli) return;
+	//
+	if (get_action==ACTION_DISABLE) {
+		cli->flags |= FLAG_DISABLE;
+		if (cli->connection.status>0) cs378x_disconnect_cli(cli);
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==ACTION_ENABLE) {
+		cli->flags &= ~FLAG_DISABLE;
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==ACTION_STATUS) {
+		if (cli->connection.status>0) http_send_text(sock,"connected"); else http_send_text(sock,"disconnected");
+		return;
+	}
+	else if (get_action==ACTION_DEBUG) {
+		flagdebug = getdbgflag( DBG_CS378X, 0, cli->id);
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==ACTION_DBGINFO) {
+		char dbg[1024];
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
+			cli->user, (char*)ip2string(cli->ip),
+			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
+			cli->ecmnb, cli->ecmdenied, cli->ecmok,
+			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
+			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0);
+		http_send_text(sock, dbg);
+		return;
+	}
+	else if (get_action==ACTION_UPDATE) {
+/*		char *str = isset_get( req, "expire"); // Client ID
+		if (str) {
+			if ( (str[4]=='-')&&(str[7]=='-') ) strptime(  str, "%Y-%m-%d %H", &cli->enddate);
+			else if ( (str[2]=='-')&&(str[5]=='-') ) strptime(  str, "%d-%m-%Y %H", &cli->enddate);
+		}
+		str = isset_get( req, "active"); // Client ID
+		if (str) {
+			if (str[0]=='0') {
+				cli->flags |= FLAG_DISABLE;
+				if (cli->connection.status>0) cs378x_disconnect_cli(cli);
+			}
+			else cli->flags &= ~FLAG_DISABLE;
+		}*/
+		http_send_text(sock, "OK");
+		return;
+	}
+
+	//
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
+	if (get_action==ACTION_PAGE) {
+
+		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+		sprintf( http_buf, html_title, cfg.http.title, "Cs378x Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+		// JS
+        tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
+		// UPD DIV
+		char url[256];
+		sprintf( url, "/cs378xclient?id=%d&action=div", cli->id);
+		sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		//
+		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	setautorefresh(autorefresh);\n}");
+		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
+		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
+		tcp_write_menu(&tcpbuf, sock,0);
+		// DIV
+		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+	}
+
+	tcp_writestr(&tcpbuf, sock, "<table style=\"padding:0px; margin:0px;\" width=\"100%%\"><tbody>\n" );
+	tcp_writestr(&tcpbuf, sock, "<tr><td style=\"vertical-align:top; width:400px;\">\n" );
+
+	tcp_writestr(&tcpbuf, sock, "<table class=infotable><tbody>\n<tr><th colspan=2>Client Informations</th></tr>\n" );
+	// NAME
+	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>User name</td><td class=right>%s</td></tr>\n",cli->user);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	// Connection Time
+	if (cli->connection.status>0) {
+		tcp_writestr(&tcpbuf, sock, "<tr><td class=left>Status</td><td class=right>Connected</td></tr>\n");
+		uint32_t d = (GetTickCount()-cli->connection.time)/1000;
+		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Connection time</td><td class=right>%02dd %02d:%02d:%02d</td></tr>\n", d/(3600*24), (d/3600)%24, (d/60)%60, d%60);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		// IP
+		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>IP Address</td><td class=right>%s</td></tr>\n",(char*)ip2string(cli->ip) );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		/*// Program ID
+		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Client Program</td><td class=right>%s(%04x)</td></tr>",programid(cli->progid), cli->progid );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );*/
+	}
+	else {
+		tcp_writestr(&tcpbuf, sock, "<tr><td class=left>Status</td><td class=right>Disconnected</td></tr>\n");
+		if ( cli->connection.lastseen ) {
+			uint32_t d = (GetTickCount()-cli->connection.lastseen)/1000;
+			snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Last Seen</td><td class=right>%02dd %02d:%02d:%02d</td></tr>\n", d/(3600*24),(d/3600)%24,(d/60)%60,d%60);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+	}
+	// UPTIME
+	if ( cli->connection.uptime || (cli->connection.status>0) ) {
+		uint32_t uptime;
+		if (cli->connection.status>0) uptime = (GetTickCount()-cli->connection.time)+cli->connection.uptime; else uptime = cli->connection.uptime;
+		uptime /= 1000;
+		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Uptime</td><td class=right>%02dd %02d:%02d:%02d</td></tr>",uptime/(3600*24),(uptime/3600)%24,(uptime/60)%60,uptime%60);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+#ifdef CHECK_NEXTDCW
+	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>DCW CHECK</td><td class=right>%s</td></tr>", yesno(cli->dcwcheck) );
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+#endif
+	tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
+
+
+	// INFO
+	struct client_info_data *info = cli->info;
+	if (info) {
+		tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
+		tcp_writestr(&tcpbuf, sock, "<tr><th colspan=2>Additional Informations</th></tr>\n" );
+		while (info) {
+			snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>%s</td><td class=right>%s</td></tr>\n",info->name,info->value);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			info = info->next;
+		}
+		tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
+	}
+
+	// Ecm Stat
+	tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
+	tcp_writestr(&tcpbuf, sock, "<tr><th colspan=2>ECM Statistics</th></tr>\n" );
+	int ecmaccepted = cli->ecmnb-cli->ecmdenied;
+	sprintf( http_buf, "<tr><td class=left>Total ECM requests</td><td class=right>%d</td></tr>\n", cli->ecmnb);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf, "<tr><td class=left>Accepted ECM requests</td><td class=right>%d</td></tr>\n", ecmaccepted);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf, "<tr><td class=left>Good ECM answer</td><td class=right>%d</td></tr>\n", cli->ecmok);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	//Ecm Time
+	if (cli->ecmok) {
+		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Average Time</td><td class=right>%d ms</td></tr>\n",(cli->ecmoktime/cli->ecmok) );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+//#ifdef SRV_CSCACHE
+//	sprintf( http_buf, "<tr><td class=left>Cached CW</td><td class=right>%d</td></tr>\n", cli->cachedcw);
+//	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+//#endif
+	// Freeze
+	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Total Freeze</td><td class=right>%d</td></tr>\n", cli->freeze);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
+
+
+	tcp_writestr(&tcpbuf, sock, "</td><td style=\"vertical-align:top;\">\n" );
+
+	//Last Used Share
+	if ( cli->lastecm.caid ) {
+		tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
+		tcp_writestr(&tcpbuf, sock, "<tr><th>Last Used share</th></tr>\n");
+		// Decode Status
+		if (cli->lastecm.status)
+			snprintf( http_buf, sizeof(http_buf),"<tr><td>Decode success</td></tr>\n");
+		else
+			snprintf( http_buf, sizeof(http_buf),"<tr><td>Decode failed</td></tr>\n");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		// Channel
+		snprintf( http_buf, sizeof(http_buf),"<tr><td>Channel %s (%dms) %s</td></tr>\n", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+		// Server
+		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
+			// From ???
+			if (cli->lastecm.status) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td>From ");
+				src2string(cli->lastecm.dcwsrctype, cli->lastecm.dcwsrcid, http_buf );
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				tcp_writestr(&tcpbuf, sock, "</td></tr>");
+			}
+			// Last ECM
+			ECM_DATA *ecm = cli->lastecm.request;
+			// ECM
+			snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM(%d): ", ecm->ecmlen); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			array2hex( ecm->ecm, http_buf, ecm->ecmlen );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			sprintf( http_buf,"</td></tr>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			// DCW
+			if (cli->lastecm.status) {
+				snprintf( http_buf, sizeof(http_buf),"<tr><td>CW: ");	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				array2hex( ecm->cw, http_buf, 16 );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				sprintf( http_buf,"</td></tr>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+#ifdef CHECK_NEXTDCW
+			if ( ecm->lastdecode.ecm && (ecm->lastdecode.counter>0) ) {
+				snprintf( http_buf, sizeof(http_buf),"<tr><td>Previous CW: "); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				array2hex( ecm->lastdecode.dcw, http_buf, 16 ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				tcp_writestr(&tcpbuf, sock, "</td></tr>\n");
+				if (ecm->lastdecode.error) {
+					snprintf( http_buf, sizeof(http_buf),"<tr><td>Errors = %d</td></tr>\n", ecm->lastdecode.error);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				}
+				snprintf( http_buf, sizeof(http_buf),"<tr><td>Total Cycles = %d</td></tr>\n<tr><td>ECM Interval = %ds</td></tr>\n", ecm->lastdecode.counter, ecm->lastdecode.dcwchangetime/1000);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+#endif
+			// Last used share (status do ultimo decode)
+			if (cli->lastecm.status==1) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
+			}
+			else if (cli->lastecm.status==2) {
+				snprintf( http_buf, sizeof(http_buf),"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+			//
+			if (ecm->server[0].srvid) {
+				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				int i;
+				for(i=0; i<20; i++) {
+					if (!ecm->server[i].srvid) break;
+					char* str_srvstatus[] = { "WAIT", "OK", "NOK", "BUSY" };
+					struct server_data *srv = getsrvbyid(ecm->server[i].srvid);
+					if (srv) {
+						snprintf( http_buf, sizeof(http_buf),"<tr><td>%d</td><td>%s:%d</td><td>%s</td><td>%dms</td>", i+1, srv->host->name, srv->port, str_srvstatus[ecm->server[i].flag], ecm->server[i].sendtime - ecm->recvtime );
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+						// Recv Time
+						if (ecm->server[i].statustime>ecm->server[i].sendtime)
+							sprintf( http_buf,"<td>%dms</td><td>%dms</td>", ecm->server[i].statustime - ecm->recvtime, ecm->server[i].statustime-ecm->server[i].sendtime );
+						else
+							sprintf( http_buf,"<td>--</td><td>--</td>");
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+						// DCW
+						if (ecm->server[i].flag==ECM_SRV_REPLY_GOOD) {
+							sprintf( http_buf,"<td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+							array2hex( ecm->server[i].dcw, http_buf, 16 );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+							sprintf( http_buf,"</td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+						}
+						else {
+							sprintf( http_buf,"<td>--</td>");
+							tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+						}
+						sprintf( http_buf,"</tr>");
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					}
+				}
+				tcp_writestr(&tcpbuf, sock, "</tbody></table></td></tr>\n" );
+			}
+		}
+		tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
+	}
+
+	// Current Busy Ecm
+	if (cli->ecm.busy) {
+		ECM_DATA *ecm = cli->ecm.request;
+		if (ecm) http_send_ecmstatus(&tcpbuf, sock, ecm);
+	}
+
+	tcp_writestr(&tcpbuf, sock, "</td></tr></tbody></table>" );
+
+	if (get_action==ACTION_PAGE) {
+		tcp_writestr(&tcpbuf, sock, "</div>");
+		tcp_writestr(&tcpbuf, sock, "</body></html>");
+	}
+	tcp_flush(&tcpbuf, sock);
+}
+
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#ifdef CAMD35_SRV
+
+void getcamd35cells(struct camd35_client_data *cli, char cell[10][2048])
+{
+	char temp[2048];
+	uint32_t d;
+
+	// CELL0 # NAME
+	sprintf( cell[0],"<a href='/camd35client?id=%d'>%s</a>",cli->id,cli->user);
+
+	// CELL1 # IP
+	if ( cli->ip ) { // Get Last IP
+		char *p = getcountrycodebyip(cli->ip);
+		if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(cli->ip) ); else sprintf( cell[1],"%s",(char*)ip2string(cli->ip) );
+	}
+	else strcpy( cell[1], " ");
+
+	// CELL2 # Connection Time
+	// Camd35 is UDP so there's no connection. Usa a ultima datagrama recebida
+	// (lastactivity) - os clientes cacheex nao mandam ECMs, por isso o
+	// lastecmtime nao serve para estes
+	if ((GetTickCount()-cli->lastactivity) < 90000) {
+		if (cli->ecm.busy) sprintf( cell[9],"busy"); else sprintf( cell[9],"online");
+		sprintf( cell[2], "online");
+	}
+	else {
+		sprintf( cell[9],"offline");
+		if (cli->flags&FLAG_DELETE) sprintf( cell[2],"Removed");
+		else if (cli->flags&FLAG_EXPIRED) sprintf( cell[2],"Expired");
+		else if (cli->flags&FLAG_DISABLE) sprintf( cell[2],"Disabled");
+		else sprintf( cell[2],"offline");
+	}
+	// CELL3+4+5 # ECM STAT: TOTAL/ACCEPTED/OK
+	// ECM STAT
+	sprintf( cell[3], "%d", cli->ecmnb );
+
+	int ecmaccepted = cli->ecmnb-cli->ecmdenied;
+	getstatcell( ecmaccepted, cli->ecmnb, cell[4]);
+	getstatcell( cli->ecmok, ecmaccepted, cell[5]);
+
+	// CELL6 # Ecm Time
+	if (cli->ecmok) sprintf( cell[6],"%d ms",(cli->ecmoktime/cli->ecmok) ); else sprintf( cell[6],"-- ms");
+
+	// CELL7 # Last Used Share
+	if ( cli->lastecm.caid ) {
+		if (cli->lastecm.status)  strcpy( cell[7],"<span class=success"); else strcpy( cell[7],"<span class=failed");
+		sprintf( temp," title='%04x:%06x:%04x'>ch %s (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
+		strcat( cell[7], temp );
+		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
+			// From ???
+			if (cli->lastecm.status) {
+				strcat( cell[7], " / from ");
+				src2string(cli->lastecm.dcwsrctype, cli->lastecm.dcwsrcid, temp);
+				strcat( cell[7], temp);
+			}
+		}
+		strcat( cell[7], "</span>" );
+	}
+	else strcpy( cell[7], " ");
+
+	strcat( cell[7], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
+	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
+		if (cli->flags&FLAG_DISABLE) {
+			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/camd35client?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
+			strcat( cell[7], temp );
+		}
+		else {
+			sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/camd35client?id=%d&action=disable',this);setTimeout('updateDiv()',600)\">OFF</span>",cli->id);
+			strcat( cell[7], temp );
+		}
+	}
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/camd35client?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
+	strcat( cell[7], temp );
+	strcat( cell[7], "</span>");
+}
+
+void total_camd35_clients( int *total, int *connected, int *active )
+{
+	*total = 0;
+	*connected = 0;
+	*active = 0;
+	struct camd35_server_data *camd35 = cfg.camd35.server;
+	while (camd35) {
+		struct camd35_client_data *cli = camd35->client;
+				struct camd35_client_data *cx = camd35->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+		while (cli) {
+			(*total)++;
+			if ((GetTickCount()-cli->lastecmtime) < 90000) {   // No connection status in camd35 use lastecmtime < 90 seconds
+				(*connected)++;
+				if ( (GetTickCount()-cli->lastecmtime) < 20000 ) (*active)++;
+			}
+			cli=cli->next; if (!cli) { cli = cx; cx = NULL; }
+		}
+		camd35 = camd35->next;
+	}
+}
+
+void camd35_clients( struct camd35_server_data *camd35, int *total, int *connected, int *active )
+{
+	*total = 0;
+	*connected = 0;
+	*active = 0;
+	struct camd35_client_data *cli = camd35->client;
+				struct camd35_client_data *cx = camd35->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+	while (cli) {
+		(*total)++;
+		if ((GetTickCount()-cli->lastecmtime) < 90000) {
+			(*connected)++;
+			if ( (GetTickCount()-cli->lastecmtime) < 20000 ) (*active)++;
+		}
+		cli=cli->next; if (!cli) { cli = cx; cx = NULL; }
+	}
+}
+
+void http_send_camd35(int sock, http_request *req)
+{
+	char http_buf[4096];
+	struct tcp_buffer_data tcpbuf;
+	char cell[10][2048];
+
+	// Get Params
+	char *str_action = isset_get( req, "action");
+	char *str_list = isset_get( req, "list");
+	char *str_id = isset_get( req, "id"); // server ID
+	char *str_clid = isset_get( req, "clid"); // Client ID
+	// Param 'action'
+	int get_action;
+	if (str_action) {
+		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
+		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
+#ifndef PUBLIC
+		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
+#endif
+		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
+		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
+		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
+		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
+		else str_action = NULL;
+	}
+	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
+	/////////////////////////////////////////////
+
+	if (get_action==ACTION_ROW) {
+		// Check for XML ROW
+		struct camd35_client_data *cli = NULL;
+		if (str_clid) {
+			int id = atoi(str_clid);
+			struct camd35_server_data *camd35 = cfg.camd35.server;
+			while (camd35) {
+				if (!(camd35->flags&FLAG_DELETE)) {
+					struct camd35_client_data *cli = camd35->client;
+				struct camd35_client_data *cx = camd35->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+					while (cli) {
+						if ( !(cli->flags&FLAG_DELETE) && (cli->id==id) ) {
+							// Send XML CELLS
+							getcamd35cells(cli,cell);
+							int i; for(i=0; i<10; i++) xmlescape( cell[i] );
+							sprintf( http_buf, "<camd35>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2_c>%s</c2_c>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n</camd35>\n",cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7] );
+							http_send_xml( sock, req, http_buf, strlen(http_buf));
+						}
+						cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+					}
+				}
+				camd35 = camd35->next;
+			}
+		}
+		return;
+	}			
+
+	// Param 'list'
+	int get_list = LIST_ALL;
+	if (str_list) {
+		if (!strcmp(str_list,"connected")) get_list = LIST_CONNECTED;
+		else if (!strcmp(str_list,"all")) get_list = LIST_ALL;
+		else str_list = NULL;
+	}
+	if (!str_list) str_list = "all";
+	// Param 'id'
+	int get_id = 0;
+	struct camd35_server_data *camd35 = NULL;
+	if (str_id)	{
+		get_id = atoi(str_id);
+		camd35 = cfg.camd35.server;
+		while (camd35) {
+			if (camd35->id == get_id) break;
+			camd35 = camd35->next;
+		}
+		if (!camd35) get_id = 0;
+	}
+	//
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
+	if (get_action==ACTION_PAGE) {
+
+		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+		sprintf( http_buf, html_title, cfg.http.title, "Cs358x/Camd35"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+		// JS
+        tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
+		// ACTIONS REQUEST
+		tcp_writestr(&tcpbuf, sock, "\nfunction imgrequest( url, el )\n{\n	var httpRequest;\n	try { httpRequest = new XMLHttpRequest(); }\n	catch (trymicrosoft) { try { httpRequest = new ActiveXObject('Msxml2.XMLHTTP'); } catch (oldermicrosoft) { try { httpRequest = new ActiveXObject('Microsoft.XMLHTTP'); } catch(failed) { httpRequest = false; } } }\n	if (!httpRequest) { alert('Your browser does not support Ajax.'); return false; }\n	if ( typeof(el)!='undefined' ) {\n		el.onclick = null;\n		el.style.opacity = '0.7';\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) if (httpRequest.status == 200) el.style.opacity = '0.3';\n		}\n	}\n	httpRequest.open('GET', url, true);\n	httpRequest.send(null);\n}\n");
+		// UPD ROW
+		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id ) \n{\n    var row = document.getElementById(id);\n    	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n    row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n    row.cells.item(2).className = xmlDoc.getElementsByTagName('c2_c')[0].childNodes[0].nodeValue;\n    row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n    row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n    row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n    row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n    row.cells.item(6).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n    row.cells.item(7).innerHTML = xmlDoc.getElementsByTagName('c7')[0].childNodes[0].nodeValue;\n}");
+		char url[256];
+		sprintf( url, "'/camd35?action=row&clid='+idx");
+		sprintf( http_buf, HTTP_UPDATE_ROW, url);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		// UPD DIV
+		sprintf( url, "/camd35?action=div&id=%d&list=%s", get_id, str_list);
+		sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		//
+		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	setautorefresh(autorefresh);\n}");
+		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
+		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
+		tcp_write_menu(&tcpbuf, sock,PAGE_CAMD35);
+		// Info de servidores (acima da div principal)
+		{
+			tcp_writestr(&tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
+			sprintf( http_buf, "<h3 class=stitle>Camd35 Servers (%d)</h3>", cfg.camd35.totalservers);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
+			int itotal, iconnected, iactive;
+			total_camd35_clients( &itotal, &iconnected, &iactive );
+			sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			struct camd35_server_data *box = cfg.camd35.server;
+			while ( box ) {
+				int btotal, bconnected, bactive;
+				camd35_clients( box, &btotal, &bconnected, &bactive );
+				if (box->handle>0) sprintf( http_buf, "<tr><td class=left><a href='/camd35?id=%d'>camd35 %d</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
+				else sprintf( http_buf, "<tr><td class=left><a href='/camd35?id=%d'>camd35 %d</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				box = box->next;
+			}
+			tcp_writestr(&tcpbuf, sock, "</table></div></div>");
+		}
+		// DIV
+		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+	}
+
+	int total, connected, active;
+	tcp_writestr(&tcpbuf, sock, "<select style=\"width:200px;\" onchange=\"parent.location.href='/camd35?id='+this.value\">");
+	sprintf( http_buf, "<option value=0>ALL (%d)</option>", cfg.camd35.totalservers); //total_camd35_servers());
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	struct camd35_server_data *tmp = cfg.camd35.server;
+	while (tmp) {
+		if (get_id==tmp->id) sprintf( http_buf, "<option value=%d selected>[%d] camd35 %d</option>",tmp->id,tmp->port, tmp->id );
+		else sprintf( http_buf, "<option value=%d>[%d] camd35 %d</option>",tmp->id,tmp->port, tmp->id );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tmp = tmp->next;
+	}
+	tcp_writestr(&tcpbuf, sock, "</select> ");
+	//
+	if (camd35) camd35_clients( camd35, &total, &connected, &active ); else total_camd35_clients( &total, &connected, &active );
+	char *class1 = "button"; char *class2 = "sbutton";
+	char *class;
+	if (get_list==LIST_ACTIVE) class = class2; else class = class1;
+	sprintf( http_buf, "<input type=button class=%s onclick=\"parent.location='/camd35?id=%d&amp;list=active'\" value='Active Clients (%d)'>", class, get_id, active);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	if (get_list==LIST_CONNECTED) class = class2; else class = class1;
+	sprintf( http_buf, " <input type=button class=%s onclick=\"parent.location='/camd35?id=%d&amp;list=connected'\" value='Connected Clients (%d)'>", class, get_id, connected);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	if (get_list==LIST_ALL) class = class2; else class = class1;
+	sprintf( http_buf, " <input type=button class=%s onclick=\"parent.location='/camd35?id=%d&amp;list=all'\" value='All Clients (%d)'>", class, get_id, total);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	//
+	if (camd35) { // One Server Selected
+		// Table
+		sprintf( http_buf, "\n<table class=maintable width=100%%><tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		struct camd35_client_data *cli = camd35->client;
+				struct camd35_client_data *cx = camd35->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+		int alt=0;
+		if (get_list==LIST_ACTIVE) {
+			while (cli) {
+				if ( ((GetTickCount()-cli->lastecmtime) < 20000) ) {
+					if (alt==1) alt=2; else alt=1;
+					getcamd35cells(cli,cell);
+					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				}
+				cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+			}
+		}
+		else if (get_list==LIST_CONNECTED) {
+			while (cli) {
+				if (((GetTickCount()-cli->lastecmtime) < 90000)) {
+					if (alt==1) alt=2; else alt=1;
+					getcamd35cells(cli,cell);
+					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				}
+				cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+			}
+		}
+		else { // ALL
+			while (cli) {
+				if (alt==1) alt=2; else alt=1;
+				getcamd35cells(cli,cell);
+				snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+			}
+		}
+		sprintf( http_buf, "\n</table>");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+
+	else {
+		// Table
+		tcp_writestr(&tcpbuf,sock, "\n<table class=maintable width=100%>");
+		tcp_writestr(&tcpbuf,sock, "\n<tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
+		int alt=0;
+		camd35 = cfg.camd35.server;
+		while (camd35) {
+			int total, connected, active;
+			camd35_clients( camd35, &total, &connected, &active );
+			if ( (get_list==LIST_ACTIVE) && active ) {
+				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> camd35 %d (%d)</td></tr>", camd35->id, active); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				struct camd35_client_data *cli = camd35->client;
+				struct camd35_client_data *cx = camd35->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+				while (cli) {
+					if ( ((GetTickCount()-cli->lastecmtime) < 20000) ) {
+						if (alt==1) alt=2; else alt=1;
+						getcamd35cells(cli,cell);
+						snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					}
+					cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+				}
+			}
+			else if ( (get_list==LIST_ALL) && total ) {
+				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> camd35 %d (%d)</td></tr>", camd35->id, total); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				struct camd35_client_data *cli = camd35->client;
+				struct camd35_client_data *cx = camd35->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+				while (cli) {
+					if (alt==1) alt=2; else alt=1;
+					getcamd35cells(cli,cell);
+					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+				}
+			}
+			else if ( (get_list==LIST_CONNECTED) && connected ) {
+				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> camd35 %d (%d)</td></tr>", camd35->id, connected); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				struct camd35_client_data *cli = camd35->client;
+				struct camd35_client_data *cx = camd35->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+				while (cli) {
+					if (((GetTickCount()-cli->lastecmtime) < 90000)) {
+						if (alt==1) alt=2; else alt=1;
+						getcamd35cells(cli,cell);
+						snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					}
+					cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+				}
+			}
+			camd35 = camd35->next;
+		}
+		sprintf( http_buf, "</table>");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+#ifdef CS378X_SRV
+	// ===== seccao Cs378x (TCP) - mesma familia, so na pagina completa =====
+	if (get_action==ACTION_PAGE) {
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
+		sprintf( http_buf, "<h3 class=stitle>Cs378x Servers (%d, TCP)</h3>", cfg.cs378x.totalservers);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
+		int itotal, iconnected, iactive;
+		total_cs378x_clients( &itotal, &iconnected, &iactive );
+		sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		struct camd35_server_data *box = cfg.cs378x.server;
+		while ( box ) {
+			int btotal, bconnected, bactive;
+			cs378x_clients( box, &btotal, &bconnected, &bactive );
+			if (box->handle>0) sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
+			else sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			box = box->next;
+		}
+		tcp_writestr(&tcpbuf, sock, "</table>");
+
+		tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
+		box = cfg.cs378x.server;
+		int altx = 0;
+		while (box) {
+			struct camd35_client_data *cli = box->client;
+			struct camd35_client_data *cx = box->cacheexclient;
+				if (!cli && cx) { cli = cx; cx = NULL; }
+			int ctotal, cconnected, cactive;
+			cs378x_clients( box, &ctotal, &cconnected, &cactive );
+			if (ctotal) {
+				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", box->id, ctotal);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				while (cli) {
+					if (altx==1) altx=2; else altx=1;
+					getcs378xcells(cli,cell);
+					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,altx,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
+				}
+			}
+			box = box->next;
+		}
+		tcp_writestr(&tcpbuf, sock, "</table></div>");
+	}
+#endif
+	if (get_action==ACTION_PAGE) {
+		tcp_writestr(&tcpbuf, sock, "</div>");
+		tcp_writestr(&tcpbuf, sock, "</body></html>");
+	}
+
+	tcp_flush(&tcpbuf, sock);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void http_send_camd35_client(int sock, http_request *req)
+{
+	char http_buf[2048];
+	struct tcp_buffer_data tcpbuf;
+
+	// Get Params
+	char *str_action = isset_get( req, "action");
+	char *str_id = isset_get( req, "id"); // Client ID
+	char *str_name = isset_get( req, "name"); // Client NAME
+	char *str_srvid = isset_get( req, "srvid"); // CCcam Server ID
+
+	// Action
+	int get_action = ACTION_PAGE;
+	if (str_action) {
+		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
+		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
+		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
+		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
+		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
+		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
+		else if (!strcmp(str_action,"dbginfo")) get_action = ACTION_DBGINFO;
+		else if (!strcmp(str_action,"update")) get_action = ACTION_UPDATE;
+		else str_action = NULL;
+	}
+	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
+
+	/////////////////////////////////////////////
+
+	// GET CLIENT
+	struct camd35_client_data *cli = NULL;
+	if (str_id) cli = getcamd35clientbyid( atoi(str_id) );
+	if (!cli) return;
+	//
+	if (get_action==ACTION_DISABLE) {
+		cli->flags |= FLAG_DISABLE;
+		if (cli->connection.status>0) camd35_disconnect_cli(cli);
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==ACTION_ENABLE) {
+		cli->flags &= ~FLAG_DISABLE;
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==ACTION_STATUS) {
+		if (cli->connection.status>0) http_send_text(sock,"connected"); else http_send_text(sock,"disconnected");
+		return;
+	}
+	else if (get_action==ACTION_DEBUG) {
+		flagdebug = getdbgflag( DBG_CAMD35, 0, cli->id);
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==ACTION_DBGINFO) {
+		char dbg[1024];
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
+			cli->user, (char*)ip2string(cli->ip),
+			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
+			cli->ecmnb, cli->ecmdenied, cli->ecmok,
+			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
+			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0);
+		http_send_text(sock, dbg);
+		return;
+	}
+	else if (get_action==ACTION_UPDATE) {
+/*		char *str = isset_get( req, "expire"); // Client ID
+		if (str) {
+			if ( (str[4]=='-')&&(str[7]=='-') ) strptime(  str, "%Y-%m-%d %H", &cli->enddate);
+			else if ( (str[2]=='-')&&(str[5]=='-') ) strptime(  str, "%d-%m-%Y %H", &cli->enddate);
+		}
+		str = isset_get( req, "active"); // Client ID
+		if (str) {
+			if (str[0]=='0') {
+				cli->flags |= FLAG_DISABLE;
+				if (cli->connection.status>0) camd35_disconnect_cli(cli);
+			}
+			else cli->flags &= ~FLAG_DISABLE;
+		}*/
+		http_send_text(sock, "OK");
+		return;
+	}
+
+	//
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
+	if (get_action==ACTION_PAGE) {
+
+		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+		sprintf( http_buf, html_title, cfg.http.title, "Cs358x/Camd35 Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+		// JS
+        tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
+		// UPD DIV
+		char url[256];
+		sprintf( url, "/camd35client?id=%d&action=div", cli->id);
+		sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		//
+		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	setautorefresh(autorefresh);\n}");
+		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
+		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
+		tcp_write_menu(&tcpbuf, sock,0);
+		// DIV
+		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+	}
+
+	tcp_writestr(&tcpbuf, sock, "<table style=\"padding:0px; margin:0px;\" width=\"100%%\"><tbody>\n" );
+	tcp_writestr(&tcpbuf, sock, "<tr><td style=\"vertical-align:top; width:400px;\">\n" );
+
+	tcp_writestr(&tcpbuf, sock, "<table class=infotable><tbody>\n<tr><th colspan=2>Client Informations</th></tr>\n" );
+	// NAME
+	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>User name</td><td class=right>%s</td></tr>\n",cli->user);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+#ifdef CHECK_NEXTDCW
+	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>DCW CHECK</td><td class=right>%s</td></tr>", yesno(cli->dcwcheck) );
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+#endif
+	tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
+
+
+	// INFO
+	struct client_info_data *info = cli->info;
+	if (info) {
+		tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
+		tcp_writestr(&tcpbuf, sock, "<tr><th colspan=2>Additional Informations</th></tr>\n" );
+		while (info) {
+			snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>%s</td><td class=right>%s</td></tr>\n",info->name,info->value);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			info = info->next;
+		}
+		tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
+	}
+
+	// Ecm Stat
+	tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
+	tcp_writestr(&tcpbuf, sock, "<tr><th colspan=2>ECM Statistics</th></tr>\n" );
+	int ecmaccepted = cli->ecmnb-cli->ecmdenied;
+	sprintf( http_buf, "<tr><td class=left>Total ECM requests</td><td class=right>%d</td></tr>\n", cli->ecmnb);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf, "<tr><td class=left>Accepted ECM requests</td><td class=right>%d</td></tr>\n", ecmaccepted);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf, "<tr><td class=left>Good ECM answer</td><td class=right>%d</td></tr>\n", cli->ecmok);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	//Ecm Time
+	if (cli->ecmok) {
+		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Average Time</td><td class=right>%d ms</td></tr>\n",(cli->ecmoktime/cli->ecmok) );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+//#ifdef SRV_CSCACHE
+//	sprintf( http_buf, "<tr><td class=left>Cached CW</td><td class=right>%d</td></tr>\n", cli->cachedcw);
+//	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+//#endif
+	// Freeze
+	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Total Freeze</td><td class=right>%d</td></tr>\n", cli->freeze);
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
+
+
+	tcp_writestr(&tcpbuf, sock, "</td><td style=\"vertical-align:top;\">\n" );
+
+	//Last Used Share
+	if ( cli->lastecm.caid ) {
+		tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
+		tcp_writestr(&tcpbuf, sock, "<tr><th>Last Used share</th></tr>\n");
+		// Decode Status
+		if (cli->lastecm.status)
+			snprintf( http_buf, sizeof(http_buf),"<tr><td>Decode success</td></tr>\n");
+		else
+			snprintf( http_buf, sizeof(http_buf),"<tr><td>Decode failed</td></tr>\n");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		// Channel
+		snprintf( http_buf, sizeof(http_buf),"<tr><td>Channel %s (%dms) %s</td></tr>\n", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+		// Server
+		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
+			// From ???
+			if (cli->lastecm.status) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td>From ");
+				src2string(cli->lastecm.dcwsrctype, cli->lastecm.dcwsrcid, http_buf );
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				tcp_writestr(&tcpbuf, sock, "</td></tr>");
+			}
+			// Last ECM
+			ECM_DATA *ecm = cli->lastecm.request;
+			// ECM
+			snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM(%d): ", ecm->ecmlen); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			array2hex( ecm->ecm, http_buf, ecm->ecmlen );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			sprintf( http_buf,"</td></tr>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			// DCW
+			if (cli->lastecm.status) {
+				snprintf( http_buf, sizeof(http_buf),"<tr><td>CW: ");	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				array2hex( ecm->cw, http_buf, 16 );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				sprintf( http_buf,"</td></tr>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+#ifdef CHECK_NEXTDCW
+			if ( ecm->lastdecode.ecm && (ecm->lastdecode.counter>0) ) {
+				snprintf( http_buf, sizeof(http_buf),"<tr><td>Previous CW: "); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				array2hex( ecm->lastdecode.dcw, http_buf, 16 ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				tcp_writestr(&tcpbuf, sock, "</td></tr>\n");
+				if (ecm->lastdecode.error) {
+					snprintf( http_buf, sizeof(http_buf),"<tr><td>Errors = %d</td></tr>\n", ecm->lastdecode.error);
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				}
+				snprintf( http_buf, sizeof(http_buf),"<tr><td>Total Cycles = %d</td></tr>\n<tr><td>ECM Interval = %ds</td></tr>\n", ecm->lastdecode.counter, ecm->lastdecode.dcwchangetime/1000);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+#endif
+			// Last used share (status do ultimo decode)
+			if (cli->lastecm.status==1) {
+				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
+			}
+			else if (cli->lastecm.status==2) {
+				snprintf( http_buf, sizeof(http_buf),"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+			//
+			if (ecm->server[0].srvid) {
+				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				int i;
+				for(i=0; i<20; i++) {
+					if (!ecm->server[i].srvid) break;
+					char* str_srvstatus[] = { "WAIT", "OK", "NOK", "BUSY" };
+					struct server_data *srv = getsrvbyid(ecm->server[i].srvid);
+					if (srv) {
+						snprintf( http_buf, sizeof(http_buf),"<tr><td>%d</td><td>%s:%d</td><td>%s</td><td>%dms</td>", i+1, srv->host->name, srv->port, str_srvstatus[ecm->server[i].flag], ecm->server[i].sendtime - ecm->recvtime );
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+						// Recv Time
+						if (ecm->server[i].statustime>ecm->server[i].sendtime)
+							sprintf( http_buf,"<td>%dms</td><td>%dms</td>", ecm->server[i].statustime - ecm->recvtime, ecm->server[i].statustime-ecm->server[i].sendtime );
+						else
+							sprintf( http_buf,"<td>--</td><td>--</td>");
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+						// DCW
+						if (ecm->server[i].flag==ECM_SRV_REPLY_GOOD) {
+							sprintf( http_buf,"<td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+							array2hex( ecm->server[i].dcw, http_buf, 16 );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+							sprintf( http_buf,"</td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+						}
+						else {
+							sprintf( http_buf,"<td>--</td>");
+							tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+						}
+						sprintf( http_buf,"</tr>");
+						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+					}
+				}
+				tcp_writestr(&tcpbuf, sock, "</tbody></table></td></tr>\n" );
+			}
+		}
+		tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
+	}
+
+	// Current Busy Ecm
+	if (cli->ecm.busy) {
+		ECM_DATA *ecm = cli->ecm.request;
+		if (ecm) http_send_ecmstatus(&tcpbuf, sock, ecm);
+	}
+
+	tcp_writestr(&tcpbuf, sock, "</td></tr></tbody></table>" );
+
+	if (get_action==ACTION_PAGE) {
+		tcp_writestr(&tcpbuf, sock, "</div>");
+		tcp_writestr(&tcpbuf, sock, "</body></html>");
+	}
+	tcp_flush(&tcpbuf, sock);
+}
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// v1.48 VERDICT: endpoint de feedback da box (abriu/nao abriu)
+// GET /verdict?caid=1814&prov=5211&sid=9d3&cw=32HEX&ok=1
+void http_send_verdict(int sock, http_request *req)
+{
+	char http_buf[256];
+	struct tcp_buffer_data tcpbuf;
+	char *s_caid = isset_get( req, "caid");
+	char *s_prov = isset_get( req, "prov");
+	char *s_sid = isset_get( req, "sid");
+	char *s_cw = isset_get( req, "cw");
+	char *s_ok = isset_get( req, "ok");
+	uint16_t caid = s_caid ? (uint16_t)strtoul(s_caid, NULL, 16) : 0;
+	uint32_t provid = s_prov ? (uint32_t)strtoul(s_prov, NULL, 16) : 0;
+	uint16_t sid = s_sid ? (uint16_t)strtoul(s_sid, NULL, 16) : 0;
+	uint8_t cw[16];
+	memset(cw, 0, 16);
+	if (s_cw) {
+		int i;
+		for (i=0; (i<16) && s_cw[i*2] && s_cw[i*2+1]; i++) {
+			char b[3] = { s_cw[i*2], s_cw[i*2+1], 0 };
+			cw[i] = (uint8_t)strtoul(b, NULL, 16);
+		}
+	}
+	int ok = s_ok ? atoi(s_ok) : 0;
+	int r = verdict_report( caid, provid, sid, cw, ok );
+
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+	sprintf( http_buf, "OK:%d\r\n", r );
+	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	tcp_flush(&tcpbuf, sock);
+}
+
+void http_send_watchdog(int sock, http_request *req)
+{
+	char http_buf[4096];
+	struct tcp_buffer_data tcpbuf;
+
+	tcp_init(&tcpbuf);
+	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+	 sprintf( http_buf, html_title, cfg.http.title, "CW Monitoring"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>\nfunction start() { }\n</script>\n");
+	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
+	tcp_write_menu(&tcpbuf, sock, PAGE_WATCHDOG);
+	tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+
+	// === 1. Readers: reputacao + bad-cw cache activo ===
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Readers (reputacao)</h3>"
+		"<table class='maintable'><tr><th>Reader</th><th>Hop</th><th>Health</th><th>cwbad</th><th>Div</th><th>Canais marcados</th><th>OK/total</th><th>Ultimas 24h (15min/barra)</th></tr>");
+	struct server_data *srv = cfg.server;
+	while (srv) {
+		int h = 0, hen = 0;
+		h = srv_healthscore_gui(srv, &hen);
+		// canais marcados ACTIVOS (entradas nao expiradas)
+		int nactive = 0;
+		{
+			uint32_t ticks = GetTickCount();
+			int i;
+			for (i=0; i<BADCW_CACHE_MAX; i++) {
+				if (!srv->bad_time[i]) continue;
+				if ( (uint32_t)(ticks - srv->bad_time[i]) > 3600000 ) continue;
+				nactive++;
+			}
+		}
+		// cwbad efectivo (decai como no health: >1800s->0, >600s->metade)
+		int cwbad_eff = (int)srv->cwbad;
+		if (srv->cwbad_time) {
+			uint32_t el = (GetTickCount() - srv->cwbad_time) / 1000;
+			if (el > 1800) cwbad_eff = 0;
+			else if (el > 600) cwbad_eff = cwbad_eff / 2;
+		}
+		sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s</td><td>%d%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d/%d</td>",
+			srv->name[0]?srv->name:"-", srv->host->name, srv->port,
+			srv->hop==1?"<span class='badge-green'>directa</span>":(srv->hop>1?"circuito":"?"),
+			h, hen?"":" (off)", cwbad_eff, srv->divcount, nactive, srv->ecmok, srv->ecmnb );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		// v1.45: grafico 24h - linha de area (ok%) com marcadores de cwbad
+		// (96 janelas de 15min, mais recente a direita; tooltip com os numeros)
+		// W=244 H=52: area 0..236 (passo 2.46) x 0..36, linha base y=38
+		tcp_writestr(&tcpbuf, sock, "<td><svg width='244' height='52'>");
+		{
+			int i, pos = srv->hist_idx;
+			// fundo + grelha 25/50/75/100%
+			int gy;
+			for (gy=0; gy<4; gy++) {
+				int y = 38 - ((gy+1)*36)/4;
+				sprintf( http_buf, "<line x1='0' y1='%d' x2='236' y2='%d' stroke='#2c333e' stroke-width='0.6'/>", y, y );
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+			// recolher os pontos (so as janelas com dados)
+			char line[2048];
+			char area[2304];
+			int lp = 0, ap = 0;
+			lp += sprintf( line+lp, "M" );
+			ap += sprintf( area+ap, "M" );
+			int firstx = -1, lastx = -1;
+			for (i=0; i<HIST_MAX; i++) {
+				int s = (pos + i) % HIST_MAX;
+				int nb = srv->hist_nb[s];
+				if (!nb) continue;
+				int x = i*236/95;
+				int h = (srv->hist_ok[s]*36)/nb;
+				if (firstx<0) firstx = x;
+				lastx = x;
+				lp += sprintf( line+lp, "%d,%d ", x, 38-h );
+				ap += sprintf( area+ap, "%d,%d ", x, 38-h );
+			}
+			if (firstx>=0) {
+				// area preenchida (linha + base)
+				sprintf( http_buf, "<path d='%s%d,38 %d,38 Z' fill='rgba(67,160,71,0.28)' stroke='none'/>", area, lastx, firstx );
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				sprintf( http_buf, "<path d='%s' fill='none' stroke='#4caf50' stroke-width='1.8' stroke-linejoin='round'/>", line );
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+			// marcadores de cwbad (pontos vermelhos no topo)
+			for (i=0; i<HIST_MAX; i++) {
+				int s = (pos + i) % HIST_MAX;
+				int nb = srv->hist_nb[s];
+				if (!nb) continue;
+				if (srv->hist_cwbad[s]) {
+					int x = i*236/95;
+					sprintf( http_buf, "<circle cx='%d' cy='3' r='2' fill='#e53935'><title>%d/%d OK (%d%%), cwbad %d</title></circle>",
+						x, srv->hist_ok[s], nb, nb?(srv->hist_ok[s]*100)/nb:0, srv->hist_cwbad[s] );
+					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				}
+			}
+			// legenda minima
+			tcp_writestr(&tcpbuf, sock, "<text x='2' y='50' font-size='7' fill='#9aa4b2'>24h atras</text>");
+			tcp_writestr(&tcpbuf, sock, "<text x='176' y='50' font-size='7' fill='#9aa4b2'>agora</text>");
+		}
+		tcp_writestr(&tcpbuf, sock, "</svg></td></tr>");
+		srv = srv->next;
+	}
+	tcp_writestr(&tcpbuf, sock, "</table></div>");
+
+	// === 2. Bad-cw cache activo (por reader) ===
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Bad-CW cache activo (canais a saltar por reader)</h3>"
+		"<table class='maintable'><tr><th>Reader</th><th>Canal</th><th>Marcado ha</th></tr>");
+	int anybad = 0;
+	srv = cfg.server;
+	while (srv) {
+		uint32_t ticks = GetTickCount();
+		int i;
+		for (i=0; i<BADCW_CACHE_MAX; i++) {
+			if (!srv->bad_time[i]) continue;
+			if ( (uint32_t)(ticks - srv->bad_time[i]) > 3600000 ) { srv->bad_time[i] = 0; continue; }
+			sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s <span class='muted'>%04x:%04x</span></td><td>%us</td></tr>",
+				srv->name[0]?srv->name:"-", srv->host->name, srv->port,
+				getchname(srv->bad_caid[i], 0, srv->bad_sid[i]), srv->bad_caid[i], srv->bad_sid[i], (ticks - srv->bad_time[i])/1000 );
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			anybad = 1;
+		}
+		srv = srv->next;
+	}
+	if (!anybad) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='3'>Sem registos activos - nenhuma fonte marcada.</td></tr>");
+	tcp_writestr(&tcpbuf, sock, "</table></div>");
+
+	// === 2.5 DEADCHAN: canais mortos (sem resposta) ===
+	{
+		uint16_t dca[20]; uint32_t dcp[20]; uint16_t dcs[20]; uint32_t dag[20];
+		int dn = deadchan_top(20, dca, dcp, dcs, dag);
+		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Canais mortos (DEADCHAN - sem resposta, storm suprimido)</h3>"
+			"<table class='maintable'><tr><th>Canal</th><th>Sem resposta ha</th></tr>");
+		int k;
+		for (k=0; k<dn; k++) {
+			char agebuf[32];
+			if (dag[k]==0xFFFFFFFF) strcpy(agebuf, "nunca respondeu");
+			else snprintf(agebuf, sizeof(agebuf), "%u:%02u min", dag[k]/60, dag[k]%60);
+			sprintf( http_buf, "<tr><td>%s <span class='muted'>%04x:%06x:%04x</span></td><td>%s</td></tr>",
+				getchname(dca[k], dcp[k], dcs[k]), dca[k], dcp[k], dcs[k], agebuf );
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		if (!dn) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='2'>Nenhum canal morto - todos os pedidos estao a ser respondidos.</td></tr>");
+		tcp_writestr(&tcpbuf, sock, "</table></div>");
+	}
+
+	// === 3. Cycle engine: canais aprendidos ===
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Cycle engine (canais aprendidos, anomalias)</h3>"
+		"<table class='maintable'><tr><th>Canal</th><th>Cadencia aprendida</th><th>Amostras</th><th>Anomalias</th></tr>");
+	{
+		struct dcwchan_info info[128];
+		int n = dcwchan_stats(info, 128);
+		int k;
+		for (k=0; k<n; k++) {
+			char cadbuf[32], anobuf[32];
+			if (info[k].cadence) snprintf(cadbuf, sizeof(cadbuf), "%dms", info[k].cadence);
+			else strcpy(cadbuf, "-");
+			snprintf(anobuf, sizeof(anobuf), "%d", info[k].anomalies);
+			sprintf( http_buf, "<tr><td>%s <span class='muted'>%04x:%06x:%04x</span></td><td>%s</td><td>%d</td><td>%s</td></tr>",
+				getchname(info[k].caid, info[k].provid, info[k].sid), info[k].caid, info[k].provid, info[k].sid, cadbuf, info[k].samples, anobuf );
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		if (!n) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='4'>O motor ainda nao tem canais aprendidos (o DCW CYCLE ENGINE aprende com o trafego).</td></tr>");
+	}
+	tcp_writestr(&tcpbuf, sock, "</table></div>");
+
+	// === 3.5 NANOS por canal: streams especiais (ex. sport com nano diferente) ===
+	{
+		uint16_t nca[20]; uint32_t ncp[20]; uint16_t ncs[20]; uint8_t nnn[20], nn1[20], nn2[20];
+		int nn = nanoch_top(20, nca, ncp, ncs, nnn, nn1, nn2);
+		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Nanos por canal (streams com mais de 1 nano)</h3>"
+			"<table class='maintable'><tr><th>Canal</th><th>Nanos vistos</th></tr>");
+		int k;
+		for (k=0; k<nn; k++) {
+			char nanosbuf[64];
+			if (nnn[k]>=2)
+				snprintf(nanosbuf, sizeof(nanosbuf), "%02x / %02x", nn1[k], nn2[k]);
+			else
+				snprintf(nanosbuf, sizeof(nanosbuf), "%02x", nn1[k]);
+			sprintf( http_buf, "<tr><td>%s <span class='muted'>%04x:%06x:%04x</span></td><td>%s</td></tr>",
+				getchname(nca[k], ncp[k], ncs[k]), nca[k], ncp[k], ncs[k], nanosbuf );
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		if (!nn) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='2'>Nenhum canal com mais de 1 nano (tudo streams uniformes).</td></tr>");
+		tcp_writestr(&tcpbuf, sock, "</table></div>");
+	}
+
+	tcp_writestr(&tcpbuf, sock, "</div></body></html>");
+	tcp_flush(&tcpbuf, sock);
+}
 
 void http_send_debug(int sock, http_request *req)
 {
@@ -1605,9 +3290,6 @@ void http_send_debug(int sock, http_request *req)
 				else if (!strcmp(str_value,"NEWCAMD")) flagdebug = getdbgflag( DBG_NEWCAMD, 0, 0);
 				else if (!strcmp(str_value,"MGCAMD")) flagdebug = getdbgflag( DBG_MGCAMD, 0, 0);
 				else if (!strcmp(str_value,"CCCAM")) flagdebug = getdbgflag( DBG_CCCAM, 0, 0);
-#ifdef CS378X_SRV
-				else if (!strcmp(str_value,"CS378X")) flagdebug = getdbgflag( DBG_CS378X, 0, 0);
-#endif
 #ifdef CACHEEX
 				else if (!strcmp(str_value,"CACHEEX")) flagdebug = getdbgflag( DBG_CACHEEX, 0, 0);
 #endif
@@ -1714,15 +3396,10 @@ void http_send_debug(int sock, http_request *req)
 		if (sel==DBG_NEWCAMD) tcp_writestr(&tcpbuf, sock, "<option value='NEWCAMD' selected>PROFILES</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='NEWCAMD'>PROFILES</option>");
 		if (sel==DBG_MGCAMD) tcp_writestr(&tcpbuf, sock, "<option value='MGCAMD' selected>MGCAMD</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='MGCAMD'>MGCAMD</option>"); 
 		if (sel==DBG_CCCAM) tcp_writestr(&tcpbuf, sock, "<option value='CCCAM' selected>CCCAM</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='CCCAM'>CCCAM</option>");
-#ifdef CS378X_SRV
-		if (sel==DBG_CS378X) tcp_writestr(&tcpbuf, sock, "<option value='CS378X' selected>CS378X</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='CS378X'>CS378X</option>"); 
-#endif
 #ifdef CACHEEX
 		if (sel==DBG_CACHEEX) tcp_writestr(&tcpbuf, sock, "<option value='CACHEEX' selected>CACHEEX</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='CACHEEX'>CACHEEX</option>"); 
 #endif
-#ifndef PUBLIC
 		if (sel==DBG_ERROR) tcp_writestr(&tcpbuf, sock, "<option value='ERROR' selected>ERROR</option>"); else tcp_writestr(&tcpbuf, sock, "<option value='ERROR'>ERROR</option>");
-#endif
 		tcp_writestr(&tcpbuf, sock, "</select></legend>\n");
 		tcp_writestr(&tcpbuf, sock, "<div id='dbglog'>");
 		sprintf( http_buf, "<pre style=\"font-size:13px;\">"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -1753,7 +3430,7 @@ void http_send_debug(int sock, http_request *req)
 			pfi++;
 			pfs = pfs->next;
 		}
-		sprintf( http_buf, "CONSTCW: %s\nSTYLESHEET: %s\nBLOCKEDIP: %s\nLITE FILE: %s\n", cfg.constcw_file[0]?cfg.constcw_file:"(none)", cfg.stylesheet_file[0]?cfg.stylesheet_file:"(none)", cfg.blockedip_file[0]?cfg.blockedip_file:"(none)", cfg.lite_file[0]?cfg.lite_file:"(none)");
+		sprintf( http_buf, "STYLESHEET: %s\nBLOCKEDIP: %s\nLITE FILE: %s\n", cfg.stylesheet_file[0]?cfg.stylesheet_file:"(none)", cfg.blockedip_file[0]?cfg.blockedip_file:"(none)", cfg.lite_file[0]?cfg.lite_file:"(none)");
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "</pre></fieldset>");
 	}
@@ -2084,286 +3761,8 @@ void http_logout(int sock, http_request *req)
 	tcp_flush(&tcpbuf, sock);
 }
 
-static int emu_parsehex16(const char *s, uint8_t out[16])
-{
-	int n=0;
-	while (*s && n<16) {
-		if (*s==' '||*s=='\t') { s++; continue; }
-		uint8_t hi, lo;
-		char c = *s;
-		if (c>='0'&&c<='9') hi = c-'0';
-		else if (c>='a'&&c<='f') hi = c-'a'+10;
-		else if (c>='A'&&c<='F') hi = c-'A'+10;
-		else return -1;
-		c = *(s+1);
-		if (c>='0'&&c<='9') lo = c-'0';
-		else if (c>='a'&&c<='f') lo = c-'a'+10;
-		else if (c>='A'&&c<='F') lo = c-'A'+10;
-		else return -1;
-		out[n++] = (hi<<4)|lo;
-		s += 2;
-	}
-	return n;
-}
-
-static void emu_readmeta(char *out, int outlen)
-{
-	out[0] = 0;
-	if (!cfg.constcw_file[0]) return;
-	char meta[512];
-	strncpy(meta, cfg.constcw_file, sizeof(meta)-1);
-	meta[sizeof(meta)-1]=0;
-	char *slash = strrchr(meta, '/');
-	if (!slash) return;
-	strcpy(slash+1, "biss_updater.meta");
-	FILE *fp = fopen(meta, "r");
-	if (!fp) {
-		snprintf(out, outlen, "No updater data yet");
-		return;
-	}
-	char buf[1024] = "";
-	int len = fread(buf, 1, sizeof(buf)-1, fp);
-	fclose(fp);
-	buf[len] = 0;
-	long long last_check = 0, last_update = 0, added = 0, updated = 0, total = 0;
-	sscanf(buf, "{\"last_check\": %lld", &last_check);
-	sscanf(buf, "{\"last_update\": %lld", &last_update);
-	sscanf(buf, "{\"added\": %lld", &added);
-	sscanf(buf, "{\"updated\": %lld", &updated);
-	sscanf(buf, "{\"total\": %lld", &total);
-	uint32_t ticks = GetTickCount()/1000;
-	if (last_update) {
-		uint32_t ago = ticks - (uint32_t)last_update;
-		snprintf(out, outlen, "Last update: <b>%dh %dm ago</b><br>New keys: <b>+%lld</b><br>Updated: <b>%lld</b><br>Total after update: <b>%lld</b>", ago/3600, (ago/60)%60, added, updated, total);
-	}
-	else if (last_check) {
-		uint32_t ago = ticks - (uint32_t)last_check;
-		snprintf(out, outlen, "Last check: <b>%dh %dm ago</b><br>No key changes yet.<br>Total keys: <b>%lld</b>", ago/3600, (ago/60)%60, total);
-	}
-	else snprintf(out, outlen, "No updater data yet");
-}
-
 static int find_tool(const char *name, char *out, int outsz);
 static void resolve_cfg_path(const char *name, char *out, int outsz);
-
-void http_send_emulator(int sock, http_request *req)
-{
-	char http_buf[2048];
-	struct tcp_buffer_data tcpbuf;
-
-	// ===== ACTIONS =====
-	char *str_action = isset_get( req, "action");
-	if (str_action && !strcmp(str_action,"delete")) {
-		char *caid = isset_get( req, "caid");
-		char *provid = isset_get( req, "provid");
-		char *sid = isset_get( req, "sid");
-		if (caid && provid && sid)
-			emu_delkey( (uint16_t)strtol(caid,NULL,16), (uint32_t)strtol(provid,NULL,16), (uint16_t)strtol(sid,NULL,16) );
-		http_send_redirect(sock, "/emulator");
-		return;
-	}
-	if (str_action && !strcmp(str_action,"add")) {
-		char *sid = isset_get( req, "sid");
-		char *cw = isset_get( req, "cw");
-		if (sid && cw && sid[0] && cw[0]) {
-			uint16_t caid = 0x2600;
-			uint32_t provid = 0;
-			char *pcaid = isset_get( req, "caid");
-			char *pprov = isset_get( req, "provid");
-			if (pcaid && pcaid[0]) caid = (uint16_t)strtol(pcaid,NULL,16);
-			if (pprov && pprov[0]) provid = (uint32_t)strtol(pprov,NULL,16);
-			uint8_t keycw[16];
-			int n = emu_parsehex16(cw, keycw);
-			if (n==8) memcpy(keycw+8, keycw, 8);
-			if ((n==8)||(n==16)) {
-				emu_addkey( caid, provid, (uint16_t)strtol(sid,NULL,16), keycw, "", 1 );
-				mlogf(LOGINFO,DBG_HTTP," emu: key added %04x:%06x:%04x via web\n", caid, provid, (uint16_t)strtol(sid,NULL,16));
-			}
-		}
-		http_send_redirect(sock, "/emulator");
-		return;
-	}
-	if (str_action && !strcmp(str_action,"updatekey")) {
-		static uint32_t lastupdatekey = 0;
-		uint32_t now = GetTickCount();
-		if (lastupdatekey && ((now-lastupdatekey)<300000)) {
-			http_send_text(sock, "<span class='miss'>Aguarda 5 minutos entre atualizacoes</span>");
-			return;
-		}
-		lastupdatekey = now;
-		char tool[512];
-		if (find_tool("tools_update_softcam.py", tool, sizeof(tool))) {
-			sprintf( http_buf, "python3 %s --port %d >/var/tmp/softcam_update.log 2>&1 &", tool, cfg.http.port);
-			system(http_buf);
-			mlogf(LOGINFO, DBG_HTTP, " http: softcam update iniciado (porta %d)\n", cfg.http.port);
-			http_send_text(sock, "<span class='success'>Update SoftCam.Key iniciado. Resultado no Debug Log.</span>");
-		}
-		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (tools_update_softcam.py)</span>");
-		return;
-	}
-	if (str_action && !strcmp(str_action,"applykeys")) {
-		emu_load();
-		sprintf( http_buf, "<span class='success'>Reload Keys OK (%d chaves carregadas)</span>", emu_keycount);
-		http_send_text(sock, http_buf);
-		return;
-	}
-
-	// ===== POST multipart (SoftCam.Key upload) =====
-	if (req->type==HTTP_POST) {
-		char *content = isset_header(req, "Content-Type");
-		if (content && !memcmp(content,"multipart/form-data",19)) {
-			// boundary
-			while (*content!=';') { if (*content==0) break; content++; }
-			if (*content==';') {
-				content++;
-				while (*content==' ') content++;
-				if (!memcmp(content,"boundary",8)) {
-					while (*content!='=') { if (*content==0) break; content++; }
-					if (*content=='=') {
-						content++;
-						while (*content==' '||*content=='\t') content++;
-						char boundary[255];
-						char endboundary[255];
-						sprintf( boundary, "--%s", content);
-						sprintf( endboundary, "\r\n--%s", content);
-						char *p = req->dbf.data;
-						p = (char*) boyermoore_horspool_memmem( (uint8_t*)p, req->dbf.datasize, (uint8_t*)boundary, strlen(boundary) );
-						if (p) {
-							p += strlen(boundary);
-							if ( *p=='\r' && *(p+1)=='\n' ) {
-								p += 2;
-								// headers
-								char *h = p;
-								while ( !(h[0]=='\r'&&h[1]=='\n'&&h[2]=='\r'&&h[3]=='\n') ) {
-									if (h[0]==0) break;
-									h++;
-								}
-								char *pdata = h+4;
-								char *end = (char*) boyermoore_horspool_memmem( (uint8_t*)pdata, req->dbf.datasize-(pdata-(char*)req->dbf.data), (uint8_t*)endboundary, strlen(endboundary) );
-								if (end && end>pdata) {
-									int added = emu_parse_softcam( pdata, end-pdata );
-									mlogf(LOGINFO,DBG_HTTP," emu: SoftCam.Key upload: %d keys added\n", added);
-									if (added>0) sprintf( http_buf, "<span class='success'>Guardado com sucesso: %d chaves novas</span>", added);
-									else sprintf( http_buf, "<span class='miss'>Nao encontrei chaves novas nesse ficheiro (ja existiam ou formato errado)</span>");
-									http_send_text(sock, http_buf);
-									return;
-								}
-								http_send_text(sock, "<span class='failed'>Nao consegui processar o upload</span>");
-								return;
-							}
-						}
-					}
-				}
-			}
-			http_send_redirect(sock, "/emulator");
-			return;
-		}
-	}
-
-	// ===== PAGE =====
-	tcp_init(&tcpbuf);
-	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
-	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
-	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-	sprintf( http_buf, html_title, cfg.http.title, "Softcam"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
-	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
-	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
-	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
-	tcp_writestr(&tcpbuf, sock, "\nfunction filterKeys(){var q=document.getElementById('keysearch').value.toLowerCase();var t=document.getElementById('keystable');var r=t.querySelectorAll('tbody tr');for(var i=0;i<r.length;i++){r[i].style.display=r[i].textContent.toLowerCase().indexOf(q)>-1?'':'none';}}");
-	tcp_writestr(&tcpbuf, sock, "\nfunction uploadSoftcam(e)\n{\n	if(e&&e.preventDefault)e.preventDefault();\n	var f=document.getElementById('softcamform');\n	if(!f)return true;\n	var s=document.getElementById('softcamstatus');\n	if(s)s.innerHTML='<span class=busy>A processar...</span>';\n	var x=new XMLHttpRequest();\n	x.open('POST','/emulator',true);\n	x.onreadystatechange=function()\n	{\n		if(x.readyState==4){\n			if(x.status==200&&s)s.innerHTML=x.responseText;\n			else if(s)s.innerHTML='<span class=failed>Erro HTTP '+x.status+'</span>';\n		}\n	};\n	x.send(new FormData(f));\n	return false;\n}");
-	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 setautorefresh(autorefresh);\n}");
-	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
-	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
-	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
-	tcp_write_menu(&tcpbuf, sock, PAGE_EMULATOR);
-	tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
-
-	// stat sections
-	tcp_writestr(&tcpbuf, sock, "<div style='display:flex;gap:15px;flex-wrap:wrap;margin:10px 0'>");
-	// Emulator Settings
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Softcam Settings</h3><div class=stat-value>");
-	char emup[512];
-	emu_path(emup, sizeof(emup));
-	sprintf( http_buf, "Softcam.cfg: <b>%s</b><br>", emup);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	if (!cfg.constcw_file[0]) {
-		tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;color:#f0ad4e'>CONSTCW FILE nao definido no multics.cfg - a usar o caminho acima (junto do multics.cfg). Adiciona CONSTCW FILE para um caminho proprio.</span><br>");
-	}
-	sprintf( http_buf, "Keys loaded: <b>%d</b><br>", emu_keycount);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "</div></div>");
-	// Activity Stats
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Activity Stats</h3><div class=stat-value>");
-	sprintf( http_buf, "Decrypted CWs: <b>%d</b><br>", emu_logcount);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	if (emu_lastmatch) {
-		sprintf( http_buf, "Last match: <b>%us ago</b>", (GetTickCount()-emu_lastmatch)/1000);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-	tcp_writestr(&tcpbuf, sock, "</div></div>");
-	// Updater Stats
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Updater Stats</h3><div class=stat-value>");
-	char metaout[512];
-	emu_readmeta(metaout, sizeof(metaout));
-	tcp_write(&tcpbuf, sock, metaout, strlen(metaout) );
-	tcp_writestr(&tcpbuf, sock, "</div></div></div>");
-
-	// Upload + add forms
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >SoftCam.Key Upload</h3><div class=stat-value><form id='softcamform' method='POST' enctype='multipart/form-data' action='/emulator' onsubmit='return uploadSoftcam(event)'><input type='file' name='softcamkey' accept='.key'>&nbsp;<input type='submit' value='Convert &amp; Load'>&nbsp;<span id='softcamstatus'></span></form><br><input type='button' class='sbutton' value='Update SoftCam.Key' title='Descarrega o SoftCam.Key mais recente e aplica; chaves manuais sao preservadas' onclick=\"btnrequest('/emulator?action=updatekey','keystatus')\">&nbsp;<input type='button' class='sbutton' value='Reload Keys' title='Rele o Softcam.cfg do disco' onclick=\"btnrequest('/emulator?action=applykeys','keystatus')\">&nbsp;<span id='keystatus'></span>&nbsp;<span style='font-size:11px;'>update: download + parse automatico do SoftCam.Key remoto (resultado no Debug Log)</span></div>");
-	tcp_writestr(&tcpbuf, sock, "</div>");
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Add BISS Key (CAID 2600)</h3><div class=stat-value><form method='GET' action='/emulator'><input type='hidden' name='action' value='add'><input type='hidden' name='addkey_type' value='biss'>SID: <input type='text' name='sid' placeholder='17ED' style='width:60px;margin-right:8px'>CW (16 or 32 hex): <input type='text' name='cw' placeholder='1A2B3C81...' style='width:280px;margin-right:8px'><input type='submit' value='Add BISS Key'></form></div>");
-	tcp_writestr(&tcpbuf, sock, "</div>");
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Add Generic CW Key</h3><div class=stat-value><form method='GET' action='/emulator'><input type='hidden' name='action' value='add'><input type='hidden' name='addkey_type' value='generic'>CAID: <input type='text' name='caid' placeholder='2600' style='width:60px;margin-right:8px'>Provider: <input type='text' name='provid' placeholder='000000' style='width:80px;margin-right:8px'>SID: <input type='text' name='sid' placeholder='17ED' style='width:60px;margin-right:8px'>CW (16 or 32 hex): <input type='text' name='cw' placeholder='1A2B3C81...' style='width:280px;margin-right:8px'><input type='submit' value='Add Key'></form></div>");
-	tcp_writestr(&tcpbuf, sock, "</div>");
-
-	// Loaded Keys
-	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Loaded Keys (%d)</h3>", emu_keycount);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-value><input type='text' id='keysearch' onkeyup='filterKeys()' placeholder='Search CAID, SID or channel...' style='width:280px;margin-bottom:8px'><div style='max-height:400px;overflow-y:auto'><table class=maintable id='keystable'><tr><th>CAID</th><th>Provider</th><th>SID</th><th>Channel Name</th><th>CW (32 hex)</th><th>Del</th></tr>");
-	struct emu_key_data *k = emu_keys;
-	char cwhex[40];
-	int i;
-	char *p;
-	while (k) {
-		p = cwhex;
-		for (i=0; i<16; i++) { sprintf(p,"%02X", k->cw[i]); p+=2; }
-		const char *chn = (k->name[0]) ? k->name : getchname(k->caid, k->provid, k->sid);
-		sprintf( http_buf, "<tr><td>%04x</td><td>%06x</td><td>%04x</td><td>%s</td><td class='cwcell'>%s</td><td><a href='/emulator?action=delete&caid=%04x&provid=%06x&sid=%04x' onclick=\"return confirm('Delete this key?')\" class='btn-del'>Delete</a></td></tr>",
-			k->caid, k->provid, k->sid, chn, cwhex, k->caid, k->provid, k->sid);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		k = k->next;
-	}
-	if (!emu_keycount)
-		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=6 style='text-align:center;color:#888'>No keys loaded. Upload a SoftCam.Key file or add entries to Softcam.cfg.</td></tr>");
-	tcp_writestr(&tcpbuf, sock, "</table></div></div></div>");
-
-	// Decrypted CW Log
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Decrypted CW Log</h3><div style='max-height:300px;overflow-y:auto'><table class=maintable><tr><th>Time</th><th>CAID</th><th>Provider</th><th>SID</th><th>CW (32 hex)</th></tr>");
-	int li;
-	int shown = 0;
-	struct emu_log_data logentry;
-	for (li=0; li<emu_logcount && shown<50; li++, shown++) {
-		if (!emu_log_get(li, &logentry)) break;
-		p = cwhex;
-		for (i=0; i<16; i++) { sprintf(p,"%02X", logentry.cw[i]); p+=2; }
-		sprintf( http_buf, "<tr><td>%us ago</td><td>%04x</td><td>%06x</td><td>%04x</td><td class='cwcell'>%s</td></tr>",
-			(GetTickCount()-logentry.time)/1000, logentry.caid, logentry.provid, logentry.sid, cwhex);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-	if (!emu_logcount)
-		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=5 style='text-align:center;color:#888'>No decrypted CWs yet</td></tr>");
-	tcp_writestr(&tcpbuf, sock, "</table></div></div>");
-
-	tcp_writestr(&tcpbuf, sock, "</div></body></html>");
-	tcp_flush(&tcpbuf, sock);
-}
 
 void http_send_iptables(int sock, http_request *req)
 {
@@ -2482,14 +3881,12 @@ char *srvtypename(struct server_data *srv)
 {
 	static char newcamd[] = "Newcamd";
 	static char cccam[] = "CCcam";
-	static char radegast[] = "Radegast";
 #ifdef CACHEEX
 	static char cacheex[] = "CacheEX";
 	if (srv->cacheex_mode && (srv->type==TYPE_CCCAM)) return cacheex;
 #endif
 	if (srv->type==TYPE_NEWCAMD) return newcamd;
 	if (srv->type==TYPE_CCCAM) return cccam;
-	if (srv->type==TYPE_RADEGAST) return radegast;
 	return NULL;
 }
 	
@@ -2510,48 +3907,6 @@ int srv_cardcount(struct server_data *srv, int uphops)
 }
 
 
-char *xmlescape( char *str )
-{
-// "   &quot;
-// '   &apos;
-// <   &lt;
-// >   &gt;
-// &   &amp;
-	char exml[5000];
-	char *src = str;
-	char *dest = exml;
-	while (*src) {
-		switch (*src) {
-			case '&':
-				memcpy(dest,"&amp;", 5);
-				dest +=5;
-				break;				
-			case '<':
-				memcpy(dest,"&lt;", 4);
-				dest +=4;
-				break;				
-			case '>':
-				memcpy(dest,"&gt;", 4);
-				dest +=4;
-				break;				
-			case '"':
-				memcpy(dest,"&quot;", 6);
-				dest +=6;
-				break;				
-			case '\'':
-				memcpy(dest,"&apos;", 6);
-				dest +=6;
-				break;				
-			default:
-				*dest = *src;
-				dest++;
-		}
-		src++;
-	}
-	*dest = 0;
-	strcpy( str, exml);
-	return str;
-}
 
 char *providerID( unsigned short caid, unsigned int provid )
 {
@@ -2595,8 +3950,8 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 			if (!in) continue;
 			char *pn = providerID(card->caid, card->prov[i]);
 			char t2[220];
-			if (pn) snprintf(t2, sizeof(t2), "%s%06x <font color=#CC3300>%s</font>", first?"":"<br>", card->prov[i], pn);
-			else snprintf(t2, sizeof(t2), "%s%06x", first?"":"<br>", card->prov[i]);
+			if (pn) snprintf(t2, sizeof(t2), "%s<span class='cardchip chip-%04x'>%06x</span> <span class='prov'>%s</span>", first?"":"<br>", card->caid, card->prov[i], pn);
+			else snprintf(t2, sizeof(t2), "%s<span class='cardchip chip-%04x'>%06x</span>", first?"":"<br>", card->caid, card->prov[i]);
 			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; cnt++; }
 		}
 		if (cnt) {
@@ -2623,8 +3978,8 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 			if (in) continue;
 			char *pn = providerID(card->caid, card->prov[i]);
 			char t2[220];
-			if (pn) snprintf(t2, sizeof(t2), "%s%06x <font color=#8899aa>%s</font>", first?"":"<br>", card->prov[i], pn);
-			else snprintf(t2, sizeof(t2), "%s%06x", first?"":"<br>", card->prov[i]);
+			if (pn) snprintf(t2, sizeof(t2), "%s<span class='cardchip'>%06x</span> <span class='prov'>%s</span>", first?"":"<br>", card->prov[i], pn);
+			else snprintf(t2, sizeof(t2), "%s<span class='cardchip'>%06x</span>", first?"":"<br>", card->prov[i]);
 			if ( (strlen(provs)+strlen(t2)) < (sizeof(provs)-4) ) { strcat(provs, t2); first = 0; cnt2++; }
 		}
 		if (cnt2) {
@@ -2643,7 +3998,7 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 
 static struct { unsigned short caid; char *name; } caid_pkg_table[] = {
 	{ 0x1814, "MEO ID (30W Portugal)" },
-	{ 0x1813, "Canal+ Polónia nc+ (13E)" },
+	{ 0x1813, "Canal+ Pol???nia nc+ (13E)" },
 	{ 0x1802, "NOS ID (30W Portugal)" },
 	{ 0x1880, "Digi TV (0.8W Hungria)" },
 	{ 0x1810, "Movistar+ (19.2E Espanha)" },
@@ -2672,7 +4027,7 @@ static struct { unsigned short caid; char *name; } caid_pkg_table[] = {
 	{ 0x0B01, "NC+ Conax (13E Polonia)" },
 	{ 0x1870, "Polsat Box (13E Polonia)" },
 	{ 0x0B02, "Focus Sat (0.8W Romenia)" },
-	{ 0x1884, "Canal+ Polónia (13E Polonia)" },
+	{ 0x1884, "Canal+ Pol???nia (13E Polonia)" },
 	{ 0x0100, "SECA/Mediaguard (13E)" },
 	{ 0x1803, "Polsat Box (13E Polonia)" },
 	{ 0x1861, "Polsat Box (13E Polonia)" },
@@ -2733,7 +4088,7 @@ void getservercells(struct server_data *srv, char cell[8][16384] )
 	// CELL2
 	if (srv->type==TYPE_NEWCAMD) {
 		if (srv->progname) {
-			if (srv->version) sprintf( cell[2],"%s %s", srv->progname, srv->version);
+			if (srv->version[0]) sprintf( cell[2],"%s %s", srv->progname, srv->version);
 			else strcpy( cell[2], srv->progname);
 		}
 		else sprintf( cell[2],"Newcamd v6.06");
@@ -2749,19 +4104,6 @@ void getservercells(struct server_data *srv, char cell[8][16384] )
 		//if (srv->progname) sprintf( cell[2],"<td>CCcam(%s) %s", srv->progname, srv->version); else sprintf( cell[2],"<td>CCcam %s", srv->version);
 	}
 #endif
-#ifdef RADEGAST_CLI
-	else if (srv->type==TYPE_RADEGAST) sprintf( cell[2],"Cs357x UDP v0.3.x");
-#endif
-#ifdef CAMD35_CLI
-	else if (srv->type==TYPE_CAMD35) sprintf( cell[2],"Camd35 v0.3.x");
-#endif
-#ifdef CS378X_CLI
-	else if (srv->type==TYPE_CS378X) sprintf( cell[2],"Cs738x TCP v0.3.x");
-#endif
-	else if (srv->type==TYPE_CCAM3) {
-		if (srv->handle>0 && srv->version[0]) sprintf( cell[2],"CCcam3 v%s", srv->version);
-		else sprintf( cell[2],"CCcam3");
-	}
 	else sprintf( cell[2],"Unknown");
 
 	// CELL3
@@ -2861,7 +4203,7 @@ void getservercells(struct server_data *srv, char cell[8][16384] )
 			CELL6ADD(temp);
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/server?id=%d&action=dbginfo')\">DBG</span>",srv->id,srv->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/server?id=%d&action=dbginfo','/cwfeed?srv=%d')\">DBG</span>",srv->id,srv->id,srv->id);
 	CELL6ADD(temp);
 	sprintf( temp," <span class='icobtn inf' title='Info completa do server (todos os cards e detalhes)' onclick=\"location.href='/server?id=%d'\">INF</span>",srv->id);
 	CELL6ADD(temp);
@@ -2869,29 +4211,26 @@ void getservercells(struct server_data *srv, char cell[8][16384] )
 	#undef CELL6ADD
 }
 
-void alltotal_servers( int *all, int *cccam, int *newcamd, int *radegast )
+void alltotal_servers( int *all, int *cccam, int *newcamd )
 {
 	*all = 0;
 	*cccam = 0;
 	*newcamd = 0;
-	*radegast = 0;
 
 	struct server_data *srv=cfg.server;
 	while (srv) {
 		(*all)++;
 		if (srv->type==TYPE_CCCAM) (*cccam)++;
 		else if (srv->type==TYPE_NEWCAMD) (*newcamd)++;
-		else if (srv->type==TYPE_RADEGAST) (*radegast)++;
 		srv=srv->next;
 	}
 }
 
-void allconnected_servers( int *all, int *cccam, int *newcamd, int *radegast )
+void allconnected_servers( int *all, int *cccam, int *newcamd )
 {
 	*all = 0;
 	*cccam = 0;
 	*newcamd = 0;
-	*radegast = 0;
 
 	struct server_data *srv=cfg.server;
 	while (srv) {
@@ -2899,7 +4238,6 @@ void allconnected_servers( int *all, int *cccam, int *newcamd, int *radegast )
 			(*all)++;
 			if (srv->type==TYPE_CCCAM) (*cccam)++;
 			else if (srv->type==TYPE_NEWCAMD) (*newcamd)++;
-			else if (srv->type==TYPE_RADEGAST) (*radegast)++;
 		}
 		srv=srv->next;
 	}
@@ -2908,6 +4246,7 @@ void allconnected_servers( int *all, int *cccam, int *newcamd, int *radegast )
 void http_send_servers(int sock, http_request *req)
 {
 	char http_buf[5000];
+	char rowbuf[18000];
 	struct tcp_buffer_data tcpbuf;
 
 	char cell[8][16384];
@@ -2929,7 +4268,6 @@ void http_send_servers(int sock, http_request *req)
 	if (str_type) {
 		if (!strcmp(str_type,"cccam"))  get_type = 1;
 		else if (!strcmp(str_type,"newcamd")) get_type = 2;
-		else if (!strcmp(str_type,"radegast")) get_type = 3;
 		else str_type = NULL;
 	}
 	if (!str_type) str_type = "all";
@@ -2991,7 +4329,7 @@ void http_send_servers(int sock, http_request *req)
 		// ACTIONS REQUEST
 		tcp_writestr(&tcpbuf, sock, "\nfunction imgrequest( url, el )\n{\n	var httpRequest;\n	try { httpRequest = new XMLHttpRequest(); }\n	catch (trymicrosoft) { try { httpRequest = new ActiveXObject('Msxml2.XMLHTTP'); } catch (oldermicrosoft) { try { httpRequest = new ActiveXObject('Microsoft.XMLHTTP'); } catch(failed) { httpRequest = false; } } }\n	if (!httpRequest) { alert('Your browser does not support Ajax.'); return false; }\n	if ( typeof(el)!='undefined' ) {\n		el.onclick = null;\n		el.style.opacity = '0.7';\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) if (httpRequest.status == 200) el.style.opacity = '0.3';\n		}\n	}\n	httpRequest.open('GET', url, true);\n	httpRequest.send(null);\n}\n");
 		// UPD ROW
-		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id )\n{\n	var row = document.getElementById(id);\n	if (!row) return;\n	var cc6 = row.cells.item(6);\n	if (cc6 && cc6.matches && cc6.matches(':hover')) return;\n	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n	row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n	row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n	row.cells.item(3).className = xmlDoc.getElementsByTagName('c3_c')[0].childNodes[0].nodeValue;\n	row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n	row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n	row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n	row.cells.item(6).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n}\n" );
+		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id )\n{\n	var row = document.getElementById(id);\n	if (!row) return;\n	var cc6 = row.cells.item(row.cells.length-1);\n	if (cc6 && cc6.matches && cc6.matches(':hover')) return;\n	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n	row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n	row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n	row.cells.item(3).className = xmlDoc.getElementsByTagName('c3_c')[0].childNodes[0].nodeValue;\n	row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n	row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n	if (row.cells.length>6) row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n	row.cells.item(row.cells.length-1).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n}\n" );
 		char url[256];
 		sprintf( url, "'/servers?id='+idx");
 		sprintf( http_buf, HTTP_UPDATE_ROW, url);
@@ -3011,16 +4349,15 @@ void http_send_servers(int sock, http_request *req)
 		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
 	}
 	//
-	int iall, icccam, inewcamd, iradegast; // Total
-	alltotal_servers( &iall, &icccam, &inewcamd, &iradegast );
-	int jall, jcccam, jnewcamd, jradegast; // Connected
-	allconnected_servers( &jall, &jcccam, &jnewcamd, &jradegast );
+	int iall, icccam, inewcamd; // Total
+	alltotal_servers( &iall, &icccam, &inewcamd );
+	int jall, jcccam, jnewcamd; // Connected
+	allconnected_servers( &jall, &jcccam, &jnewcamd );
 	//
 	int connected = jall;
 	int total = iall;
 	if (get_type==1) { connected=jcccam; total=icccam; }
 	else if (get_type==2) { connected=jnewcamd; total=inewcamd; }
-	else if (get_type==3) { connected=jradegast; total=iradegast; }
 	//
 	tcp_writestr(&tcpbuf, sock, "<select style=\"width:200px;\" onchange=\"parent.location.href='/servers?type='+this.value\">");
 	sprintf( http_buf, "<option value=all>All Servers (%d/%d)</option>",jall, iall );
@@ -3033,11 +4370,6 @@ void http_send_servers(int sock, http_request *req)
 	if (icccam) {
 		if (get_type==1) sprintf( http_buf, "<option value=cccam selected>CCcam Servers (%d/%d)</option>",jcccam,icccam );
 		else sprintf( http_buf, "<option value=cccam>CCcam Servers (%d/%d)</option>",jcccam,icccam );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-	if (iradegast) {
-		if (get_type==3) sprintf( http_buf, "<option value=radegast>Radegast Servers (%d/%d)</option>",jradegast,iradegast );
-		else sprintf( http_buf, "<option value=radegast selected>Radegast Servers (%d/%d)</option>",jradegast,iradegast );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 	tcp_writestr(&tcpbuf, sock, "</select>");
@@ -3054,7 +4386,7 @@ void http_send_servers(int sock, http_request *req)
 	sprintf( http_buf," <input type=button class=%s onclick=\"parent.location='/servers?type=%s&amp;list=disconnected'\" value='Disconnected (%d)'>",class,str_type,total-connected);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	// Table
-	sprintf( http_buf, "<br><div style='overflow-x:auto;max-width:100%%'><table class=maintable width=100%%>\n<tr><th width=20px>Uptime</th><th width=200px>Host</th><th width=100px>Server</th><th width=100px>Connected</th><th width=150px>Ecm OK</th><th width=50px>EcmTime</th><th width=360px>Cards</th></tr>\n");
+	sprintf( http_buf, "<br><div style='overflow-x:auto;max-width:100%%'><table class=maintable width=100%%>\n<tr><th width=20px>Uptime</th><th width=200px>Host</th><th width=100px>Server</th><th width=100px>Connected</th><th width=150px>Ecm OK</th><th width=360px>Cards</th></tr>\n");
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	srv = cfg.server;
 	int alt = 0;
@@ -3065,8 +4397,8 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td align=\"center\">%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
+				tcp_write(&tcpbuf, sock, rowbuf, strlen(rowbuf) );
 			}
 			srv = srv->next;
 		}
@@ -3078,8 +4410,8 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td align=\"center\">%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
+				tcp_write(&tcpbuf, sock, rowbuf, strlen(rowbuf) );
 			}
 			srv = srv->next;
 		}
@@ -3091,21 +4423,8 @@ void http_send_servers(int sock, http_request *req)
 			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
 				if (alt==1) alt=2; else alt=1;
 				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td align=\"center\">%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
-			srv = srv->next;
-		}
-	}
-	else if (get_type==3) {
-		while (srv) {
-			if (!(srv->flags&FLAG_DELETE))
-			if (srv->type==TYPE_RADEGAST)
-			if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0)) ) {
-				if (alt==1) alt=2; else alt=1;
-				getservercells(srv,cell);
-				snprintf( http_buf, sizeof(http_buf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td align=\"center\">%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[5],cell[6]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td align=\"center\">%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,srv->id,cell[0],cell[1],cell[2],cell[7],cell[3],cell[4],cell[6]);
+				tcp_write(&tcpbuf, sock, rowbuf, strlen(rowbuf) );
 			}
 			srv = srv->next;
 		}
@@ -3192,7 +4511,7 @@ void http_send_server(int sock, http_request *req)
 		char dbg[1024];
 		sprintf( dbg, "<div class='dbginfo'><b>%s:%d</b> | Type: %s | Status: %s | Busy: %s<br>ECM: %d pedidos, %d OK (%d%%) | Hits: %d | %s</div>",
 			srv->host? (char*)srv->host->name : "?", srv->port,
-			(srv->type==TYPE_NEWCAMD)?"Newcamd":(srv->type==TYPE_CCCAM)?"CCcam":(srv->type==TYPE_CAMD35)?"Camd35":(srv->type==TYPE_CS378X)?"cs378x":"Radegast",
+			(srv->type==TYPE_NEWCAMD)?"Newcamd":(srv->type==TYPE_CCCAM)?"CCcam":"Unknown",
 			srv->connection.status>0?"CONNECTED":(srv->connection.status<0?"CONNECTING...":"OFFLINE"),
 			srv->busy?"yes":"no",
 			srv->ecmnb, srv->ecmok, srv->ecmnb?(srv->ecmok*100)/srv->ecmnb:0, srv->hits,
@@ -3247,7 +4566,6 @@ void http_send_server(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "<tr><td class=left>Type</td><td class=right>");
 	if (srv->type==TYPE_CCCAM) tcp_writestr(&tcpbuf, sock, "CCcam</td></tr>\n");
 	else if (srv->type==TYPE_NEWCAMD) tcp_writestr(&tcpbuf, sock, "Newcamd</td></tr>\n");
-	else if (srv->type==TYPE_RADEGAST) tcp_writestr(&tcpbuf, sock, "Radegast</td></tr>\n");
 	// USER
 	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>User</td><td class=right>%s</td></tr>\n",srv->user );
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -3458,7 +4776,11 @@ void getcachecells(struct cachepeer_data *peer, char cell[12][2048] )
 	char *p = getcountrycodebyip(peer->host->ip);
 	if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(peer->host->ip) ); else sprintf( cell[1],"%s",(char*)ip2string(peer->host->ip) );
 	// CELL2#Program (assinatura)
-	sprintf( cell[2],"Csp-Cache | Mcs1000");
+	if ( (peer->protocol)&&(peer->ping>0) ) {
+		if (peer->ismultics) sprintf( cell[2],"Csp-Cache | Mcs1000 (*%d)", peer->protocol);
+		else sprintf( cell[2],"Csp-Cache | Mcs1000 (%d)", peer->protocol);
+	}
+	else sprintf( cell[2],"Csp-Cache | Mcs1000");
 	// CELL3 # Ping
 	if (IS_DISABLED(peer->flags)) {
 		sprintf( cell[3],"offline");
@@ -3472,24 +4794,6 @@ void getcachecells(struct cachepeer_data *peer, char cell[12][2048] )
 		else {
 			sprintf( cell[3],"offline");
 			sprintf( cell[4],"?");
-		}
-		if (peer->csporthit[0].csid) {
-			strcat( cell[4], "<table class=\"connect_data\">" );
-#ifndef PUBLIC
-			if (peer->ismultics) sprintf( temp,"<tr><td>Protocol</td><td>*%d</td></tr>", peer->protocol);
-			else sprintf( temp,"<tr><td>Protocol</td><td>%d</td></tr>", peer->protocol);
-			strcat( cell[4], temp );
-#endif
-			strcat( cell[4], "<tr><td width=150px>Profile</td><td>Hits</td></tr>" );
-			int i;
-			for(i=0; i<10; i++) {
-				if (!peer->csporthit[i].csid) break;
-				struct cardserver_data *cs = getcsbyid(peer->csporthit[i].csid);
-				if (!cs) continue;
-				sprintf( temp,"<tr><td>%s</td><td>%d</td></tr>", cs->name,peer->csporthit[i].hits);
-				strcat( cell[4], temp );
-			}
-			strcat( cell[4], "</table>");
 		}
 	}
 
@@ -3512,6 +4816,20 @@ void getcachecells(struct cachepeer_data *peer, char cell[12][2048] )
 		sprintf( cell[11],"ch %s (%dms)", getchname(peer->lastcaid, peer->lastprov, peer->lastsid) , peer->lastdecodetime );
 	}
 	else strcpy( cell[11], " ");
+	// perfis com hits (tabela propria, fora da coluna do ping)
+	if (peer->csporthit[0].csid) {
+		strcat( cell[11], "<br><table class=\"connect_data\">" );
+		strcat( cell[11], "<tr><td width=150px>Profile</td><td>Hits</td></tr>" );
+		int i;
+		for(i=0; i<10; i++) {
+			if (!peer->csporthit[i].csid) break;
+			struct cardserver_data *cs = getcsbyid(peer->csporthit[i].csid);
+			if (!cs) continue;
+			sprintf( temp,"<tr><td>%s</td><td>%d</td></tr>", cs->name,peer->csporthit[i].hits);
+			strcat( cell[11], temp );
+		}
+		strcat( cell[11], "</table>");
+	}
 
 	strcat( cell[11], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
 	if ( !(peer->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
@@ -3675,11 +4993,11 @@ void http_send_cache(int sock, http_request *req)
 		// Info de servidores (acima da div principal)
 		{
 			tcp_writestr(&tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
-			sprintf( http_buf, "<h3 class=stitle>Cache Servers (%d)</h3>", cfg.cache.totalservers);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Active Peers</th></tr>");
 			int itotal, iactive;
 			total_cache_peers( &itotal, &iactive );
+			sprintf( http_buf, "<h3 class=stitle>Cache Servers (%d) - Peers: %d activos / %d</h3>", cfg.cache.totalservers, iactive, itotal);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Active Peers</th></tr>");
 			sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iactive, itotal);
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			sprintf( http_buf, "<tr><td class=left>AliveTime</td><td class=right colspan=2>%ds</td><td class=right>Auto-Add: %s | Filter: %s</td></tr>", cfg.cache.alivetime/1000, yesno(cfg.cache.autoadd), onoff(cfg.cache.filter));
@@ -4098,7 +5416,7 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][8192])
 		sprintf( temp," <span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">OFF</span>",cs->id);
 		C9ADD(temp);
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/profile?id=%d&action=dbginfo')\">DBG</span>",cs->id,cs->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/profile?id=%d&action=dbginfo','/cwfeed?caid=%04x')\">DBG</span>",cs->id,cs->id,cs->card.caid);
 	C9ADD(temp);
 	C9ADD("</span>");
 	#undef C9ADD
@@ -4204,7 +5522,7 @@ void http_send_profiles(int sock, http_request *req)
 	char http_buf[2048];
 	struct tcp_buffer_data tcpbuf;
 
-	char cell[11][4096];
+	char cell[11][8192];
 
 	//  Get Params
 	char *str_action = isset_get( req, "action");
@@ -4213,9 +5531,7 @@ void http_send_profiles(int sock, http_request *req)
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
 		else if (!strcmp(str_action,"onprof")) get_action = ACTION_ENABLE; // descomentar perfil por nome
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else str_action = NULL;
 	}
 	if (get_action==ACTION_ENABLE) {
@@ -4507,22 +5823,6 @@ void cs_allclients( int *total, int *connected, int *active )
 }
 
 
-#ifdef RADEGAST_SRV
-
-int connected_radegast_clients(struct cardserver_data *cs)
-{
-	int nb=0;
-	struct rdgd_client_data *rdgdcli=cs->radegast.client;
-	if (cs->radegast.handle)
-	while (rdgdcli) {
-		if (rdgdcli->handle>0) nb++;
-		rdgdcli=rdgdcli->next;
-	}
-	return nb;
-}
-
-#endif
-
 char *programid(unsigned int id)
 {
 	typedef struct {
@@ -4535,7 +5835,6 @@ char *programid(unsigned int id)
 		{ "VDRSC",   0x5644 },
 		{ "LCE", 0x4C43 },
 		{ "Camd3", 0x4333 },
-		{ "Radegast", 0x7264 },
 		{ "Gbox2CS", 0x6762 },
 		{ "Mgcamd", 0x6D67 },
 		{ "WinCSC", 0x7763 },
@@ -4570,7 +5869,6 @@ char *programid(unsigned int id)
 	return unknown;
 }
 
-char* str_laststatus[] = { "NOK", "OK", "BISS EMU" };
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -4664,7 +5962,7 @@ void getnewcamdclientcells(struct cs_client_data *cli, char cell[10][2048])
 			strcat( cell[8], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/newcamdclient?id=%d&action=dbginfo')\">DBG</span>",cli->id,cli->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/newcamdclient?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
 	strcat( cell[8], temp );
 	strcat( cell[8], "</span>");
 
@@ -4692,9 +5990,7 @@ void http_send_newcamd(int sock, http_request *req) // page, div, row
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
@@ -4795,27 +6091,6 @@ void http_send_newcamd(int sock, http_request *req) // page, div, row
 		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
 		tcp_writestr(&tcpbuf, sock, "\n<body onload=\"start();\">");
 		tcp_write_menu(&tcpbuf, sock,PAGE_NEWCAMD);
-		// Info de servidores (acima da div principal)
-		{
-			tcp_writestr(&tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
-			sprintf( http_buf, "<h3 class=stitle>Newcamd Profiles (%d)</h3>", total_profiles());
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Profile</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
-			int itotal, iconnected, iactive;
-			cs_allclients( &itotal, &iconnected, &iactive );
-			sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			struct cardserver_data *box = cfg.cardserver;
-			while (box) {
-				int btotal, bconnected, bactive;
-				cs_clients( box, &btotal, &bconnected, &bactive );
-				if (box->newcamd.handle>0) sprintf( http_buf, "<tr><td class=left><a href='/newcamd?pid=%d'>%s</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->name, box->newcamd.port, bconnected, btotal);
-				else sprintf( http_buf, "<tr><td class=left><a href='/newcamd?pid=%d'>%s</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->name, box->newcamd.port, bconnected, btotal);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				box = box->next;
-			}
-			tcp_writestr(&tcpbuf, sock, "</table></div></div>");
-		}
 		// DIV
 		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
 	}
@@ -4958,11 +6233,11 @@ void http_send_newcamd_client(int sock, http_request *req)
 	char http_buf[2048];
 	struct tcp_buffer_data tcpbuf;
 	char *str_id = isset_get( req, "id");
-	if (!str_id) return; //error
+	if (!str_id) { http_send_redirect(sock, "/newcamd"); return; } //error
 	int get_id = atoi(str_id);
 	//
 	struct cs_client_data *cli = getnewcamdclientbyid( get_id );
-	if (!cli) return;
+	if (!cli) { http_send_redirect(sock, "/newcamd"); return; }
 	// Action
 	char *str_action = isset_get( req, "action");
 	int get_action = 0;
@@ -4986,8 +6261,8 @@ void http_send_newcamd_client(int sock, http_request *req)
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->nblogin, cli->nbloginerror, cli->nbdiffip,
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
-			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
-			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0,
+			(int)(cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0),
+			(int)(cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0),
 			cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, cli->lastecm.decodetime,
 			(cli->lastecm.status==2)?" <span class=nok-yellow>NOK (BISS EMU)</span>":"",
 			cli->type, cli->flags, cli->cs?cli->cs->name:"-");
@@ -5262,9 +6537,7 @@ void http_send_profile(int sock, http_request *req)
 		else if (!strcmp(str_action,"disable")) get_action = 3;
 		else if (!strcmp(str_action,"enable")) get_action = 4;
 		else if (!strcmp(str_action,"status")) get_action = 5;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = 6; // XML info
-#endif
 		else if (!strcmp(str_action,"debug")) get_action = 7;
 		else if (!strcmp(str_action,"dbginfo")) get_action = 8;
 		else if (!strcmp(str_action,"off")) get_action = 9;  // comentar perfil no profiles.cfg
@@ -5294,7 +6567,7 @@ void http_send_profile(int sock, http_request *req)
 			IS_DISABLED(cs->flags)?" | DISABLED":"",
 			cs->option.dcw.cak7?" | CAK7: ON":"",
 			cs->option.ecmfilter.enable? (cs->option.ecmfilter.mode?" | ECM FILTER: DROP":" | ECM FILTER: LOGONLY"):"",
-			cs->option.dcwfilter.enable? (cs->option.dcwfilter.mode==2?(cs->option.dcwfilter.auto_active?" | DCW FILTER: AUTO (ATIVO)":" | DCW FILTER: AUTO"):(cs->option.dcwfilter.mode?" | DCW FILTER: DROP":" | DCW FILTER: LOGONLY")):"",
+			cs->option.dcw.cycleengine?" | CYCLE ENGINE: ON":"",
 			cs->option.ratelimit.sidtime||cs->option.ratelimit.maxecm?" | RATELIMIT: ON":"");
 		http_send_text(sock, dbg);
 		return;
@@ -5338,10 +6611,6 @@ void http_send_profile(int sock, http_request *req)
 
 	sprintf( http_buf, "<br><br><div class=\"outer\"> <div class=\"top\"><b>Profile: %s</b><ul><li>Newcamd Port = %d</li>",cs->name, cs->newcamd.port);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#ifdef RADEGAST_SRV
-	sprintf( http_buf, "<li>Radegast Port = %d</li>", cs->radegast.port);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
 	sprintf( http_buf, "<li>Network ID = %04X</li>", cs->option.onid);
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf, "<li>Caid = %04X</li><li>Providers =", cs->card.caid);
@@ -5360,9 +6629,7 @@ void http_send_profile(int sock, http_request *req)
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM CHECK</td><td>%s</td></tr>", yesno(cs->option.checkecm)); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM CHECK LENGTH</td><td>%s</td></tr>", yesno(cs->option.checkecmlength)); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW TIMEOUT</td><td>%dms</td></tr>", cs->option.dcw.timeout); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#ifndef PUBLIC
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW RETRY</td><td>%d</td></tr>", cs->option.dcw.retry ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CHECK</td><td>%s</td></tr>", yesno(cs->option.dcw.check) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW HALFNULLED</td><td>%s</td></tr>", yesno(cs->option.dcw.halfnulled) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #ifdef DCWSWAP
@@ -5382,20 +6649,17 @@ void http_send_profile(int sock, http_request *req)
 	//
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE CCCAM</td><td>%s</td></tr>", yesno(cs->option.fallowcccam) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE NEWCAMD</td><td>%s</td></tr>", yesno(cs->option.fallownewcamd) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE RADEGAST</td><td>%s</td></tr>", yesno(cs->option.fallowradegast) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE CAMD35</td><td>%s</td></tr>", yesno(cs->option.fallowcamd35) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE CS378X</td><td>%s</td></tr>", yesno(cs->option.fallowcs378x) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE SKIPCWC</td><td>%s</td></tr>", yesno(cs->option.fallowskipcwc) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE CWC</td><td>%s (sens:%d dropold:%s keep:%dm onbad:%s)</td></tr>", yesno(cs->option.cwc.enable), cs->option.cwc.sensitive, yesno(cs->option.cwc.dropold), cs->option.cwc.keepcycletime, yesno(cs->option.cwc.dropbad) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE NAGRA</td><td>%s (chk:%s prov:%s cycle:%s onbad:%s sens:%d)</td></tr>", yesno(cs->option.nagra.enable), yesno(cs->option.nagra.chk), yesno(cs->option.nagra.prov), yesno(cs->option.nagra.cycle), yesno(cs->option.nagra.onbad), cs->option.nagra.sensitive ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE NAGRA</td><td>%s (chk:%s prov:%s onbad:%s)</td></tr>", yesno(cs->option.nagra.enable), yesno(cs->option.nagra.chk), yesno(cs->option.nagra.prov), yesno(cs->option.nagra.onbad) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE HEALTH</td><td>%s</td></tr>", yesno(cs->option.health.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CAK7</td><td>%s</td></tr>", yesno(cs->option.dcw.cak7) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CAK7</td><td>%s%s</td></tr>", yesno(cs->option.dcw.cak7), cs->option.dcw.cak7inv?" (INVERSE)":"" ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM FILTER</td><td>%s (%d regras)</td></tr>", cs->option.ecmfilter.enable?(cs->option.ecmfilter.mode?"DROP":"LOGONLY"):"OFF", cs->option.ecmfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW FILTER</td><td>%s (%d regras)</td></tr>", cs->option.dcwfilter.enable?(cs->option.dcwfilter.mode==2?(cs->option.dcwfilter.auto_active?"AUTO (ATIVO)":"AUTO"):(cs->option.dcwfilter.mode?"DROP":"LOGONLY")):"OFF", cs->option.dcwfilter.nrules ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW CYCLE ENGINE</td><td>%s (badcw ttl:%dm)</td></tr>", yesno(cs->option.dcw.cycleengine), cs->option.dcw.badcwttl ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW DEADCHAN</td><td>%s (mintime:%dm, retry:%ds)</td></tr>", yesno(cs->option.dcw.deadchan), cs->option.dcw.deadchan_mintime, cs->option.dcw.deadchan_retry ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW PACING</td><td>%dms (0=off)</td></tr>", cs->option.dcw.pacing ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	snprintf( http_buf, sizeof(http_buf),"<tr><td>DCW RAWLOG</td><td>%s (log /var/log/multics-raw.log)</td></tr>", yesno(cs->option.dcw.rawlog) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ECMRATELIMIT</td><td>sid:%dms max:%d/s</td></tr>", cs->option.ratelimit.sidtime, cs->option.ratelimit.maxecm ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE FALLBACK</td><td>%s</td></tr>", yesno(cs->option.fallback.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE TIMING</td><td>%s</td></tr>", yesno(cs->option.timing.enable) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE EMULATOR BISS</td><td>%s</td></tr>", yesno(cs->option.fenableemu) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE LITE</td><td>%s (channels:%d)</td></tr>", yesno(cs->option.fenablelite), lite_count() ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>ENABLE CACHE</td><td>%s</td></tr>", yesno(cs->option.fallowcache) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #ifdef CACHEEX
@@ -5408,84 +6672,10 @@ void http_send_profile(int sock, http_request *req)
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>RETRY CCCAM</td><td>%d</td></tr>", cs->option.retry.cccam); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE TIMEOUT</td><td>%dms</td></tr>", cs->option.cachetimeout); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE SENDREQ</td><td>%s</td></tr>", yesno(cs->option.cachesendreq) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#ifndef PUBLIC
 	//sprintf( http_buf,"<tr><td>CACHE RESENDREQ</td><td>%s</td></tr>", yesno(cs->option.cacheresendreq) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE SENDREP</td><td>%s</td></tr>", yesno(cs->option.cachesendrep) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	snprintf( http_buf, sizeof(http_buf),"<tr><td>CACHE STATIC</td><td>%s</td></tr>", yesno(cs->option.cachestatic) ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
 	sprintf( http_buf, "</table></span></div><br><br>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "<div style=\"clear:both\"></div>" );
-
-/*
-#ifdef RADEGAST_SRV
-	struct rdgd_client_data *rdgdcli;
-	if (cs->radegast.handle && cs->radegast.client) {
-		//READEGAST CLIENTS
-		sprintf( http_buf, "<br>Connected Radegast Clients: %d<br><table class=maintable width=100%%><tr><th width=110px>IP Address</th><th width=100px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>", connected_radegast_clients(cs));
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		rdgdcli = cs->radegast.client;
-		int alt=0;
-		while (rdgdcli) {
-			if (rdgdcli->handle>0) {
-				if (alt==1) alt=2; else alt=1;
-				d = (GetTickCount()-rdgdcli->connected)/1000;
-				if (rdgdcli->ecm.busy)
-					snprintf( http_buf, sizeof(http_buf),"<tr class=alt%d><td>%s</td><td class=\"busy\">%02dd %02d:%02d:%02d</td>",alt,(char*)ip2string(rdgdcli->ip), d/(3600*24), (d/3600)%24, (d/60)%60, d%60);
-				else
-					snprintf( http_buf, sizeof(http_buf),"<tr class=alt%d><td>%s</td><td class=\"online\">%02dd %02d:%02d:%02d</td>",alt,(char*)ip2string(rdgdcli->ip), d/(3600*24), (d/3600)%24, (d/60)%60, d%60);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-				sprintf( http_buf, "<td align=center>%d</td>", rdgdcli->ecmnb );
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				int ecmaccepted = rdgdcli->ecmnb-rdgdcli->ecmdenied;
-				tcp_writeecmdata(&tcpbuf, sock, ecmaccepted, rdgdcli->ecmnb);
-				tcp_writeecmdata(&tcpbuf, sock, rdgdcli->ecmok, ecmaccepted);
-				//Ecm Time
-				if (rdgdcli->ecmok)
-					sprintf( http_buf,"<td align=center>%d ms</td>",(rdgdcli->ecmoktime/rdgdcli->ecmok) );
-				else
-					sprintf( http_buf,"<td align=center>-- ms</td>");
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				//Last Used Share
-				if ( rdgdcli->ecm.lastcaid ) {
-					if (rdgdcli->ecm.laststatus) sprintf( http_buf,"<td class=success>"); else sprintf( http_buf,"<td class=failed>");
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					sprintf( http_buf,"ch %s (%dms) %s ", getchname(rdgdcli->ecm.lastcaid, rdgdcli->ecm.lastprov, rdgdcli->ecm.lastsid) , rdgdcli->ecm.lastdecodetime, str_laststatus[rdgdcli->ecm.laststatus] );
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					if ( (GetTickCount()-rdgdcli->ecm.recvtime) < 20000 ) {
-						if (rdgdcli->ecm.lastdcwsrctype==DCW_SOURCE_SERVER) {
-							struct server_data *srv = getsrvbyid(rdgdcli->ecm.lastdcwsrcid);
-							if (srv) {
-								sprintf( http_buf," / from server (%s:%d)", srv->host->name, srv->port);
-								tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-							}
-						}
-						else if (rdgdcli->ecm.lastdcwsrctype==DCW_SOURCE_CACHE) {
-							struct cachepeer_data *peer = getpeerbyid(rdgdcli->ecm.lastdcwsrcid);
-							if (peer) {
-								sprintf( http_buf," / from cache peer (%s:%d)", peer->host->name, peer->port);
-								tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-							}
-						}
-					}
-					sprintf( http_buf,"</td>");
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				else {
-					sprintf( http_buf,"<td> </td>");
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				sprintf( http_buf,"</tr>");
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
-			rdgdcli = rdgdcli->next;
-		}
-		sprintf( http_buf, "</table>");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-#endif
-
-*/
 
 	// Send Stat
 	sprintf( http_buf, "<style type=\"text/css\">\n.mainborder\n{ background: #d2d2d2; border: 1px solid #0B198C; border-spacing: 0px; font: 10px verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif; padding: 1 2; }\n.redborder { background: #d25555; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee; border-spacing: 0px; font: 9px verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif; }\n.greenborder { background: #55d255; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee; border-spacing: 0px; font: 9px verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif; }\n.cacheborder { background: #5555e2; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee; border-spacing: 0px; font: 9px verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif; }\n</style>\n");
@@ -5557,7 +6747,6 @@ void http_send_profile(int sock, http_request *req)
 		sprintf( http_buf, "</table><br>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 
-#ifndef PUBLIC
 	// Runtime SIDS
 	if (cs->deniedsids[0].sid) {
 		sprintf( http_buf, "<br><b>Available Servers</b>");
@@ -5648,7 +6837,6 @@ void http_send_profile(int sock, http_request *req)
 		}
 	}
 
-#endif
 
 	tcp_flush(&tcpbuf, sock);
 }
@@ -5750,9 +6938,8 @@ void getcccamcells(struct cc_client_data *cli, char cell[10][2048])
 		sprintf( cell[8],"Last Seen %02dd %02d:%02d:%02d", d/(3600*24),(d/3600)%24,(d/60)%60,d%60);
 	}
 	else if ( cli->lastecm.caid ) {
-		char *pvn = providerID(cli->lastecm.caid, cli->lastecm.prov);
 		if (cli->lastecm.status)  strcpy( cell[8],"<span class=success"); else strcpy( cell[8],"<span class=failed");
-		sprintf( temp," title='%04x:%06x:%04x'>Canal: %s%s%s - %04x:%06x (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), pvn?" - ":"", pvn?pvn:"", cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
+		sprintf( temp," title='%04x:%06x:%04x'>Canal: %s - %04x:%06x:%04x (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
 		strcat( cell[8], temp );
 		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
 			// From ???
@@ -5776,7 +6963,7 @@ void getcccamcells(struct cc_client_data *cli, char cell[10][2048])
 			strcat( cell[8], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"imgrequest('/cccamclient?action=debug&id=%d',this)\">DBG</span>",cli->id);
+		sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cccamclient?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
 	strcat( cell[8], temp );
 	strcat( cell[8], "</span>");
 }
@@ -5804,9 +6991,7 @@ void http_send_cccam(int sock, http_request *req)
 	char *str_list = isset_get( req, "list");
 	char *str_id = isset_get( req, "id"); // CCcam server ID
 	char *str_clid = isset_get( req, "clid"); // Client ID
-#ifndef PUBLIC
 	char *str_clname = isset_get( req, "clname"); // Client NAME
-#endif
 	// Param 'action'
 	int get_action;
 	if (str_action) {
@@ -5818,6 +7003,7 @@ void http_send_cccam(int sock, http_request *req)
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
 		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
+		else if (!strcmp(str_action,"dbginfo")) get_action = ACTION_DEBUG;
 		else str_action = NULL;
 	}
 	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
@@ -5953,7 +7139,7 @@ void http_send_cccam(int sock, http_request *req)
 	struct cccam_server_data *cccam = NULL;
 	if (get_id) {
 		cccam = getcccamserverbyid(get_id);
-		if (!cccam) return;
+		if (!cccam) { http_send_redirect(sock, "/cccam"); return; }
 	}
 
 	tcp_init(&tcpbuf);
@@ -6142,682 +7328,6 @@ void http_send_cccam(int sock, http_request *req)
 
 
 
-#ifdef CS378X_SRV
-
-void getcs378xcells(struct camd35_client_data *cli, char cell[10][2048])
-{
-	char temp[2048];
-
-	// CELL0 # NAME
-	sprintf( cell[0],"<a href='/cs378xclient?id=%d'>%s</a>",cli->id,cli->user);
-
-	// CELL1 # IP
-	if ( cli->ip ) { // Get Last IP
-		char *p = getcountrycodebyip(cli->ip);
-		if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(cli->ip) ); else sprintf( cell[1],"%s",(char*)ip2string(cli->ip) );
-	}
-	else strcpy( cell[1], " ");
-
-	// CELL2 # Connection Time
-	if (cli->connection.status>0) {
-		if (cli->ecm.busy) sprintf( cell[9],"busy"); else sprintf( cell[9],"online");
-		uint32_t d = (GetTickCount()-cli->connection.time)/1000;
-		sprintf( cell[2], "%02dd %02d:%02d:%02d", d/(3600*24), (d/3600)%24, (d/60)%60, d%60);
-	}
-	else {
-		sprintf( cell[9],"offline");
-		if (cli->flags&FLAG_DELETE) sprintf( cell[2],"Removed");
-		else if (cli->flags&FLAG_EXPIRED) sprintf( cell[2],"Expired");
-		else if (cli->flags&FLAG_DISABLE) sprintf( cell[2],"Disabled");
-		else sprintf( cell[2],"offline");
-	}
-	// CELL3+4+5 # ECM STAT: TOTAL/ACCEPTED/OK
-	// ECM STAT
-	sprintf( cell[3], "%d", cli->ecmnb );
-
-	int ecmaccepted = cli->ecmnb-cli->ecmdenied;
-	getstatcell( ecmaccepted, cli->ecmnb, cell[4]);
-	getstatcell( cli->ecmok, ecmaccepted, cell[5]);
-
-	// CELL6 # Ecm Time
-	if (cli->ecmok) sprintf( cell[6],"%d ms",(cli->ecmoktime/cli->ecmok) ); else sprintf( cell[6],"-- ms");
-
-	// CELL7 # Last Used Share
-/*
-	if ( srv->connection.status<=0 && srv->connection.lastseen) {
-		int d = (GetTickCount()-cli->connection.lastseen)/1000;
-		sprintf( cell[7],"Last Seen %02dd %02d:%02d:%02d", d/(3600*24),(d/3600)%24,(d/60)%60,d%60);
-	}
-	else
-*/
-	if ( cli->lastecm.caid ) {
-		if (cli->lastecm.status)  strcpy( cell[7],"<span class=success"); else strcpy( cell[7],"<span class=failed");
-		sprintf( temp," title='%04x:%06x:%04x'>ch %s (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
-		strcat( cell[7], temp );
-		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
-			// From ???
-			if (cli->lastecm.status) {
-				strcat( cell[7], " / from ");
-				src2string(cli->lastecm.dcwsrctype, cli->lastecm.dcwsrcid, temp);
-				strcat( cell[7], temp);
-			}
-		}
-		strcat( cell[7], "</span>" );
-	}
-	else strcpy( cell[7], " ");
-
-	strcat( cell[7], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
-	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
-		if (cli->flags&FLAG_DISABLE) {
-			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cs378xclient?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
-			strcat( cell[7], temp );
-		}
-		else {
-			sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/cs378xclient?id=%d&action=disable',this);setTimeout('updateDiv()',600)\">OFF</span>",cli->id);
-			strcat( cell[7], temp );
-		}
-	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cs378xclient?id=%d&action=dbginfo')\">DBG</span>",cli->id,cli->id);
-	strcat( cell[7], temp );
-	strcat( cell[7], "</span>");
-}
-
-void total_cs378x_clients( int *total, int *connected, int *active )
-{
-	*total = 0;
-	*connected = 0;
-	*active = 0;
-	struct camd35_server_data *cs378x = cfg.cs378x.server;
-	while (cs378x) {
-		struct camd35_client_data *cli = cs378x->client;
-		while (cli) {
-			(*total)++;
-			if (cli->connection.status>0) {
-				(*connected)++;
-				if ( (GetTickCount()-cli->lastecmtime) < 20000 ) (*active)++;
-			}
-			cli=cli->next;
-		}
-		cs378x = cs378x->next;
-	}
-}
-
-void cs378x_clients( struct camd35_server_data *cs378x, int *total, int *connected, int *active )
-{
-	*total = 0;
-	*connected = 0;
-	*active = 0;
-	struct camd35_client_data *cli = cs378x->client;
-	while (cli) {
-		(*total)++;
-		if (cli->connection.status>0) {
-			(*connected)++;
-			if ( (GetTickCount()-cli->lastecmtime) < 20000 ) (*active)++;
-		}
-		cli=cli->next;
-	}
-}
-
-void http_send_cs378x(int sock, http_request *req)
-{
-	char http_buf[4096];
-	struct tcp_buffer_data tcpbuf;
-	char cell[10][2048];
-
-	// Get Params
-	char *str_action = isset_get( req, "action");
-	char *str_list = isset_get( req, "list");
-	char *str_id = isset_get( req, "id"); // server ID
-	char *str_clid = isset_get( req, "clid"); // Client ID
-	// Param 'action'
-	int get_action;
-	if (str_action) {
-		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
-		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-#ifndef PUBLIC
-		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
-		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
-		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
-		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
-		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
-		else str_action = NULL;
-	}
-	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
-	/////////////////////////////////////////////
-	if (get_action==ACTION_ROW) {
-		// Check for XML ROW
-		if (str_clid) {
-			int id = atoi(str_clid);
-			struct camd35_server_data *cs378x = cfg.cs378x.server;
-			while (cs378x) {
-				if (!(cs378x->flags&FLAG_DELETE)) {
-					struct camd35_client_data *cli = cs378x->client;
-					while (cli) {
-						if ( !(cli->flags&FLAG_DELETE) && (cli->id==id) ) {
-							// Send XML CELLS
-							getcs378xcells(cli,cell);
-							int i; for(i=0; i<10; i++) xmlescape( cell[i] );
-							sprintf( http_buf, "<cs378x>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2_c>%s</c2_c>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n</cs378x>\n",cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7] );
-							http_send_xml( sock, req, http_buf, strlen(http_buf));
-						}
-						cli = cli->next;
-					}
-				}
-				cs378x = cs378x->next;
-			}
-		}
-		return;
-	}			
-
-	// Param 'list'
-	int get_list = LIST_ALL;
-	if (str_list) {
-		if (!strcmp(str_list,"connected")) get_list = LIST_CONNECTED;
-		else if (!strcmp(str_list,"all")) get_list = LIST_ALL;
-		else str_list = NULL;
-	}
-	if (!str_list) str_list = "all";
-	// Param 'id'
-	int get_id = 0;
-	struct camd35_server_data *cs378x = NULL;
-	if (str_id)	{
-		get_id = atoi(str_id);
-		cs378x = cfg.cs378x.server;
-		while (cs378x) {
-			if (cs378x->id == get_id) break;
-			cs378x = cs378x->next;
-		}
-		if (!cs378x) get_id = 0;
-	}
-	//
-	tcp_init(&tcpbuf);
-	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
-	if (get_action==ACTION_PAGE) {
-
-		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
-		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-		sprintf( http_buf, html_title, cfg.http.title, "cs378x"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
-		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
-		// JS
-        tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
-		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
-		// ACTIONS REQUEST
-		tcp_writestr(&tcpbuf, sock, "\nfunction imgrequest( url, el )\n{\n	var httpRequest;\n	try { httpRequest = new XMLHttpRequest(); }\n	catch (trymicrosoft) { try { httpRequest = new ActiveXObject('Msxml2.XMLHTTP'); } catch (oldermicrosoft) { try { httpRequest = new ActiveXObject('Microsoft.XMLHTTP'); } catch(failed) { httpRequest = false; } } }\n	if (!httpRequest) { alert('Your browser does not support Ajax.'); return false; }\n	if ( typeof(el)!='undefined' ) {\n		el.onclick = null;\n		el.style.opacity = '0.7';\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) if (httpRequest.status == 200) el.style.opacity = '0.3';\n		}\n	}\n	httpRequest.open('GET', url, true);\n	httpRequest.send(null);\n}\n");
-		// UPD ROW
-		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id ) \n{\n    var row = document.getElementById(id);\n    	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n    row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n    row.cells.item(2).className = xmlDoc.getElementsByTagName('c2_c')[0].childNodes[0].nodeValue;\n    row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n    row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n    row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n    row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n    row.cells.item(6).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n    row.cells.item(7).innerHTML = xmlDoc.getElementsByTagName('c7')[0].childNodes[0].nodeValue;\n}");
-		char url[256];
-		sprintf( url, "'/cs378x?action=row&clid='+idx");
-		sprintf( http_buf, HTTP_UPDATE_ROW, url);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		// UPD DIV
-		sprintf( url, "/cs378x?action=div&id=%d&list=%s", get_id, str_list);
-		sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		//
-		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	setautorefresh(autorefresh);\n}");
-		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
-		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
-		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
-		tcp_write_menu(&tcpbuf, sock,PAGE_CS378X);
-		// Info de servidores (acima da div principal)
-		{
-			tcp_writestr(&tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
-			sprintf( http_buf, "<h3 class=stitle>cs378x Servers (%d)</h3>", cfg.cs378x.totalservers);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
-			int itotal, iconnected, iactive;
-			total_cs378x_clients( &itotal, &iconnected, &iactive );
-			sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			struct camd35_server_data *box = cfg.cs378x.server;
-			while ( box ) {
-				int btotal, bconnected, bactive;
-				cs378x_clients( box, &btotal, &bconnected, &bactive );
-				if (box->handle>0) sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
-				else sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				box = box->next;
-			}
-			tcp_writestr(&tcpbuf, sock, "</table></div></div>");
-		}
-		// DIV
-		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
-	}
-
-	int total, connected, active;
-	tcp_writestr(&tcpbuf, sock, "<select style=\"width:200px;\" onchange=\"parent.location.href='/cs378x?id='+this.value\">");
-	sprintf( http_buf, "<option value=0>ALL (%d)</option>", cfg.cs378x.totalservers);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	struct camd35_server_data *tmp = cfg.cs378x.server;
-	while (tmp) {
-		if (get_id==tmp->id) sprintf( http_buf, "<option value=%d selected>[%d] cs378x %d</option>",tmp->id,tmp->port, tmp->id );
-		else sprintf( http_buf, "<option value=%d>[%d] cs378x %d</option>",tmp->id,tmp->port, tmp->id );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tmp = tmp->next;
-	}
-	tcp_writestr(&tcpbuf, sock, "</select> ");
-	//
-	if (cs378x) cs378x_clients( cs378x, &total, &connected, &active ); else total_cs378x_clients( &total, &connected, &active );
-	char *class1 = "button"; char *class2 = "sbutton";
-	char *class;
-	if (get_list==LIST_ACTIVE) class = class2; else class = class1;
-	sprintf( http_buf, "<input type=button class=%s onclick=\"parent.location='/cs378x?id=%d&amp;list=active'\" value='Active Clients (%d)'>", class, get_id, active);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	if (get_list==LIST_CONNECTED) class = class2; else class = class1;
-	sprintf( http_buf, " <input type=button class=%s onclick=\"parent.location='/cs378x?id=%d&amp;list=connected'\" value='Connected Clients (%d)'>", class, get_id, connected);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	if (get_list==LIST_ALL) class = class2; else class = class1;
-	sprintf( http_buf, " <input type=button class=%s onclick=\"parent.location='/cs378x?id=%d&amp;list=all'\" value='All Clients (%d)'>", class, get_id, total);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	//
-	if (get_id) { // One Server Selected
-		// Table
-		sprintf( http_buf, "\n<table class=maintable width=100%%><tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		struct camd35_client_data *cli = cs378x->client;
-		int alt=0;
-		if (get_list==LIST_ACTIVE) {
-			while (cli) {
-				if ( (cli->connection.status>0)&&((GetTickCount()-cli->lastecmtime) < 20000) ) {
-					if (alt==1) alt=2; else alt=1;
-					getcs378xcells(cli,cell);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				cli = cli->next;
-			}
-		}
-		else if (get_list==LIST_CONNECTED) {
-			while (cli) {
-				if (cli->connection.status>0) {
-					if (alt==1) alt=2; else alt=1;
-					getcs378xcells(cli,cell);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				cli = cli->next;
-			}
-		}
-		else { // ALL
-			while (cli) {
-				if (alt==1) alt=2; else alt=1;
-				getcs378xcells(cli,cell);
-				snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				cli = cli->next;
-			}
-		}
-		sprintf( http_buf, "\n</table>");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-
-	else {
-		// Table
-		tcp_writestr(&tcpbuf,sock, "\n<table class=maintable width=100%>");
-		tcp_writestr(&tcpbuf,sock, "\n<tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
-		int alt=0;
-		cs378x = cfg.cs378x.server;
-		while (cs378x) {
-			int total, connected, active;
-			cs378x_clients( cs378x, &total, &connected, &active );
-			if ( (get_list==LIST_ACTIVE) && active ) {
-				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", cs378x->id, active); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				struct camd35_client_data *cli = cs378x->client;
-				while (cli) {
-					if ( (cli->connection.status>0)&&((GetTickCount()-cli->lastecmtime) < 20000) ) {
-						if (alt==1) alt=2; else alt=1;
-						getcs378xcells(cli,cell);
-						snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					}
-					cli = cli->next;
-				}
-			}
-			else if ( (get_list==LIST_ALL) && total ) {
-				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", cs378x->id, total); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				struct camd35_client_data *cli = cs378x->client;
-				while (cli) {
-					if (alt==1) alt=2; else alt=1;
-					getcs378xcells(cli,cell);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					cli = cli->next;
-				}
-			}
-			else if ( (get_list==LIST_CONNECTED) && connected ) {
-				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", cs378x->id, connected); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				struct camd35_client_data *cli = cs378x->client;
-				while (cli) {
-					if (cli->connection.status>0) {
-						if (alt==1) alt=2; else alt=1;
-						getcs378xcells(cli,cell);
-						snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					}
-					cli = cli->next;
-				}
-			}
-			cs378x = cs378x->next;
-		}
-		sprintf( http_buf, "</table>");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-	if (get_action==ACTION_PAGE) {
-		tcp_writestr(&tcpbuf, sock, "</div>");
-		tcp_writestr(&tcpbuf, sock, "</body></html>");
-	}
-
-	tcp_flush(&tcpbuf, sock);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-void http_send_cs378x_client(int sock, http_request *req)
-{
-	char http_buf[2048];
-	struct tcp_buffer_data tcpbuf;
-
-	// Get Params
-	char *str_action = isset_get( req, "action");
-	char *str_id = isset_get( req, "id"); // Client ID
-	char *str_name = isset_get( req, "name"); // Client NAME
-	char *str_srvid = isset_get( req, "srvid"); // CCcam Server ID
-
-	// Action
-	int get_action = ACTION_PAGE;
-	if (str_action) {
-		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
-		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
-		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
-		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
-		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
-		else if (!strcmp(str_action,"dbginfo")) get_action = ACTION_DBGINFO;
-		else if (!strcmp(str_action,"update")) get_action = ACTION_UPDATE;
-		else str_action = NULL;
-	}
-	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
-
-	/////////////////////////////////////////////
-
-	// GET CLIENT
-	struct camd35_client_data *cli = NULL;
-	if (str_id) cli = getcs378xclientbyid( atoi(str_id) );
-	if (!cli) return;
-	//
-	if (get_action==ACTION_DISABLE) {
-		cli->flags |= FLAG_DISABLE;
-		if (cli->connection.status>0) cs378x_disconnect_cli(cli);
-		http_send_ok(sock);
-		return;
-	}
-	else if (get_action==ACTION_ENABLE) {
-		cli->flags &= ~FLAG_DISABLE;
-		http_send_ok(sock);
-		return;
-	}
-	else if (get_action==ACTION_STATUS) {
-		if (cli->connection.status>0) http_send_text(sock,"connected"); else http_send_text(sock,"disconnected");
-		return;
-	}
-	else if (get_action==ACTION_DEBUG) {
-		flagdebug = getdbgflag( DBG_CS378X, 0, cli->id);
-		http_send_ok(sock);
-		return;
-	}
-	else if (get_action==ACTION_DBGINFO) {
-		char dbg[1024];
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
-			cli->user, (char*)ip2string(cli->ip),
-			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
-			cli->ecmnb, cli->ecmdenied, cli->ecmok,
-			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
-			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0);
-		http_send_text(sock, dbg);
-		return;
-	}
-	else if (get_action==ACTION_UPDATE) {
-/*		char *str = isset_get( req, "expire"); // Client ID
-		if (str) {
-			if ( (str[4]=='-')&&(str[7]=='-') ) strptime(  str, "%Y-%m-%d %H", &cli->enddate);
-			else if ( (str[2]=='-')&&(str[5]=='-') ) strptime(  str, "%d-%m-%Y %H", &cli->enddate);
-		}
-		str = isset_get( req, "active"); // Client ID
-		if (str) {
-			if (str[0]=='0') {
-				cli->flags |= FLAG_DISABLE;
-				if (cli->connection.status>0) cs378x_disconnect_cli(cli);
-			}
-			else cli->flags &= ~FLAG_DISABLE;
-		}*/
-		http_send_text(sock, "OK");
-		return;
-	}
-
-	//
-	tcp_init(&tcpbuf);
-	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
-	if (get_action==ACTION_PAGE) {
-
-		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
-		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-		sprintf( http_buf, html_title, cfg.http.title, "Cs378x Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
-		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
-		// JS
-        tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
-		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
-		// UPD DIV
-		char url[256];
-		sprintf( url, "/cs378xclient?id=%d&action=div", cli->id);
-		sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		//
-		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	setautorefresh(autorefresh);\n}");
-		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
-		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
-		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
-		tcp_write_menu(&tcpbuf, sock,0);
-		// DIV
-		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
-	}
-
-	tcp_writestr(&tcpbuf, sock, "<table style=\"padding:0px; margin:0px;\" width=\"100%%\"><tbody>\n" );
-	tcp_writestr(&tcpbuf, sock, "<tr><td style=\"vertical-align:top; width:400px;\">\n" );
-
-	tcp_writestr(&tcpbuf, sock, "<table class=infotable><tbody>\n<tr><th colspan=2>Client Informations</th></tr>\n" );
-	// NAME
-	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>User name</td><td class=right>%s</td></tr>\n",cli->user);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	// Connection Time
-	if (cli->connection.status>0) {
-		tcp_writestr(&tcpbuf, sock, "<tr><td class=left>Status</td><td class=right>Connected</td></tr>\n");
-		uint32_t d = (GetTickCount()-cli->connection.time)/1000;
-		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Connection time</td><td class=right>%02dd %02d:%02d:%02d</td></tr>\n", d/(3600*24), (d/3600)%24, (d/60)%60, d%60);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		// IP
-		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>IP Address</td><td class=right>%s</td></tr>\n",(char*)ip2string(cli->ip) );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		/*// Program ID
-		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Client Program</td><td class=right>%s(%04x)</td></tr>",programid(cli->progid), cli->progid );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );*/
-	}
-	else {
-		tcp_writestr(&tcpbuf, sock, "<tr><td class=left>Status</td><td class=right>Disconnected</td></tr>\n");
-		if ( cli->connection.lastseen ) {
-			uint32_t d = (GetTickCount()-cli->connection.lastseen)/1000;
-			snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Last Seen</td><td class=right>%02dd %02d:%02d:%02d</td></tr>\n", d/(3600*24),(d/3600)%24,(d/60)%60,d%60);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		}
-	}
-	// UPTIME
-	if ( cli->connection.uptime || (cli->connection.status>0) ) {
-		uint32_t uptime;
-		if (cli->connection.status>0) uptime = (GetTickCount()-cli->connection.time)+cli->connection.uptime; else uptime = cli->connection.uptime;
-		uptime /= 1000;
-		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Uptime</td><td class=right>%02dd %02d:%02d:%02d</td></tr>",uptime/(3600*24),(uptime/3600)%24,(uptime/60)%60,uptime%60);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-#ifdef CHECK_NEXTDCW
-	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>DCW CHECK</td><td class=right>%s</td></tr>", yesno(cli->dcwcheck) );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
-	tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
-
-
-	// INFO
-	struct client_info_data *info = cli->info;
-	if (info) {
-		tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
-		tcp_writestr(&tcpbuf, sock, "<tr><th colspan=2>Additional Informations</th></tr>\n" );
-		while (info) {
-			snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>%s</td><td class=right>%s</td></tr>\n",info->name,info->value);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			info = info->next;
-		}
-		tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
-	}
-
-	// Ecm Stat
-	tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
-	tcp_writestr(&tcpbuf, sock, "<tr><th colspan=2>ECM Statistics</th></tr>\n" );
-	int ecmaccepted = cli->ecmnb-cli->ecmdenied;
-	sprintf( http_buf, "<tr><td class=left>Total ECM requests</td><td class=right>%d</td></tr>\n", cli->ecmnb);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<tr><td class=left>Accepted ECM requests</td><td class=right>%d</td></tr>\n", ecmaccepted);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<tr><td class=left>Good ECM answer</td><td class=right>%d</td></tr>\n", cli->ecmok);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	//Ecm Time
-	if (cli->ecmok) {
-		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Average Time</td><td class=right>%d ms</td></tr>\n",(cli->ecmoktime/cli->ecmok) );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-//#ifdef SRV_CSCACHE
-//	sprintf( http_buf, "<tr><td class=left>Cached CW</td><td class=right>%d</td></tr>\n", cli->cachedcw);
-//	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-//#endif
-	// Freeze
-	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Total Freeze</td><td class=right>%d</td></tr>\n", cli->freeze);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
-
-
-	tcp_writestr(&tcpbuf, sock, "</td><td style=\"vertical-align:top;\">\n" );
-
-	//Last Used Share
-	if ( cli->lastecm.caid ) {
-		tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
-		tcp_writestr(&tcpbuf, sock, "<tr><th>Last Used share</th></tr>\n");
-		// Decode Status
-		if (cli->lastecm.status)
-			snprintf( http_buf, sizeof(http_buf),"<tr><td>Decode success</td></tr>\n");
-		else
-			snprintf( http_buf, sizeof(http_buf),"<tr><td>Decode failed</td></tr>\n");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		// Channel
-		snprintf( http_buf, sizeof(http_buf),"<tr><td>Channel %s (%dms) %s</td></tr>\n", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-		// Server
-		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
-			// From ???
-			if (cli->lastecm.status) {
-				tcp_writestr(&tcpbuf, sock, "<tr><td>From ");
-				src2string(cli->lastecm.dcwsrctype, cli->lastecm.dcwsrcid, http_buf );
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				tcp_writestr(&tcpbuf, sock, "</td></tr>");
-			}
-			// Last ECM
-			ECM_DATA *ecm = cli->lastecm.request;
-			// ECM
-			snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM(%d): ", ecm->ecmlen); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			array2hex( ecm->ecm, http_buf, ecm->ecmlen );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			sprintf( http_buf,"</td></tr>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			// DCW
-			if (cli->lastecm.status) {
-				snprintf( http_buf, sizeof(http_buf),"<tr><td>CW: ");	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				array2hex( ecm->cw, http_buf, 16 );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				sprintf( http_buf,"</td></tr>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
-#ifdef CHECK_NEXTDCW
-			if ( ecm->lastdecode.ecm && (ecm->lastdecode.counter>0) ) {
-				snprintf( http_buf, sizeof(http_buf),"<tr><td>Previous CW: "); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				array2hex( ecm->lastdecode.dcw, http_buf, 16 ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				tcp_writestr(&tcpbuf, sock, "</td></tr>\n");
-				if (ecm->lastdecode.error) {
-					snprintf( http_buf, sizeof(http_buf),"<tr><td>Errors = %d</td></tr>\n", ecm->lastdecode.error);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				snprintf( http_buf, sizeof(http_buf),"<tr><td>Total Cycles = %d</td></tr>\n<tr><td>ECM Interval = %ds</td></tr>\n", ecm->lastdecode.counter, ecm->lastdecode.dcwchangetime/1000);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
-#endif
-			// Last used share (status do ultimo decode)
-			if (cli->lastecm.status==1) {
-				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
-			}
-			else if (cli->lastecm.status==2) {
-				snprintf( http_buf, sizeof(http_buf),"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
-			//
-			if (ecm->server[0].srvid) {
-				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				int i;
-				for(i=0; i<20; i++) {
-					if (!ecm->server[i].srvid) break;
-					char* str_srvstatus[] = { "WAIT", "OK", "NOK", "BUSY" };
-					struct server_data *srv = getsrvbyid(ecm->server[i].srvid);
-					if (srv) {
-						snprintf( http_buf, sizeof(http_buf),"<tr><td>%d</td><td>%s:%d</td><td>%s</td><td>%dms</td>", i+1, srv->host->name, srv->port, str_srvstatus[ecm->server[i].flag], ecm->server[i].sendtime - ecm->recvtime );
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-						// Recv Time
-						if (ecm->server[i].statustime>ecm->server[i].sendtime)
-							sprintf( http_buf,"<td>%dms</td><td>%dms</td>", ecm->server[i].statustime - ecm->recvtime, ecm->server[i].statustime-ecm->server[i].sendtime );
-						else
-							sprintf( http_buf,"<td>--</td><td>--</td>");
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-						// DCW
-						if (ecm->server[i].flag==ECM_SRV_REPLY_GOOD) {
-							sprintf( http_buf,"<td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-							array2hex( ecm->server[i].dcw, http_buf, 16 );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-							sprintf( http_buf,"</td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-						}
-						else {
-							sprintf( http_buf,"<td>--</td>");
-							tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-						}
-						sprintf( http_buf,"</tr>");
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					}
-				}
-				tcp_writestr(&tcpbuf, sock, "</tbody></table></td></tr>\n" );
-			}
-		}
-		tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
-	}
-
-	// Current Busy Ecm
-	if (cli->ecm.busy) {
-		ECM_DATA *ecm = cli->ecm.request;
-		if (ecm) http_send_ecmstatus(&tcpbuf, sock, ecm);
-	}
-
-	tcp_writestr(&tcpbuf, sock, "</td></tr></tbody></table>" );
-
-	if (get_action==ACTION_PAGE) {
-		tcp_writestr(&tcpbuf, sock, "</div>");
-		tcp_writestr(&tcpbuf, sock, "</body></html>");
-	}
-	tcp_flush(&tcpbuf, sock);
-}
-
-
-#endif
 
 
 
@@ -6835,693 +7345,7 @@ void http_send_cs378x_client(int sock, http_request *req)
 
 
 
-#ifdef CAMD35_SRV
-
-void getcamd35cells(struct camd35_client_data *cli, char cell[10][2048])
-{
-	char temp[2048];
-	uint32_t d;
-
-	// CELL0 # NAME
-	sprintf( cell[0],"<a href='/camd35client?id=%d'>%s</a>",cli->id,cli->user);
-
-	// CELL1 # IP
-	if ( cli->ip ) { // Get Last IP
-		char *p = getcountrycodebyip(cli->ip);
-		if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(cli->ip) ); else sprintf( cell[1],"%s",(char*)ip2string(cli->ip) );
-	}
-	else strcpy( cell[1], " ");
-
-	// CELL2 # Connection Time
-	// Camd35 is UDP so there's no connection. Use cli->lastecmtime to check last received ecm time is less than 90 seconds
-	if ((GetTickCount()-cli->lastecmtime) < 90000) {
-		if (cli->ecm.busy) sprintf( cell[9],"busy"); else sprintf( cell[9],"online");
-		sprintf( cell[2], "online");
-	}
-	else {
-		sprintf( cell[9],"offline");
-		if (cli->flags&FLAG_DELETE) sprintf( cell[2],"Removed");
-		else if (cli->flags&FLAG_EXPIRED) sprintf( cell[2],"Expired");
-		else if (cli->flags&FLAG_DISABLE) sprintf( cell[2],"Disabled");
-		else sprintf( cell[2],"offline");
-	}
-	// CELL3+4+5 # ECM STAT: TOTAL/ACCEPTED/OK
-	// ECM STAT
-	sprintf( cell[3], "%d", cli->ecmnb );
-
-	int ecmaccepted = cli->ecmnb-cli->ecmdenied;
-	getstatcell( ecmaccepted, cli->ecmnb, cell[4]);
-	getstatcell( cli->ecmok, ecmaccepted, cell[5]);
-
-	// CELL6 # Ecm Time
-	if (cli->ecmok) sprintf( cell[6],"%d ms",(cli->ecmoktime/cli->ecmok) ); else sprintf( cell[6],"-- ms");
-
-	// CELL7 # Last Used Share
-	if ( cli->lastecm.caid ) {
-		if (cli->lastecm.status)  strcpy( cell[7],"<span class=success"); else strcpy( cell[7],"<span class=failed");
-		sprintf( temp," title='%04x:%06x:%04x'>ch %s (%dms) %s ",cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid, getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
-		strcat( cell[7], temp );
-		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
-			// From ???
-			if (cli->lastecm.status) {
-				strcat( cell[7], " / from ");
-				src2string(cli->lastecm.dcwsrctype, cli->lastecm.dcwsrcid, temp);
-				strcat( cell[7], temp);
-			}
-		}
-		strcat( cell[7], "</span>" );
-	}
-	else strcpy( cell[7], " ");
-
-	strcat( cell[7], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
-	if ( !(cli->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
-		if (cli->flags&FLAG_DISABLE) {
-			sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/camd35client?id=%d&action=enable',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id);
-			strcat( cell[7], temp );
-		}
-		else {
-			sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/camd35client?id=%d&action=disable',this);setTimeout('updateDiv()',600)\">OFF</span>",cli->id);
-			strcat( cell[7], temp );
-		}
-	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/camd35client?id=%d&action=dbginfo')\">DBG</span>",cli->id,cli->id);
-	strcat( cell[7], temp );
-	strcat( cell[7], "</span>");
-}
-
-void total_camd35_clients( int *total, int *connected, int *active )
-{
-	*total = 0;
-	*connected = 0;
-	*active = 0;
-	struct camd35_server_data *camd35 = cfg.camd35.server;
-	while (camd35) {
-		struct camd35_client_data *cli = camd35->client;
-		while (cli) {
-			(*total)++;
-			if ((GetTickCount()-cli->lastecmtime) < 90000) {   // No connection status in camd35 use lastecmtime < 90 seconds
-				(*connected)++;
-				if ( (GetTickCount()-cli->lastecmtime) < 20000 ) (*active)++;
-			}
-			cli=cli->next;
-		}
-		camd35 = camd35->next;
-	}
-}
-
-void camd35_clients( struct camd35_server_data *camd35, int *total, int *connected, int *active )
-{
-	*total = 0;
-	*connected = 0;
-	*active = 0;
-	struct camd35_client_data *cli = camd35->client;
-	while (cli) {
-		(*total)++;
-		if ((GetTickCount()-cli->lastecmtime) < 90000) {
-			(*connected)++;
-			if ( (GetTickCount()-cli->lastecmtime) < 20000 ) (*active)++;
-		}
-		cli=cli->next;
-	}
-}
-
-void http_send_camd35(int sock, http_request *req)
-{
-	char http_buf[4096];
-	struct tcp_buffer_data tcpbuf;
-	char cell[10][2048];
-
-	// Get Params
-	char *str_action = isset_get( req, "action");
-	char *str_list = isset_get( req, "list");
-	char *str_id = isset_get( req, "id"); // server ID
-	char *str_clid = isset_get( req, "clid"); // Client ID
-	// Param 'action'
-	int get_action;
-	if (str_action) {
-		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
-		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-#ifndef PUBLIC
-		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
-		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
-		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
-		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
-		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
-		else str_action = NULL;
-	}
-	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
-	/////////////////////////////////////////////
-
-	if (get_action==ACTION_ROW) {
-		// Check for XML ROW
-		struct camd35_client_data *cli = NULL;
-		if (str_clid) {
-			int id = atoi(str_clid);
-			struct camd35_server_data *camd35 = cfg.camd35.server;
-			while (camd35) {
-				if (!(camd35->flags&FLAG_DELETE)) {
-					struct camd35_client_data *cli = camd35->client;
-					while (cli) {
-						if ( !(cli->flags&FLAG_DELETE) && (cli->id==id) ) {
-							// Send XML CELLS
-							getcamd35cells(cli,cell);
-							int i; for(i=0; i<10; i++) xmlescape( cell[i] );
-							sprintf( http_buf, "<camd35>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2_c>%s</c2_c>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n</camd35>\n",cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7] );
-							http_send_xml( sock, req, http_buf, strlen(http_buf));
-						}
-						cli = cli->next;
-					}
-				}
-				camd35 = camd35->next;
-			}
-		}
-		return;
-	}			
-
-	// Param 'list'
-	int get_list = LIST_ALL;
-	if (str_list) {
-		if (!strcmp(str_list,"connected")) get_list = LIST_CONNECTED;
-		else if (!strcmp(str_list,"all")) get_list = LIST_ALL;
-		else str_list = NULL;
-	}
-	if (!str_list) str_list = "all";
-	// Param 'id'
-	int get_id = 0;
-	struct camd35_server_data *camd35 = NULL;
-	if (str_id)	{
-		get_id = atoi(str_id);
-		camd35 = cfg.camd35.server;
-		while (camd35) {
-			if (camd35->id == get_id) break;
-			camd35 = camd35->next;
-		}
-		if (!camd35) get_id = 0;
-	}
-	//
-	tcp_init(&tcpbuf);
-	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
-	if (get_action==ACTION_PAGE) {
-
-		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
-		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-		sprintf( http_buf, html_title, cfg.http.title, "Cs358x/Camd35"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
-		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
-		// JS
-        tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
-		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
-		// ACTIONS REQUEST
-		tcp_writestr(&tcpbuf, sock, "\nfunction imgrequest( url, el )\n{\n	var httpRequest;\n	try { httpRequest = new XMLHttpRequest(); }\n	catch (trymicrosoft) { try { httpRequest = new ActiveXObject('Msxml2.XMLHTTP'); } catch (oldermicrosoft) { try { httpRequest = new ActiveXObject('Microsoft.XMLHTTP'); } catch(failed) { httpRequest = false; } } }\n	if (!httpRequest) { alert('Your browser does not support Ajax.'); return false; }\n	if ( typeof(el)!='undefined' ) {\n		el.onclick = null;\n		el.style.opacity = '0.7';\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) if (httpRequest.status == 200) el.style.opacity = '0.3';\n		}\n	}\n	httpRequest.open('GET', url, true);\n	httpRequest.send(null);\n}\n");
-		// UPD ROW
-		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id ) \n{\n    var row = document.getElementById(id);\n    	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n    row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n    row.cells.item(2).className = xmlDoc.getElementsByTagName('c2_c')[0].childNodes[0].nodeValue;\n    row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n    row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n    row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n    row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n    row.cells.item(6).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n    row.cells.item(7).innerHTML = xmlDoc.getElementsByTagName('c7')[0].childNodes[0].nodeValue;\n}");
-		char url[256];
-		sprintf( url, "'/camd35?action=row&clid='+idx");
-		sprintf( http_buf, HTTP_UPDATE_ROW, url);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		// UPD DIV
-		sprintf( url, "/camd35?action=div&id=%d&list=%s", get_id, str_list);
-		sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		//
-		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	setautorefresh(autorefresh);\n}");
-		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
-		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
-		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
-		tcp_write_menu(&tcpbuf, sock,PAGE_CAMD35);
-		// Info de servidores (acima da div principal)
-		{
-			tcp_writestr(&tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
-			sprintf( http_buf, "<h3 class=stitle>Camd35 Servers (%d)</h3>", cfg.camd35.totalservers);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
-			int itotal, iconnected, iactive;
-			total_camd35_clients( &itotal, &iconnected, &iactive );
-			sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			struct camd35_server_data *box = cfg.camd35.server;
-			while ( box ) {
-				int btotal, bconnected, bactive;
-				camd35_clients( box, &btotal, &bconnected, &bactive );
-				if (box->handle>0) sprintf( http_buf, "<tr><td class=left><a href='/camd35?id=%d'>camd35 %d</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
-				else sprintf( http_buf, "<tr><td class=left><a href='/camd35?id=%d'>camd35 %d</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				box = box->next;
-			}
-			tcp_writestr(&tcpbuf, sock, "</table></div></div>");
-		}
-		// DIV
-		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
-	}
-
-	int total, connected, active;
-	tcp_writestr(&tcpbuf, sock, "<select style=\"width:200px;\" onchange=\"parent.location.href='/camd35?id='+this.value\">");
-	sprintf( http_buf, "<option value=0>ALL (%d)</option>", cfg.camd35.totalservers); //total_camd35_servers());
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	struct camd35_server_data *tmp = cfg.camd35.server;
-	while (tmp) {
-		if (get_id==tmp->id) sprintf( http_buf, "<option value=%d selected>[%d] camd35 %d</option>",tmp->id,tmp->port, tmp->id );
-		else sprintf( http_buf, "<option value=%d>[%d] camd35 %d</option>",tmp->id,tmp->port, tmp->id );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tmp = tmp->next;
-	}
-	tcp_writestr(&tcpbuf, sock, "</select> ");
-	//
-	if (camd35) camd35_clients( camd35, &total, &connected, &active ); else total_camd35_clients( &total, &connected, &active );
-	char *class1 = "button"; char *class2 = "sbutton";
-	char *class;
-	if (get_list==LIST_ACTIVE) class = class2; else class = class1;
-	sprintf( http_buf, "<input type=button class=%s onclick=\"parent.location='/camd35?id=%d&amp;list=active'\" value='Active Clients (%d)'>", class, get_id, active);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	if (get_list==LIST_CONNECTED) class = class2; else class = class1;
-	sprintf( http_buf, " <input type=button class=%s onclick=\"parent.location='/camd35?id=%d&amp;list=connected'\" value='Connected Clients (%d)'>", class, get_id, connected);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	if (get_list==LIST_ALL) class = class2; else class = class1;
-	sprintf( http_buf, " <input type=button class=%s onclick=\"parent.location='/camd35?id=%d&amp;list=all'\" value='All Clients (%d)'>", class, get_id, total);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	//
-	if (camd35) { // One Server Selected
-		// Table
-		sprintf( http_buf, "\n<table class=maintable width=100%%><tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		struct camd35_client_data *cli = camd35->client;
-		int alt=0;
-		if (get_list==LIST_ACTIVE) {
-			while (cli) {
-				if ( ((GetTickCount()-cli->lastecmtime) < 20000) ) {
-					if (alt==1) alt=2; else alt=1;
-					getcamd35cells(cli,cell);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				cli = cli->next;
-			}
-		}
-		else if (get_list==LIST_CONNECTED) {
-			while (cli) {
-				if (((GetTickCount()-cli->lastecmtime) < 90000)) {
-					if (alt==1) alt=2; else alt=1;
-					getcamd35cells(cli,cell);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				cli = cli->next;
-			}
-		}
-		else { // ALL
-			while (cli) {
-				if (alt==1) alt=2; else alt=1;
-				getcamd35cells(cli,cell);
-				snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				cli = cli->next;
-			}
-		}
-		sprintf( http_buf, "\n</table>");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-
-	else {
-		// Table
-		tcp_writestr(&tcpbuf,sock, "\n<table class=maintable width=100%>");
-		tcp_writestr(&tcpbuf,sock, "\n<tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
-		int alt=0;
-		camd35 = cfg.camd35.server;
-		while (camd35) {
-			int total, connected, active;
-			camd35_clients( camd35, &total, &connected, &active );
-			if ( (get_list==LIST_ACTIVE) && active ) {
-				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> camd35 %d (%d)</td></tr>", camd35->id, active); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				struct camd35_client_data *cli = camd35->client;
-				while (cli) {
-					if ( ((GetTickCount()-cli->lastecmtime) < 20000) ) {
-						if (alt==1) alt=2; else alt=1;
-						getcamd35cells(cli,cell);
-						snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					}
-					cli = cli->next;
-				}
-			}
-			else if ( (get_list==LIST_ALL) && total ) {
-				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> camd35 %d (%d)</td></tr>", camd35->id, total); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				struct camd35_client_data *cli = camd35->client;
-				while (cli) {
-					if (alt==1) alt=2; else alt=1;
-					getcamd35cells(cli,cell);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					cli = cli->next;
-				}
-			}
-			else if ( (get_list==LIST_CONNECTED) && connected ) {
-				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> camd35 %d (%d)</td></tr>", camd35->id, connected); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				struct camd35_client_data *cli = camd35->client;
-				while (cli) {
-					if (((GetTickCount()-cli->lastecmtime) < 90000)) {
-						if (alt==1) alt=2; else alt=1;
-						getcamd35cells(cli,cell);
-						snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,alt,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					}
-					cli = cli->next;
-				}
-			}
-			camd35 = camd35->next;
-		}
-		sprintf( http_buf, "</table>");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-#ifdef CS378X_SRV
-	// ===== seccao Cs378x (TCP) - mesma familia, so na pagina completa =====
-	if (get_action==ACTION_PAGE) {
-		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
-		sprintf( http_buf, "<h3 class=stitle>Cs378x Servers (%d, TCP)</h3>", cfg.cs378x.totalservers);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Server</th><th>Port</th><th>Status</th><th>Connected</th></tr>");
-		int itotal, iconnected, iactive;
-		total_cs378x_clients( &itotal, &iconnected, &iactive );
-		sprintf( http_buf, "<tr><td class=left>TOTAL</td><td class=right>-</td><td class=right>-</td><td class=right>%d / %d</td></tr>", iconnected, itotal);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		struct camd35_server_data *box = cfg.cs378x.server;
-		while ( box ) {
-			int btotal, bconnected, bactive;
-			cs378x_clients( box, &btotal, &bconnected, &bactive );
-			if (box->handle>0) sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=success>ONLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
-			else sprintf( http_buf, "<tr><td class=left><a href='/cs378x?id=%d'>cs378x %d</a></td><td class=right>%d</td><td class=right><span class=failed>OFFLINE</span></td><td class=right>%d / %d</td></tr>", box->id, box->id, box->port, bconnected, btotal);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			box = box->next;
-		}
-		tcp_writestr(&tcpbuf, sock, "</table>");
-
-		tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th width=100px>Client</th><th width=120px>ip</th><th width=110px>Connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>");
-		box = cfg.cs378x.server;
-		int altx = 0;
-		while (box) {
-			struct camd35_client_data *cli = box->client;
-			int ctotal, cconnected, cactive;
-			cs378x_clients( box, &ctotal, &cconnected, &cactive );
-			if (ctotal) {
-				snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", box->id, ctotal);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				while (cli) {
-					if (altx==1) altx=2; else altx=1;
-					getcs378xcells(cli,cell);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",cli->id,altx,cli->id,cell[0],cell[1],cell[9],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					cli = cli->next;
-				}
-			}
-			box = box->next;
-		}
-		tcp_writestr(&tcpbuf, sock, "</table></div>");
-	}
-#endif
-	if (get_action==ACTION_PAGE) {
-		tcp_writestr(&tcpbuf, sock, "</div>");
-		tcp_writestr(&tcpbuf, sock, "</body></html>");
-	}
-
-	tcp_flush(&tcpbuf, sock);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-void http_send_camd35_client(int sock, http_request *req)
-{
-	char http_buf[2048];
-	struct tcp_buffer_data tcpbuf;
-
-	// Get Params
-	char *str_action = isset_get( req, "action");
-	char *str_id = isset_get( req, "id"); // Client ID
-	char *str_name = isset_get( req, "name"); // Client NAME
-	char *str_srvid = isset_get( req, "srvid"); // CCcam Server ID
-
-	// Action
-	int get_action = ACTION_PAGE;
-	if (str_action) {
-		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
-		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
-		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
-		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
-		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
-		else if (!strcmp(str_action,"dbginfo")) get_action = ACTION_DBGINFO;
-		else if (!strcmp(str_action,"update")) get_action = ACTION_UPDATE;
-		else str_action = NULL;
-	}
-	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
-
-	/////////////////////////////////////////////
-
-	// GET CLIENT
-	struct camd35_client_data *cli = NULL;
-	if (str_id) cli = getcamd35clientbyid( atoi(str_id) );
-	if (!cli) return;
-	//
-	if (get_action==ACTION_DISABLE) {
-		cli->flags |= FLAG_DISABLE;
-		if (cli->connection.status>0) camd35_disconnect_cli(cli);
-		http_send_ok(sock);
-		return;
-	}
-	else if (get_action==ACTION_ENABLE) {
-		cli->flags &= ~FLAG_DISABLE;
-		http_send_ok(sock);
-		return;
-	}
-	else if (get_action==ACTION_STATUS) {
-		if (cli->connection.status>0) http_send_text(sock,"connected"); else http_send_text(sock,"disconnected");
-		return;
-	}
-	else if (get_action==ACTION_DEBUG) {
-		flagdebug = getdbgflag( DBG_CAMD35, 0, cli->id);
-		http_send_ok(sock);
-		return;
-	}
-	else if (get_action==ACTION_DBGINFO) {
-		char dbg[1024];
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
-			cli->user, (char*)ip2string(cli->ip),
-			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
-			cli->ecmnb, cli->ecmdenied, cli->ecmok,
-			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
-			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0);
-		http_send_text(sock, dbg);
-		return;
-	}
-	else if (get_action==ACTION_UPDATE) {
-/*		char *str = isset_get( req, "expire"); // Client ID
-		if (str) {
-			if ( (str[4]=='-')&&(str[7]=='-') ) strptime(  str, "%Y-%m-%d %H", &cli->enddate);
-			else if ( (str[2]=='-')&&(str[5]=='-') ) strptime(  str, "%d-%m-%Y %H", &cli->enddate);
-		}
-		str = isset_get( req, "active"); // Client ID
-		if (str) {
-			if (str[0]=='0') {
-				cli->flags |= FLAG_DISABLE;
-				if (cli->connection.status>0) camd35_disconnect_cli(cli);
-			}
-			else cli->flags &= ~FLAG_DISABLE;
-		}*/
-		http_send_text(sock, "OK");
-		return;
-	}
-
-	//
-	tcp_init(&tcpbuf);
-	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) ); // header tambem no div (XHR exige status line)
-	if (get_action==ACTION_PAGE) {
-
-		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
-		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-		sprintf( http_buf, html_title, cfg.http.title, "Cs358x/Camd35 Client"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
-		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
-		// JS
-        tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
-		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
-		// UPD DIV
-		char url[256];
-		sprintf( url, "/camd35client?id=%d&action=div", cli->id);
-		sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		//
-		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	setautorefresh(autorefresh);\n}");
-		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
-		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
-		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
-		tcp_write_menu(&tcpbuf, sock,0);
-		// DIV
-		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
-	}
-
-	tcp_writestr(&tcpbuf, sock, "<table style=\"padding:0px; margin:0px;\" width=\"100%%\"><tbody>\n" );
-	tcp_writestr(&tcpbuf, sock, "<tr><td style=\"vertical-align:top; width:400px;\">\n" );
-
-	tcp_writestr(&tcpbuf, sock, "<table class=infotable><tbody>\n<tr><th colspan=2>Client Informations</th></tr>\n" );
-	// NAME
-	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>User name</td><td class=right>%s</td></tr>\n",cli->user);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#ifdef CHECK_NEXTDCW
-	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>DCW CHECK</td><td class=right>%s</td></tr>", yesno(cli->dcwcheck) );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
-	tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
-
-
-	// INFO
-	struct client_info_data *info = cli->info;
-	if (info) {
-		tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
-		tcp_writestr(&tcpbuf, sock, "<tr><th colspan=2>Additional Informations</th></tr>\n" );
-		while (info) {
-			snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>%s</td><td class=right>%s</td></tr>\n",info->name,info->value);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			info = info->next;
-		}
-		tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
-	}
-
-	// Ecm Stat
-	tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
-	tcp_writestr(&tcpbuf, sock, "<tr><th colspan=2>ECM Statistics</th></tr>\n" );
-	int ecmaccepted = cli->ecmnb-cli->ecmdenied;
-	sprintf( http_buf, "<tr><td class=left>Total ECM requests</td><td class=right>%d</td></tr>\n", cli->ecmnb);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<tr><td class=left>Accepted ECM requests</td><td class=right>%d</td></tr>\n", ecmaccepted);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<tr><td class=left>Good ECM answer</td><td class=right>%d</td></tr>\n", cli->ecmok);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	//Ecm Time
-	if (cli->ecmok) {
-		snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Average Time</td><td class=right>%d ms</td></tr>\n",(cli->ecmoktime/cli->ecmok) );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-//#ifdef SRV_CSCACHE
-//	sprintf( http_buf, "<tr><td class=left>Cached CW</td><td class=right>%d</td></tr>\n", cli->cachedcw);
-//	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-//#endif
-	// Freeze
-	snprintf( http_buf, sizeof(http_buf),"<tr><td class=left>Total Freeze</td><td class=right>%d</td></tr>\n", cli->freeze);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
-
-
-	tcp_writestr(&tcpbuf, sock, "</td><td style=\"vertical-align:top;\">\n" );
-
-	//Last Used Share
-	if ( cli->lastecm.caid ) {
-		tcp_writestr(&tcpbuf, sock, "<table class=\"infotable\"><tbody>\n" );
-		tcp_writestr(&tcpbuf, sock, "<tr><th>Last Used share</th></tr>\n");
-		// Decode Status
-		if (cli->lastecm.status)
-			snprintf( http_buf, sizeof(http_buf),"<tr><td>Decode success</td></tr>\n");
-		else
-			snprintf( http_buf, sizeof(http_buf),"<tr><td>Decode failed</td></tr>\n");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		// Channel
-		snprintf( http_buf, sizeof(http_buf),"<tr><td>Channel %s (%dms) %s</td></tr>\n", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid) , cli->lastecm.decodetime, str_laststatus[cli->lastecm.status] );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-		// Server
-		if ( (GetTickCount()-cli->ecm.recvtime) < 20000 ) {
-			// From ???
-			if (cli->lastecm.status) {
-				tcp_writestr(&tcpbuf, sock, "<tr><td>From ");
-				src2string(cli->lastecm.dcwsrctype, cli->lastecm.dcwsrcid, http_buf );
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				tcp_writestr(&tcpbuf, sock, "</td></tr>");
-			}
-			// Last ECM
-			ECM_DATA *ecm = cli->lastecm.request;
-			// ECM
-			snprintf( http_buf, sizeof(http_buf),"<tr><td>ECM(%d): ", ecm->ecmlen); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			array2hex( ecm->ecm, http_buf, ecm->ecmlen );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			sprintf( http_buf,"</td></tr>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			// DCW
-			if (cli->lastecm.status) {
-				snprintf( http_buf, sizeof(http_buf),"<tr><td>CW: ");	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				array2hex( ecm->cw, http_buf, 16 );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				sprintf( http_buf,"</td></tr>\n"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
-#ifdef CHECK_NEXTDCW
-			if ( ecm->lastdecode.ecm && (ecm->lastdecode.counter>0) ) {
-				snprintf( http_buf, sizeof(http_buf),"<tr><td>Previous CW: "); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				array2hex( ecm->lastdecode.dcw, http_buf, 16 ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				tcp_writestr(&tcpbuf, sock, "</td></tr>\n");
-				if (ecm->lastdecode.error) {
-					snprintf( http_buf, sizeof(http_buf),"<tr><td>Errors = %d</td></tr>\n", ecm->lastdecode.error);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				snprintf( http_buf, sizeof(http_buf),"<tr><td>Total Cycles = %d</td></tr>\n<tr><td>ECM Interval = %ds</td></tr>\n", ecm->lastdecode.counter, ecm->lastdecode.dcwchangetime/1000);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
-#endif
-			// Last used share (status do ultimo decode)
-			if (cli->lastecm.status==1) {
-				tcp_writestr(&tcpbuf, sock, "<tr><td class=success>Decode Success</td></tr>");
-			}
-			else if (cli->lastecm.status==2) {
-				snprintf( http_buf, sizeof(http_buf),"<tr><td class=nok-yellow>channel %s (%dms) NOK (BISS EMU)</td></tr>", getchname(cli->lastecm.caid, cli->lastecm.prov, cli->lastecm.sid), cli->lastecm.decodetime);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
-			//
-			if (ecm->server[0].srvid) {
-				sprintf( http_buf, "<tr><td><table class='infotable'><tbody><tr><th width='30px'>ID</th><th width='250px'>Server</th><th width='50px'>Status</th><th width='70px'>Start time</th><th width='70px'>End time</th><th width='90px'>Elapsed time</th><th>CW</th></tr></tbody>");
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				int i;
-				for(i=0; i<20; i++) {
-					if (!ecm->server[i].srvid) break;
-					char* str_srvstatus[] = { "WAIT", "OK", "NOK", "BUSY" };
-					struct server_data *srv = getsrvbyid(ecm->server[i].srvid);
-					if (srv) {
-						snprintf( http_buf, sizeof(http_buf),"<tr><td>%d</td><td>%s:%d</td><td>%s</td><td>%dms</td>", i+1, srv->host->name, srv->port, str_srvstatus[ecm->server[i].flag], ecm->server[i].sendtime - ecm->recvtime );
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-						// Recv Time
-						if (ecm->server[i].statustime>ecm->server[i].sendtime)
-							sprintf( http_buf,"<td>%dms</td><td>%dms</td>", ecm->server[i].statustime - ecm->recvtime, ecm->server[i].statustime-ecm->server[i].sendtime );
-						else
-							sprintf( http_buf,"<td>--</td><td>--</td>");
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-						// DCW
-						if (ecm->server[i].flag==ECM_SRV_REPLY_GOOD) {
-							sprintf( http_buf,"<td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-							array2hex( ecm->server[i].dcw, http_buf, 16 );	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-							sprintf( http_buf,"</td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-						}
-						else {
-							sprintf( http_buf,"<td>--</td>");
-							tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-						}
-						sprintf( http_buf,"</tr>");
-						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-					}
-				}
-				tcp_writestr(&tcpbuf, sock, "</tbody></table></td></tr>\n" );
-			}
-		}
-		tcp_writestr(&tcpbuf, sock, "</tbody></table><br>\n" );
-	}
-
-	// Current Busy Ecm
-	if (cli->ecm.busy) {
-		ECM_DATA *ecm = cli->ecm.request;
-		if (ecm) http_send_ecmstatus(&tcpbuf, sock, ecm);
-	}
-
-	tcp_writestr(&tcpbuf, sock, "</td></tr></tbody></table>" );
-
-	if (get_action==ACTION_PAGE) {
-		tcp_writestr(&tcpbuf, sock, "</div>");
-		tcp_writestr(&tcpbuf, sock, "</body></html>");
-	}
-	tcp_flush(&tcpbuf, sock);
-}
 
-#endif
 
 
 
@@ -7539,6 +7363,7 @@ void http_send_camd35_client(int sock, http_request *req)
 
 
 
+#endif
 
 #ifdef CACHEEX
 
@@ -7549,15 +7374,7 @@ void cacheex_server_cells(struct server_data *srv, char cell[10][2048], int off 
 	uint32_t d;
 
 	memset(cell, 0, 10*2048);
-	if (
-		(srv->type!=TYPE_CCCAM)
-#ifdef CAMD35_CLI
-		&&(srv->type!=TYPE_CAMD35)
-#endif
-#ifdef CS378X_CLI
-		&&(srv->type!=TYPE_CS378X) 
-#endif
-	) return;
+	if ( (srv->type!=TYPE_CCCAM) && (srv->type!=TYPE_CS378X) && (srv->type!=TYPE_CAMD35) ) return;
 	if (!srv->cacheex_mode) return;
 	// CELL0
 	sprintf( cell[0],"%s:%d",srv->host->name,srv->port);
@@ -7573,12 +7390,6 @@ void cacheex_server_cells(struct server_data *srv, char cell[10][2048], int off 
 	// CELL2 (assinatura)
 	if (srv->connection.status>0) {
 		if (srv->type==TYPE_CCCAM) sprintf( cell[2],"Cache EX | Mcs1000 (mode%d CCcam)", srv->cacheex_mode);
-#ifdef CAMD35_CLI
-		else if (srv->type==TYPE_CAMD35) sprintf( cell[2],"Cache EX | Mcs1000 (mode%d camd35)", srv->cacheex_mode);
-#endif
-#ifdef CS378X_CLI
-		else if (srv->type==TYPE_CS378X) sprintf( cell[2],"Cache EX | Mcs1000 (mode%d cs378x)", srv->cacheex_mode);
-#endif
 		else sprintf( cell[2],"Cache EX | Mcs1000");
 	}
 	else sprintf( cell[2]," ");
@@ -7775,112 +7586,6 @@ void cacheex_cccamclient_cells(struct cc_client_data *cli, char cell[10][2048], 
 	strcat( cell[8], "</span>");
 }
 
-#if defined(CAMD35_SRV) || defined(CS378X_SRV)
-
-void cacheex_camd35client_cells(struct camd35_client_data *cli, char cell[10][2048], int off)
-{
-	char temp[2048];
-	unsigned int ticks = GetTickCount();
-	unsigned int d;
-	memset(cell, 0, 10*2048);
-	if (!cli->cacheex_mode) return;
-	// CELL0 # NAME
-	sprintf( cell[0],"%s",cli->user);
-	// CELL1 # IP
-	char *p = getcountrycodebyip(cli->ip);
-	if (p) sprintf( cell[1],"<img src='/flag_%s.gif' title='%s'> %s", p, getcountryname(p), (char*)ip2string(cli->ip) );
-	else sprintf( cell[1],"%s",(char*)ip2string(cli->ip) );
-
-	// CELL2 # VERSION (assinatura)
-	sprintf( cell[2],"Cache EX | Mcs1000 (mode%d)", cli->cacheex_mode);
-	// CELL3 # nodeid
-	sprintf( cell[3],"%02x%02x%02x%02x%02x%02x%02x%02x", cli->nodeid[0],cli->nodeid[1],cli->nodeid[2],cli->nodeid[3],cli->nodeid[4],cli->nodeid[5],cli->nodeid[6],cli->nodeid[7]);
-	// CELL4 # Connection Time
-	if (cli->connection.status>0) {
-		sprintf( cell[9],"online");
-		d = (ticks-cli->connection.time)/1000;
-		sprintf( cell[4], "%02dd %02d:%02d:%02d", d/(3600*24), (d/3600)%24, (d/60)%60, d%60);
-	}
-	else {
-		strcpy( cell[9], "offline" );
-		if (cli->flags&FLAG_DELETE) sprintf( cell[4],"Removed");
-		else if (cli->flags&FLAG_EXPIRED) sprintf( cell[4],"Expired");
-		else if (cli->flags&FLAG_DISABLE) sprintf( cell[4],"Disabled");
-		else sprintf( cell[4],"offline");
-	}
-	if (cli->csporthit[0].csid) {
-		strcat( cell[4], "<table class=\"connect_data\">" );
-		strcat( cell[4], "<tr><td width=150px>Profile</td><td>Hits</td></tr>" );
-		int i; char temp[512];
-		for(i=0; i<10; i++) {
-			if (!cli->csporthit[i].csid) break;
-			struct cardserver_data *cs = getcsbyid(cli->csporthit[i].csid);
-			if (!cs) continue;
-			sprintf( temp,"<tr><td>%s</td><td>%d</td></tr>", cs->name,cli->csporthit[i].hits);
-			strcat( cell[4], temp );
-		}
-		strcat( cell[4], "</table>");
-	}
-
-	// CELL5
-	sprintf( cell[5], "%d", cli->cacheex.push[0]); // sent
-	int i;
-	for (i=1; i<10; i++ ) {
-		if (cli->cacheex.push[i]>0) {
-			sprintf( temp,"<br>[%d] %d", i, cli->cacheex.push[i]);
-			strcat( cell[5], temp );
-		}
-	}
-
-	// CELL6
-	sprintf( cell[6], "%d", cli->cacheex.got[0]); // received
-	for (i=1; i<10; i++ ) {
-		if (cli->cacheex.got[i]>0) {
-			sprintf( temp,"<br>[%d] %d", i, cli->cacheex.got[i]);
-			strcat( cell[6], temp );
-		}
-	}
-
-	// CELL7
-	sprintf( cell[7], "%d", cli->cacheex.hits);
-	if ( (cli->cacheex_mode==3) && cli->cacheex.badcw ) {
-		sprintf( temp,"<br>bad=%d", cli->cacheex.badcw);
-		strcat( cell[7], temp );
-	}
-
-	// CELL8
-	if (cli->cacheex_mode==2) {
-		if (cli->sharelimits[0].caid==0xffff) strcpy( cell[8], " ");
-		else {
-			sprintf( cell[8]," Shares = %04x:%x", cli->sharelimits[0].caid, cli->sharelimits[0].provid);
-			int i;
-			for (i=1; i<100; i++) {
-				if (cli->sharelimits[i].caid==0xffff) break;
-				sprintf( temp,", %04x:%x", cli->sharelimits[i].caid, cli->sharelimits[i].provid);
-				strcat( cell[8], temp );
-			}
-		}
-	}
-	else if (cli->cacheex_mode==3) {
-		if (cli->cacheex.lastcaid) {
-			sprintf( cell[8],"ch %s (%dms)", getchname(cli->cacheex.lastcaid, cli->cacheex.lastprov, cli->cacheex.lastsid) , cli->cacheex.lastdecodetime );
-		}
-		else strcpy( cell[8], " ");
-	}
-	strcat( cell[8], "<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
-	if (cli->flags&FLAG_DISABLE) {
-		sprintf( temp," <span class='icobtn on' title='Enable' onclick=\"imgrequest('/cacheex?action=enable&id=%d',this);setTimeout('updateDiv()',600)\">ON</span>",cli->id+off);
-	}
-	else {
-		sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/cacheex?action=disable&id=%d',this);setTimeout('updateDiv()',600)\">OFF</span>",cli->id+off);
-	}
-	strcat( cell[8], temp );
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/cacheex?action=dbginfo&id=%d')\">DBG</span>",cli->id+off,cli->id+off);
-	strcat( cell[8], temp );
-	strcat( cell[8], "</span>");
-}
-
-#endif
 
 void http_send_cacheex(int sock, http_request *req)
 {
@@ -7901,7 +7606,7 @@ void http_send_cacheex(int sock, http_request *req)
 	}
 	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
 
-	// OFF/ON/DBG por linha (id codificado: 1=cccam, 2=camd35, 3=cs378x, 4=server)
+	// OFF/ON/DBG por linha (id codificado: 1=cccam, 4=server)
 	if ( (get_action==ACTION_DISABLE)||(get_action==ACTION_ENABLE)||(get_action==8) ) {
 		char dbg[1024] = "";
 		char *sid = isset_get( req, "id");
@@ -7941,24 +7646,6 @@ void http_send_cacheex(int sock, http_request *req)
 					else { if (on) cli->flags &= ~FLAG_DISABLE; else cli->flags |= FLAG_DISABLE; }
 				}
 			}
-			else if ((kind==2)||(kind==3)) {
-				struct camd35_server_data *csx = (kind==2) ? cfg.camd35.server : cfg.cs378x.server;
-				struct camd35_client_data *cli = NULL;
-				while (csx && !cli) {
-					struct camd35_client_data *c = csx->cacheexclient;
-					while (c) { if (c->id==iid) { cli=c; break; } c=c->next; }
-					csx = csx->next;
-				}
-				if (cli) {
-					if (get_action==8)
-						sprintf( dbg, "<div class='dbginfo'><b>%s</b> (id %d) | Mode: %d | Status: %s<br>Push: %d | Got: %d | Hits: %d | Last ch: %04x:%06x:%04x (%dms)</div>",
-							cli->user, cli->id, cli->cacheex_mode,
-							(cli->flags&FLAG_DISABLE)?"DISABLED":"ENABLED",
-							cli->cacheex.push[0], cli->cacheex.got[0], cli->cacheex.hits,
-							cli->cacheex.lastcaid, cli->cacheex.lastprov, cli->cacheex.lastsid, cli->cacheex.lastdecodetime);
-					else { if (on) cli->flags &= ~FLAG_DISABLE; else cli->flags |= FLAG_DISABLE; }
-				}
-			}
 		}
 		if (get_action==8) http_send_text(sock, dbg);
 		else http_send_ok(sock);
@@ -7986,46 +7673,6 @@ void http_send_cacheex(int sock, http_request *req)
 					}
 				}
 				cccam = cccam->next;
-			}
-		}
-		else if ( (i>>16)==2 ) { // camd35 Clients
-			struct camd35_server_data *camd35 = cfg.camd35.server;
-			while (camd35) {
-				if (!(camd35->flags&FLAG_DELETE)) {
-					struct camd35_client_data *cli = camd35->cacheexclient;
-					while (cli) {
-						if ( !(cli->flags&FLAG_DELETE) && cli->id==(i&0xffff) ) {
-			                cacheex_camd35client_cells(cli,cell,0x20000);
-			                for(i=0; i<10; i++) xmlescape( cell[i] );
-			                char xmlbuf[5000] = "";
-				                snprintf( xmlbuf, sizeof(xmlbuf), "<cacheex>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4_c>%s</c4_c>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6><c7>%s</c7><c8>%s</c8>\n</cacheex>\n",cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8] );
-			                http_send_xml( sock, req, xmlbuf, strlen(xmlbuf));
-							return;
-						}
-						cli = cli->next;
-					}
-				}
-				camd35 = camd35->next;
-			}
-		}
-		else if ( (i>>16)==3 ) { // cs378x Clients
-			struct camd35_server_data *cs378x = cfg.cs378x.server;
-			while (cs378x) {
-				if (!(cs378x->flags&FLAG_DELETE)) {
-					struct camd35_client_data *cli = cs378x->cacheexclient;
-					while (cli) {
-						if ( !(cli->flags&FLAG_DELETE) && cli->id==(i&0xffff) ) {
-			                cacheex_camd35client_cells(cli,cell,0x30000);
-			                for(i=0; i<10; i++) xmlescape( cell[i] );
-			                char xmlbuf[5000] = "";
-				                snprintf( xmlbuf, sizeof(xmlbuf), "<cacheex>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4_c>%s</c4_c>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6><c7>%s</c7><c8>%s</c8>\n</cacheex>\n",cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8] );
-			                http_send_xml( sock, req, xmlbuf, strlen(xmlbuf));
-							return;
-						}
-						cli = cli->next;
-					}
-				}
-				cs378x = cs378x->next;
 			}
 		}
 		else if ( (i>>16)==4 ) { // Server
@@ -8115,75 +7762,12 @@ void http_send_cacheex(int sock, http_request *req)
 		cccam = cccam->next;
 	}
 
-#ifdef CAMD35_SRV
-	// CAMD35 CLIENTS
-	struct camd35_server_data *camd35 = cfg.camd35.server;
-	while (camd35) {
-		struct camd35_client_data *cli = camd35->cacheexclient;
-		// Count Clients
-		int counter = 0;
-		while (cli) {
-			if (cli->cacheex_mode) counter++;
-			cli = cli->next;
-		}
-		if (counter) {
-			snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> Camd35 %d (%d)</td></tr>", camd35->id, counter); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			cli = camd35->cacheexclient;
-			while (cli) {
-				if (cli->cacheex_mode) {
-					if (alt==1) alt=2; else alt=1;
-					cacheex_camd35client_cells(cli,cell,0x20000);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt%d id=\"Row%d\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",alt,(cli->id+0x20000),(cli->id+0x20000),cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				cli = cli->next;
-			}
-		}
-		camd35 = camd35->next;
-	}
-#endif
-
-#ifdef CS378X_SRV
-	// cs378x CLIENTS
-	struct camd35_server_data *cs378x = cfg.cs378x.server;
-	while (cs378x) {
-		struct camd35_client_data *cli = cs378x->cacheexclient;
-		// Count Clients
-		int counter = 0;
-		while (cli) {
-			if (cli->cacheex_mode) counter++;
-			cli = cli->next;
-		}
-		if (counter) {
-			snprintf( http_buf, sizeof(http_buf),"\n<tr><td class=alt3 colspan=9> cs378x %d (%d)</td></tr>", cs378x->id, counter); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			cli = cs378x->cacheexclient;
-			while (cli) {
-				if (cli->cacheex_mode) {
-					if (alt==1) alt=2; else alt=1;
-					cacheex_camd35client_cells(cli,cell,0x30000);
-					snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt%d id=\"Row%d\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td class=\"%s\">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",alt,(cli->id+0x30000),(cli->id+0x30000),cell[0],cell[1],cell[2],cell[3],cell[9],cell[4],cell[5],cell[6],cell[7],cell[8]);
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-				cli = cli->next;
-			}
-		}
-		cs378x = cs378x->next;
-	}
-#endif
-
 	// CACHEEX Servers
 	int counter = 0;
 	struct server_data *srv = cfg.cacheexserver;
 	while (srv) {
 		if (!(srv->flags&FLAG_DELETE))
-		if ( (srv->type==TYPE_CCCAM)
-#ifdef CAMD35_CLI
-			||(srv->type==TYPE_CAMD35)
-#endif
-#ifdef CS378X_CLI
-			||(srv->type==TYPE_CS378X)
-#endif
-		)
+		if ( (srv->type==TYPE_CCCAM) || (srv->type==TYPE_CS378X) || (srv->type==TYPE_CAMD35) )
 		if (srv->cacheex_mode) counter++;
 		srv = srv->next;
 	}
@@ -8193,14 +7777,7 @@ void http_send_cacheex(int sock, http_request *req)
 		struct server_data *srv = cfg.cacheexserver;
 		while (srv) {
 			if (!(srv->flags&FLAG_DELETE))
-			if ( (srv->type==TYPE_CCCAM)
-#ifdef CAMD35_CLI
-				||(srv->type==TYPE_CAMD35)
-#endif
-#ifdef CS378X_CLI
-				||(srv->type==TYPE_CS378X)
-#endif
-			)
+			if ( (srv->type==TYPE_CCCAM) || (srv->type==TYPE_CS378X) || (srv->type==TYPE_CAMD35) )
 			if (srv->cacheex_mode) {
 				if (alt==1) alt=2; else alt=1;
 				cacheex_server_cells(srv,cell,0x40000);
@@ -8243,9 +7820,7 @@ void http_send_cccam_client(int sock, http_request *req)
 	int get_action;
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
@@ -8265,7 +7840,7 @@ void http_send_cccam_client(int sock, http_request *req)
 		struct cccam_server_data *cccam = getcccamserverbyid( atoi(str_srvid) );
 		if (cccam) cli = getcccamclientbyname( cccam, str_name );
 	}
-	if (!cli) return;
+	if (!cli) { http_send_redirect(sock, "/cccam"); return; }
 	//
 
 	if (get_action==ACTION_XML) {
@@ -8324,8 +7899,8 @@ void http_send_cccam_client(int sock, http_request *req)
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
-			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
-			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0);
+			(int)(cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0),
+			(int)(cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0));
 		http_send_text(sock, dbg);
 		return;
 	}	else if (get_action==ACTION_STATUS) {
@@ -8592,104 +8167,6 @@ void http_send_cccam_client(int sock, http_request *req)
 }
 
 
-#ifdef FREECCCAM_SRV
-
-int freecccam_connectedclients()
-{
-	int nb=0;
-	struct cc_client_data *cli=cfg.freecccam.server.client;
-	while (cli) {
-		if (cli->connection.status>0) nb++;
-		cli=cli->next;
-	}
-	return nb;
-}
-
-
-void http_send_freecccam(int sock, http_request *req)
-{
-	char http_buf[4096];
-	struct tcp_buffer_data tcpbuf;
-	char cell[10][2048];
-
-	char *str_clid = isset_get( req, "clid"); // Client ID
-	if (str_clid) {
-		int id = atoi(str_clid);
-		struct cc_client_data *cli = cfg.freecccam.server.client;
-		while (cli) {
-			if ( cli->id==id ) {
-				// Send XML CELLS
-				getcccamcells(cli,cell);
-				int i; for(i=0; i<10; i++) xmlescape( cell[i] );
-				sprintf( http_buf, "<cccam>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2_c>%s</c2_c>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n</cccam>\n",cell[2],cell[1],cell[9],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8] );
-				http_send_xml( sock, req, http_buf, strlen(http_buf));
-				return;
-			}			
-			cli = cli->next;
-		}
-		return;
-	}
-
-	tcp_init(&tcpbuf);
-	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
-	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
-	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-	sprintf( http_buf, html_title, cfg.http.title, "FreeCCcam"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
-	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
-	// JS
-    tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
-	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
-	// UPD ROW
-	tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id )\n{\n	var row = document.getElementById(id);\n	row.cells.item(0).innerHTML = xmlDoc.getElementsByTagName('c0')[0].childNodes[0].nodeValue;\n	row.cells.item(1).innerHTML = xmlDoc.getElementsByTagName('c1')[0].childNodes[0].nodeValue;\n	row.cells.item(2).className = xmlDoc.getElementsByTagName('c2_c')[0].childNodes[0].nodeValue;\n	row.cells.item(2).innerHTML = xmlDoc.getElementsByTagName('c2')[0].childNodes[0].nodeValue;\n	row.cells.item(3).innerHTML = xmlDoc.getElementsByTagName('c3')[0].childNodes[0].nodeValue;\n	row.cells.item(4).innerHTML = xmlDoc.getElementsByTagName('c4')[0].childNodes[0].nodeValue;\n	row.cells.item(5).innerHTML = xmlDoc.getElementsByTagName('c5')[0].childNodes[0].nodeValue;\n	row.cells.item(6).innerHTML = xmlDoc.getElementsByTagName('c6')[0].childNodes[0].nodeValue;\n	row.cells.item(7).innerHTML = xmlDoc.getElementsByTagName('c7')[0].childNodes[0].nodeValue;\n}\n");
-	char url[256];
-	sprintf( url, "'/freecccam?action=row&clid='+idx");
-	sprintf( http_buf, HTTP_UPDATE_ROW, url);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	//
-	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
-
-	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
-	tcp_write(&tcpbuf, sock, http_body, strlen(http_body) );
-	tcp_write_menu(&tcpbuf, sock,PAGE_FREECCCAM);
-
-	if (cfg.freecccam.server.handle>0) { sprintf( http_buf, "FreeCCcam Server [<font color=#00ff00>ENABLED</font>]");tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) ); }
-	else {
-		sprintf( http_buf, "FreeCCcam Server [<font color=#ff0000>DISABLED</font>]");
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_flush(&tcpbuf, sock);
-		return;
-	}
-
-	sprintf( http_buf, "<br>Port = %d<br>Connected Clients: %d<br><center><table class=maintable width=100%%><tr><th width=200px>Client ip</th><th width=70px>version</th><th width=110px>connected</th><th width=60px>TotalEcm</th><th width=90px>AcceptedEcm</th><th width=90px>EcmOK</th><th width=50px>EcmTime</th><th>Last used share</th></tr>", cfg.freecccam.server.port, freecccam_connectedclients());
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-	int alt=0;
-	struct cc_client_data *cli = cfg.freecccam.server.client;
-
-	while (cli) {
-		if (cli->connection.status>0) {
-			if (alt==1) alt=2; else alt=1;
-			getcccamcells( cli,cell);
-			snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt%d id=\"Row%d\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'> <td>%s</td><td>%s</td><td class=\"%s\">%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td align=center>%s</td><td>%s</td></tr>\n",alt,cli->id,cli->id,cell[2],cell[1],cell[9],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8]);
-			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		}
-		cli = cli->next;
-	}
-
-	sprintf( http_buf, "</table></center>");
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-	tcp_flush(&tcpbuf, sock);
-}
-
-#endif
-
-#endif
-
-
-
-
 #ifdef MGCAMD_SRV
 
 void getmgcamdcells(struct mg_client_data *cli, char cell[10][2048])
@@ -8785,7 +8262,7 @@ void getmgcamdcells(struct mg_client_data *cli, char cell[10][2048])
 			strcat( cell[8], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/mgcamdclient?id=%d&action=dbginfo')\">DBG</span>",cli->id,cli->id);
+	sprintf( temp," <span class='icobtn dbg' title='Debug' onclick=\"toggleDbgRow(%d,'/mgcamdclient?id=%d&action=dbginfo','/cwfeed?cli=%d')\">DBG</span>",cli->id,cli->id,cli->id);
 	strcat( cell[8], temp );
 	strcat( cell[8], "</span>");
 
@@ -8851,17 +8328,13 @@ void http_send_mgcamd(int sock, http_request *req)
 	char *str_list = isset_get( req, "list");
 	char *str_id = isset_get( req, "id"); // server ID
 	char *str_clid = isset_get( req, "clid"); // Client ID
-#ifndef PUBLIC
 	char *str_clname = isset_get( req, "clname"); // Client NAME
-#endif
 	// Param 'action'
 	int get_action;
 	if (str_action) {
 		if (!strcmp(str_action,"div")) get_action = ACTION_DIV;
 		else if (!strcmp(str_action,"row")) get_action = ACTION_ROW;
-#ifndef PUBLIC
 		else if (!strcmp(str_action,"xml")) get_action = ACTION_XML; // Get Clients info in xml
-#endif
 		else if (!strcmp(str_action,"disable")) get_action = ACTION_DISABLE;
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
@@ -8879,7 +8352,6 @@ void http_send_mgcamd(int sock, http_request *req)
 			cli = getmgcamdclientbyid( atoi(str_clid) );
 			if (!cli) return;
 		}
-#ifndef PUBLIC
 		else {
 			if (str_id && str_clname) {
 				struct mgcamdserver_data *mgcamd = getmgcamdserverbyid( atoi(str_id) );
@@ -8889,9 +8361,6 @@ void http_send_mgcamd(int sock, http_request *req)
 			}
 			else return;
 		}
-#else
-		else return;
-#endif
 		// Send XML CELLS
 		getmgcamdcells(cli,cell);
 		int i; for(i=0; i<10; i++) xmlescape( cell[i] );
@@ -9210,8 +8679,8 @@ void http_send_mgcamd_client(int sock, http_request *req)
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
-			cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0,
-			cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0);
+			(int)(cli->lastecmtime?(GetTickCount()-cli->lastecmtime)/1000:0),
+			(int)(cli->lastdcwtime?(GetTickCount()-cli->lastdcwtime)/1000:0));
 		http_send_text(sock, dbg);
 		return;
 	}
@@ -9565,12 +9034,11 @@ struct pkg_data {
 	const char *note;
 };
 static const struct pkg_data pkg_table[] = {
-	{ "Hispasat 30W", "Abertis TDT (BISS)", 0x2600, 0x000000, "chaves no Softcam.cfg" },
+	{ "Hispasat 30W", "Abertis TDT (BISS)", 0x2600, 0x000000, "" },
 	{ "Hispasat 30W", "MEO", 0x1814, 0x005211, "ident real" },
 	{ "Hispasat 30W", "MEO", 0x1814, 0x005221, "" },
 	{ "Hispasat 30W", "MEO", 0x1814, 0x000007, "ID_SAT" },
-	{ "Hispasat 30W", "NOS", 0x1802, 0x000000, "wildcard" },
-	{ "Hispasat 30W", "NOS", 0x1802, 0x004801, "ident real" },
+	{ "Hispasat 30W", "NOS", 0x1802, 0x000000, "wildcard (o unico em uso)" },
 	{ "Hotbird 13E", "Canal+ Polska", 0x1813, 0x000068, "tunel Seca/Nagra" },
 	{ "Hotbird 13E", "Canal+ Polska", 0x1884, 0x000000, "Cayman" },
 	{ "Hotbird 13E", "Polsat Box", 0x1803, 0x000000, "" },
@@ -9699,12 +9167,7 @@ void http_send_packages(int sock, http_request *req)
 			else sprintf( okcell, "--");
 			char b[256] = "";
 			if (cs->option.dcw.cak7) strcat(b, " <span class='badge-blue'>CAK7</span>");
-			if (cs->option.dcwfilter.enable) {
-				if (cs->option.dcwfilter.mode==2) strcat(b, cs->option.dcwfilter.auto_active?" <span class='badge-green'>CWPK ATIVO</span>":" <span class='badge-gray'>CWPK AUTO</span>");
-				else if (cs->option.dcwfilter.mode==1) strcat(b, " <span class='badge-green'>CWPK DROP</span>");
-				else strcat(b, " <span class='badge-gray'>CWPK LOGONLY</span>");
-				if (cs->option.dcwfilter.learn) strcat(b, " <span class='badge-blue'>LEARN</span>");
-			}
+			if (cs->option.dcw.cycleengine) strcat(b, " <span class='badge-green'>CYCLE ENGINE</span>");
 			if (cs->option.ecmfilter.enable) strcat(b, cs->option.ecmfilter.mode?" <span class='badge-green'>ECM DROP</span>":" <span class='badge-gray'>ECM LOGONLY</span>");
 			sprintf( filtcell, "%s", b[0]?b:" <span class='badge-gray'>sem filtros</span>");
 		}
@@ -9822,9 +9285,6 @@ void http_send_threads(int sock, http_request *req)
 		sprintf( http_buf, "<br> THREADID Newcamd messages = %d",prg.pid_cs_msg ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		sprintf( http_buf, "<br> THREADID Mgcamd messages = %d",cfg.mgcamd.pid_recvmsg ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		sprintf( http_buf, "<br> THREADID CCcam messages = %d",cfg.cccam.pid_recvmsg ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#ifdef CS378X_SRV
-		sprintf( http_buf, "<br> THREADID CS378X messages = %d",cfg.cs378x.pid_recvmsg ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
 #ifdef CACHEEX
         sprintf( http_buf, "<br> THREADID Ccacheex messages = %d",prg.pid_ccex_msg ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 #endif
@@ -9874,7 +9334,6 @@ void http_send_editor(int sock, http_request *req, int index)
 		reread_config( &cfg );
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
-		emu_load();
 		lite_load();
 		ipblock_load();
 		mlogf(LOGINFO, DBG_HTTP, " http: config reread from disk\n");
@@ -10016,7 +9475,6 @@ void http_send_editor(int sock, http_request *req, int index)
 		reread_config( &cfg );
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
-		emu_load();
 		lite_load();
 		ipblock_load();
 	}
@@ -10084,8 +9542,8 @@ void http_send_editor(int sock, http_request *req, int index)
 static const char *editor_extra_files[] = {
 	"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.providers","CCcam.lite",
 	"servidores.cfg","clientes_cccam.cfg","clientes_mgcamd.cfg",
-	"clientes_cs378x.cfg","clientes_camd35.cfg","clientes_cache.cfg",
-	"Softcam.cfg","blocked_ips.cfg", NULL };
+	"clientes_cache.cfg",
+	"blocked_ips.cfg", NULL };
 
 // o nome (basename) ja esta registado na lista do parse?
 static int editor_in_cfgfiles(const char *name)
@@ -10130,7 +9588,6 @@ static void resolve_cfg_path(const char *name, char *out, int outsz)
 	else if (!strcmp(name,"CCcam.channelinfo")) wanted = cfg.channelinfo_file;
 	else if (!strcmp(name,"CCcam.providers")) wanted = cfg.providers_file;
 	else if (!strcmp(name,"CCcam.lite")) wanted = cfg.lite_file;
-	else if (!strcmp(name,"Softcam.cfg")) wanted = cfg.constcw_file;
 	else if (!strcmp(name,"blocked_ips.cfg")) wanted = cfg.blockedip_file;
 	else if (!strcmp(name,"ip2country.csv")) wanted = cfg.ip2country_file;
 	else if (!strcmp(name,"multics.css")) wanted = cfg.stylesheet_file;
@@ -10223,10 +9680,10 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 	int noeditor = noeditor_ed;
 
 	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><div class='cfgbtns'>"
-		"<div><input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\"><span class='cfgbtns-info'>Parse do teu CCcam.channelinfo sem restart</span></div>"
-		"<div><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\"><span class='cfgbtns-info'>Reconstroi o CCcam.channelinfo do KingOfSat e recarrega automaticamente</span></div>"
-		"<div><input type=button class='sbutton' value='Reload Main Config' title='Reler toda a configuracao do disco' onclick=\"imgrequest('/configurations?action=reread',this)\"><span class='cfgbtns-info'>Aplica o multics.cfg e includes sem restart</span></div>"
-		"<div><a class='sbutton' href='/configurations?action=clearsessions' title='Termina todas as sessoes ativas (todos os browsers/scripts voltam ao login)' onclick=\"return confirm('Terminar TODAS as sessoes? Teras de voltar a fazer login.')\">Terminar todas as sessoes</a><span class='cfgbtns-info'>Invalida todas as cookies de sessao (tu incluido)</span></div>"
+		"<div class='cfgitem'><input type=button class='sbutton' value='Load Channel Info' title='Parse do teu CCcam.channelinfo sem restart (rele o ficheiro do disco)' onclick=\"imgrequest('/configurations?action=reloadchinfo',this)\"></div>"
+		"<div class='cfgitem'><input type=button class='sbutton' value='Update Channel Info' title='Reconstroi o CCcam.channelinfo do KingOfSat (so feeds ativos) e recarrega automaticamente' onclick=\"imgrequest('/configurations?action=updatechinfo',this)\"></div>"
+		"<div class='cfgitem'><input type=button class='sbutton' value='Reload Main Config' title='Aplica o multics.cfg e includes sem restart (rele toda a configuracao do disco)' onclick=\"imgrequest('/configurations?action=reread',this)\"></div>"
+		"<div class='cfgitem'><a class='sbutton' href='/configurations?action=clearsessions' title='Invalida todas as cookies de sessao (tu incluido) - todos voltam ao login' onclick=\"return confirm('Terminar TODAS as sessoes? Teras de voltar a fazer login.')\">Terminar Sessoes</a></div>"
 		"</div></div>");
 	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 
@@ -10331,7 +9788,6 @@ void http_send_configurations(int sock, http_request *req)
 		reread_config( &cfg );
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
-		emu_load();
 		lite_load();
 		ipblock_load();
 		mlogf(LOGINFO, DBG_HTTP, " http: config reread from disk\n");
@@ -10375,8 +9831,8 @@ void http_send_configurations(int sock, http_request *req)
 		static const char *upload_whitelist[] = {
 			"multics.cfg","profiles.cfg","CCcam.channelinfo","CCcam.providers","CCcam.lite",
 			"servidores.cfg","clientes_cccam.cfg","clientes_mgcamd.cfg",
-			"clientes_cs378x.cfg","clientes_camd35.cfg","clientes_cache.cfg",
-			"Softcam.cfg","blocked_ips.cfg", NULL };
+			"clientes_cache.cfg",
+			"blocked_ips.cfg", NULL };
 		char *fnameparam = isset_get( req, "file");
 		int okname = 0;
 		if (fnameparam) {
@@ -10442,7 +9898,6 @@ void http_send_configurations(int sock, http_request *req)
 										reread_config( &cfg );
 										check_config( &cfg );
 										cfg_set_id_counters( &cfg );
-										emu_load();
 										lite_load();
 										ipblock_load();
 										// password do admin mudou? termina todas as sessoes
@@ -10472,7 +9927,6 @@ void http_send_configurations(int sock, http_request *req)
 													reread_config( &cfg );
 													check_config( &cfg );
 													cfg_set_id_counters( &cfg );
-													emu_load();
 													lite_load();
 													ipblock_load();
 													// ainda ha erros neste ficheiro?
@@ -10495,7 +9949,6 @@ void http_send_configurations(int sock, http_request *req)
 												reread_config( &cfg );
 												check_config( &cfg );
 												cfg_set_id_counters( &cfg );
-												emu_load();
 												lite_load();
 												ipblock_load();
 											}
@@ -10608,7 +10061,6 @@ void http_send_configurations(int sock, http_request *req)
 		reread_config( &cfg );
 		check_config( &cfg );
 		cfg_set_id_counters( &cfg );
-		emu_load();
 		lite_load();
 		ipblock_load();
 		if ( strcmp(oldpass, cfg.http.pass) ) {
@@ -10641,16 +10093,13 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "Ficheiro de destino: <select name='file' style='width:250px;'>");
 	tcp_writestr(&tcpbuf, sock, "<option value='multics.cfg'>multics.cfg (mestre - pode conter tudo)</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='profiles.cfg'>profiles.cfg (perfis + users newcamd)</option>");
-	tcp_writestr(&tcpbuf, sock, "<option value='servidores.cfg'>servidores.cfg (N:/C:/L:, cache, cacheex, camd35)</option>");
+	tcp_writestr(&tcpbuf, sock, "<option value='servidores.cfg'>servidores.cfg (N:/C:, cache, cacheex)</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='clientes_cccam.cfg'>clientes_cccam.cfg (F-lines)</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='clientes_mgcamd.cfg'>clientes_mgcamd.cfg</option>");
-	tcp_writestr(&tcpbuf, sock, "<option value='clientes_cs378x.cfg'>clientes_cs378x.cfg</option>");
-	tcp_writestr(&tcpbuf, sock, "<option value='clientes_camd35.cfg'>clientes_camd35.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='clientes_cache.cfg'>clientes_cache.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.channelinfo'>CCcam.channelinfo</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.providers'>CCcam.providers</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='CCcam.lite'>CCcam.lite</option>");
-	tcp_writestr(&tcpbuf, sock, "<option value='Softcam.cfg'>Softcam.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "<option value='blocked_ips.cfg'>blocked_ips.cfg</option>");
 	tcp_writestr(&tcpbuf, sock, "</select>&nbsp; <input type='file' name='uploadfile'>&nbsp;<input type='submit' value='Upload'></form>");
 	tcp_writestr(&tcpbuf, sock, "<span style='font-size:11px;'>envia o teu ficheiro para o caminho real da config (onde o parse o le). Faz backup automatico do anterior. A config e recarregada apos o upload. Um ficheiro unico com todas as seccoes (servers, perfis, clientes) carrega-se como multics.cfg.</span></div>");
@@ -10816,6 +10265,27 @@ void *gererClient(struct connect_data *param)
 				else if (strcmp(req.path,"/debug")==0) {
 					if (!cfg.http.show.nodebug) http_send_debug(sock,&req);
 				}
+				else if (strcmp(req.path,"/cwfeed")==0) {
+					http_send_cwfeed(sock,&req);
+				}
+				else if (strcmp(req.path,"/watchdog")==0) {
+					http_send_watchdog(sock,&req);
+				}
+				else if (strcmp(req.path,"/verdict")==0) {
+					http_send_verdict(sock,&req);
+				}
+				else if (strcmp(req.path,"/cs378x")==0) {
+					http_send_cs378x(sock,&req);
+				}
+				else if (strcmp(req.path,"/cs378xclient")==0) {
+					http_send_cs378x_client(sock,&req);
+				}
+				else if (strcmp(req.path,"/camd35")==0) {
+					http_send_camd35(sock,&req);
+				}
+				else if (strcmp(req.path,"/camd35client")==0) {
+					http_send_camd35_client(sock,&req);
+				}
 				else if (strcmp(req.path,"/profiles")==0) {
 					if (!cfg.http.show.noprofiles) http_send_profiles(sock,&req);
 				}
@@ -10848,41 +10318,17 @@ void *gererClient(struct connect_data *param)
 					if (!cfg.http.show.nocccam) http_send_cccam_client(sock,&req);
 				}
 #endif
-#ifdef CS378X_SRV
-				else if (strcmp(req.path,"/cs378x")==0) {
-					http_send_cs378x(sock,&req);
-				}
-				else if (strcmp(req.path,"/cs378xclient")==0) {
-					http_send_cs378x_client(sock,&req);
-				}
-#endif
-#ifdef CAMD35_SRV
-				else if (strcmp(req.path,"/camd35")==0) {
-					http_send_camd35(sock,&req);
-				}
-				else if (strcmp(req.path,"/camd35client")==0) {
-					http_send_camd35_client(sock,&req);
-				}
-#endif
 #ifdef CACHEEX
 				else if (strcmp(req.path,"/cacheex")==0) {
 					http_send_cacheex(sock,&req);
 				}
 #endif
-				else if ( !memcmp(req.path,"/emulator",9) ) {
-					http_send_emulator(sock,&req);
-				}
 				else if (strcmp(req.path,"/configurations")==0) {
 					http_send_configurations(sock,&req);
 				}
 				else if (strcmp(req.path,"/iptables")==0) {
 					http_send_iptables(sock,&req);
 				}
-#ifdef FREECCCAM_SRV
-				else if (strcmp(req.path,"/freecccam")==0) {
-					http_send_freecccam(sock,&req);
-				}
-#endif
 #ifdef MGCAMD_SRV
 				else if (strcmp(req.path,"/mgcamd")==0) {
 					if (!cfg.http.show.nomgcamd) http_send_mgcamd(sock,&req);
@@ -11062,6 +10508,7 @@ int start_thread_http()
 	create_thread(&http_tid, http_thread, NULL);
 	return 0;
 }
+
 
 
 

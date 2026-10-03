@@ -6,11 +6,13 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 // ---------------------------------------------------------------------------
-// CAK7 Merlin: permutacao de bits [0..7] -> [1,7,5,2,6,4,0,3] nos bytes [0],[4],[8],[12]
+// CAK7 Merlin: permutacao de bits [0..7] -> [1,7,5,2,6,0,3,4] nos bytes [0],[4],[8],[12]
 // da CW + correcao do checksum de cada quad (byte 3 = soma dos outros 3).
-// Tabela extraida do r120 (.rodata@0xe8a60) e verificada bijectiva.
+// Tabela extraida do r120 (.rodata@0xe8a60) e verificada byte-a-byte contra o
+// binario multics-r120-UNPACKED.x64 (v1.47.1).
 // ---------------------------------------------------------------------------
 static uint8_t icam_perm[256];
+static uint8_t icam_inv[256]; // v1.48: permutacao inversa (fonte entrega icam)
 static int icam_ready = 0;
 
 static void icam_init()
@@ -20,15 +22,16 @@ static void icam_init()
 	for (i=0; i<256; i++) {
 		uint8_t x = (uint8_t)i, y = 0;
 		y |= (uint8_t)((x & 0x01) << 1);
-		y |= (uint8_t)((x & 0x02) << 5);
+		y |= (uint8_t)((x & 0x02) << 6); // v1.47.1: r120 real - era << 5 (colidia com o bit 4)
 		y |= (uint8_t)((x & 0x04) << 3);
 		y |= (uint8_t)((x & 0x08) >> 1);
 		y |= (uint8_t)((x & 0x10) << 2);
-		y |= (uint8_t)((x & 0x20) >> 1);
-		y |= (uint8_t)((x & 0x40) >> 6);
-		y |= (uint8_t)((x & 0x80) >> 4);
+		y |= (uint8_t)((x & 0x20) >> 5); // v1.47.1: r120 real - era >> 1 (bit 5 -> bit 0)
+		y |= (uint8_t)((x & 0x40) >> 3); // v1.47.1: r120 real - era >> 6 (bit 6 -> bit 3)
+		y |= (uint8_t)((x & 0x80) >> 3); // v1.47.1: r120 real - era >> 4 (bit 7 -> bit 4)
 		icam_perm[i] = y;
 	}
+	for (i=0; i<256; i++) icam_inv[icam_perm[i]] = (uint8_t)i;
 	icam_ready = 1;
 }
 
@@ -39,6 +42,18 @@ void dcw_cak7_apply(uint8_t cw[16])
 	for (q=0; q<4; q++) {
 		int off = q*4;
 		cw[off] = icam_perm[cw[off]];
+		cw[off+3] = (uint8_t)(cw[off+1] + cw[off+2] + cw[off]);
+	}
+}
+
+// v1.48: permutacao INVERSA (para fontes que entregam a CW ja icam-scrambled)
+void dcw_cak7_apply_inv(uint8_t cw[16])
+{
+	icam_init();
+	int q;
+	for (q=0; q<4; q++) {
+		int off = q*4;
+		cw[off] = icam_inv[cw[off]];
 		cw[off+3] = (uint8_t)(cw[off+1] + cw[off+2] + cw[off]);
 	}
 }
@@ -107,54 +122,6 @@ char *ecm_filter_check(struct cardserver_data *cs, uint8_t *ecmdata, uint16_t ec
 }
 
 // ---------------------------------------------------------------------------
-// CWPK LEARNING: regras aprendidas em runtime (CW de cartao marcado)
-// ---------------------------------------------------------------------------
-#define LEARN_MAX 16
-#define LEARN_SAMPLES 5
-static struct {
-	uint8_t cw[16];
-	int hits;
-	uint32_t firstseen;
-} learned[LEARN_MAX];
-static int nlearned = 0;
-
-static void learn_cw(uint8_t cw[16], uint32_t ip)
-{
-	int i;
-	for (i=0; i<nlearned; i++) {
-		if (!memcmp(learned[i].cw, cw, 16)) { learned[i].hits++; return; }
-	}
-	if (nlearned>=LEARN_MAX) {
-		// FIFO: descarta a mais antiga
-		memmove(&learned[0], &learned[1], sizeof(learned[0])*(LEARN_MAX-1));
-		nlearned--;
-	}
-	memcpy(learned[nlearned].cw, cw, 16);
-	learned[nlearned].hits = 1;
-	learned[nlearned].firstseen = GetTickCount();
-	nlearned++;
-	char dump[64];
-	array2hex(cw, dump, 16);
-	mlogf(LOGWARNING,0," CWPK LEARNING: nova regra aprendida (CW de cartao marcado, IP %s) => %s\n", (char*)ip2string(ip), dump);
-	prot_event_add("CWPK LEARNING: nova regra aprendida => %s", dump);
-}
-
-// regras aprendidas ativas? (consulta rapida para o filtro)
-int dcw_filter_learned_count()
-{
-	return nlearned;
-}
-
-int dcw_filter_learned_check(uint8_t dcw[16])
-{
-	int i;
-	for (i=0; i<nlearned; i++) {
-		if (!memcmp(learned[i].cw, dcw, 16)) return 1;
-	}
-	return 0;
-}
-
-// ---------------------------------------------------------------------------
 // EVENTOS RECENTES (dashboard): anel de mensagens das protecoes
 // ---------------------------------------------------------------------------
 #define PROT_EVENTS 16
@@ -195,67 +162,6 @@ uint32_t prot_uptime_ticks()
 }
 
 // ---------------------------------------------------------------------------
-// DCW FILTER: blacklist CWPK (EXACT/MASK/ALLEQUAL)
-// retorna 1 se bloqueada (DROP), 0 se aceite (LOGONLY apenas loga)
-// ---------------------------------------------------------------------------
-int dcw_filter_check(struct cardserver_data *cs, uint8_t dcw[16])
-{
-	if (!cs || !cs->option.dcwfilter.enable || !cs->option.dcwfilter.nrules) return 0;
-	int i;
-	for (i=0; i<cs->option.dcwfilter.nrules; i++) {
-		uint8_t type = cs->option.dcwfilter.rules[i].type;
-		int hit = 0;
-		if (type==1) { // EXACT: lista de CWs
-			int k;
-			for (k=0; k<cs->option.dcwfilter.rules[i].n; k++) {
-				if (!memcmp(dcw, cs->option.dcwfilter.rules[i].cw[k], 16)) { hit = 1; break; }
-			}
-		}
-		else if (type==2) { // MASK
-			int j, m = 1;
-			for (j=0; j<16; j++) {
-				if ( (dcw[j] & cs->option.dcwfilter.rules[i].mask[j]) != (cs->option.dcwfilter.rules[i].cw[0][j] & cs->option.dcwfilter.rules[i].mask[j]) ) { m = 0; break; }
-			}
-			if (m) hit = 1;
-		}
-		else if (type==3) { // ALLEQUAL
-			int j, e = 1;
-			for (j=1; j<16; j++) if (dcw[j]!=dcw[0]) { e = 0; break; }
-			if (e) hit = 1;
-		}
-		if (hit) {
-			char dump[64];
-			array2hex(dcw, dump, 16);
-			int mode = cs->option.dcwfilter.mode;
-			if (mode==2) {
-				// AUTO: desligado por defeito; ativa no 1o hit de cartao marcado
-				if (!cs->option.dcwfilter.auto_active) {
-					cs->option.dcwfilter.auto_active = 1;
-					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: AUTO ATIVADO no perfil '%s' - detetada CW de cartao marcado (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
-					prot_event_add("dcwfilter: AUTO ATIVADO no perfil '%s' => %s", cs->name, dump);
-				}
-				else {
-					mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: perfil '%s' CW bloqueada (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
-				}
-				return 1;
-			}
-			mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: perfil '%s' CW bloqueada (rule %d, tipo %d) => %s\n", cs->name, i+1, type, dump);
-			return mode ? 1 : 0;
-		}
-	}
-	// CWPK LEARNING: regras aprendidas em runtime (bloqueiam sempre, se ativo)
-	if (cs->option.dcwfilter.learn && nlearned>0) {
-		if (dcw_filter_learned_check(dcw)) {
-			char dump[64];
-			array2hex(dcw, dump, 16);
-			mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: perfil '%s' CW bloqueada (regra APRENDIDA) => %s\n", cs->name, dump);
-			return 1;
-		}
-	}
-	return 0;
-}
-
-// ---------------------------------------------------------------------------
 // FAILBAN: contadores por IP (bad CW de clientes/peers) -> ipblock
 // ---------------------------------------------------------------------------
 #define FB_MAX 128
@@ -264,9 +170,6 @@ struct fb_entry {
 	uint32_t time;   // inicio da janela
 	int count;
 	int banned;
-	// LEARNING CWPK: amostras das CWs mas recebidas deste IP
-	uint8_t cws[8][16];
-	int cw_idx;
 };
 
 static struct fb_entry fb_list[FB_MAX];
@@ -300,8 +203,6 @@ void failban_bad(uint32_t ip, int proto, char *reason, uint8_t *badcw)
 		case TYPE_CCCAM:    max = cfg.failban.max_cccam; break;
 		case TYPE_NEWCAMD:  max = cfg.failban.max_newcamd; break;
 		case TYPE_MGCAMD:   max = cfg.failban.max_mgcamd; break;
-		case TYPE_CAMD35:   max = cfg.failban.max_camd35; break;
-		case TYPE_CS378X:   max = cfg.failban.max_cs378x; break;
 		case TYPE_CACHE:    max = cfg.failban.max_cache; break;
 		default: max = 0;
 	}
@@ -309,21 +210,6 @@ void failban_bad(uint32_t ip, int proto, char *reason, uint8_t *badcw)
 	pthread_mutex_lock(&fb_mutex);
 	struct fb_entry *e = fb_find(ip);
 	if (e->banned) { pthread_mutex_unlock(&fb_mutex); return; }
-	// CWPK LEARNING: guardar amostra da CW ma e contar repeticoes
-	if (badcw) {
-		memcpy(e->cws[e->cw_idx], badcw, 16);
-		e->cw_idx = (e->cw_idx+1)%8;
-		int same = 0, i;
-		for (i=0; i<8; i++) {
-			if (!memcmp(e->cws[i], badcw, 16)) same++;
-		}
-		if (same>=LEARN_SAMPLES) {
-			learn_cw(badcw, ip);
-			// reset das amostras para nao reaprender o mesmo padrao em loop
-			memset(e->cws, 0, sizeof(e->cws));
-			e->cw_idx = 0;
-		}
-	}
 	e->count++;
 	if (e->count>=max) {
 		e->banned = 1;

@@ -6,22 +6,6 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
-
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -30,8 +14,6 @@
 #include <pthread.h>
 #include <poll.h>
 #include <sys/prctl.h>
-
-#endif
 
 #include "debug.h"
 #include "convert.h"
@@ -121,6 +103,23 @@ void *telnetprocess(int *param )
 			sprintf( wbuf,"Total Profiles: %d\r\nTotal Servers: %d\r\nTotal Cache Servers: %d\r\nTotal CCcam Servers: %d\r\n", cfg.totalprofiles, cfg.totalservers, cfg.cache.totalservers, cfg.cccam.totalservers);
 			writes(fd, wbuf);
 		}
+		// v1.48: oraculo CWPK - testa uma chave candidata (32 hex) contra
+		// as CWs 1802 WRAP capturadas pelo DCW RAWLOG
+		else if ( !strcmp(str, "CWPKTEST") ) {
+			char key[128];
+			if (parse_name(key) && strlen(key)>=32) {
+				uint8_t k[16];
+				memset(k, 0, 16);
+				int i;
+				for (i=0; i<16 && key[i*2] && key[i*2+1]; i++) {
+					char b[3] = { key[i*2], key[i*2+1], 0 };
+					k[i] = (uint8_t)strtoul(b, NULL, 16);
+				}
+				cwpk_test_key(k, wbuf, sizeof(wbuf));
+				writes(fd, wbuf);
+			}
+			else writes(fd, "uso: CWPKTEST <32hex>\r\n");
+		}
 		else if ( !strcmp(str, "DEBUG") ) {
 			int i=idbgline;
 			do {
@@ -146,7 +145,6 @@ void *telnetprocess(int *param )
 			while ( fgets(wbuf, sizeof(wbuf), fp) ) writes(fd, wbuf);
 			fclose(fp);
 		}
-#ifndef PUBLIC
 		else if ( !strcmp(str, "SCHED") ) {
 			if (parse_name(str)) {
 				uppercase(str);
@@ -196,7 +194,6 @@ void *telnetprocess(int *param )
 				fclose(fp);
 			}
 		}
-#endif
 		else if ( !strcmp(str, "HELP") ) {
 			writes(fd, " Commands: help - uptime - stat - cccam - mgcamd - debug - loadavg - cpuinfo - meminfo - exit/quit\r\n");
 		}
@@ -399,9 +396,7 @@ void *telnet_thread(void *param)
 	int clientsock;
 	struct sockaddr_in client_addr;
 	socklen_t socklen = sizeof(client_addr);
-#ifndef PUBLIC
 	prctl(PR_SET_NAME,"Telnet",0,0,0);
-#endif
 	while(1) {
 		if (cfg.telnet.handle>0) {
 			struct pollfd pfd;

@@ -35,42 +35,6 @@ inline void cacheex_cccam_hitprofile( struct cc_client_data *cli, int csid )
 	}
 }
 
-#ifdef CAMD35_SRV
-inline void cacheex_camd35_hitprofile( struct camd35_client_data *cli, int csid )
-{
-	int i;
-	for(i=0; i<MAX_CSPORTS; i++) {
-		if (!cli->csporthit[i].csid) {
-			cli->csporthit[i].csid = csid;
-			cli->csporthit[i].hits = 1;
-			break;
-		}
-		else if (cli->csporthit[i].csid==csid) {
-			cli->csporthit[i].hits++;
-			break;
-		}
-	}
-}
-#endif
-
-#ifdef CS378X_SRV
-inline void cacheex_cs378x_hitprofile( struct camd35_client_data *cli, int csid )
-{
-	int i;
-	for(i=0; i<MAX_CSPORTS; i++) {
-		if (!cli->csporthit[i].csid) {
-			cli->csporthit[i].csid = csid;
-			cli->csporthit[i].hits = 1;
-			break;
-		}
-		else if (cli->csporthit[i].csid==csid) {
-			cli->csporthit[i].hits++;
-			break;
-		}
-	}
-}
-#endif
-
 inline void cacheex_server_hitprofile( struct server_data *srv, int csid )
 {
 	int i;
@@ -127,33 +91,390 @@ inline int dcwcheck_nds( ECM_DATA *ecm, uint8_t dcw[16], int swap )
 #endif
 		else return 0;
 	}
-	
 }
 
 
+// v1.46 B8: idents maus por CAID (aprendido pelo motor)
+// - cada anomalia do motor conta para o (caid,provid) da fonte
+// - >=5 anomalias em 10min marca o ident por 1h (filtro automatico)
+#define BADIDENT_MAX 16
+static struct {
+	uint16_t caid;
+	uint32_t provid;
+	uint32_t cnt;
+	uint32_t t0;
+	uint32_t marked;
+} badident[BADIDENT_MAX];
 
+static void badident_note(uint16_t caid, uint32_t provid)
+{
+	uint32_t ticks = GetTickCount();
+	int i, free = -1;
+	for (i=0; i<BADIDENT_MAX; i++) {
+		if (badident[i].caid==caid && badident[i].provid==provid) break;
+		if (free<0 && !badident[i].caid) free = i;
+	}
+	if (i==BADIDENT_MAX) {
+		if (free<0) return;
+		i = free;
+		badident[i].caid = caid;
+		badident[i].provid = provid;
+		badident[i].cnt = 0;
+		badident[i].t0 = ticks;
+		badident[i].marked = 0;
+	}
+	if ( (uint32_t)(ticks - badident[i].t0) > 600000 ) {
+		badident[i].t0 = ticks;
+		badident[i].cnt = 0;
+	}
+	badident[i].cnt++;
+	if (badident[i].cnt >= 5 && !badident[i].marked) {
+		badident[i].marked = ticks;
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," ident: %04x:%06x marcado como mau (5 anomalias em 10min)\n", caid, provid);
+	}
+}
 
+int dcwchan_badident_check(uint16_t caid, uint32_t provid)
+{
+	uint32_t ticks = GetTickCount();
+	int i;
+	for (i=0; i<BADIDENT_MAX; i++) {
+		if (badident[i].caid!=caid || badident[i].provid!=provid) continue;
+		if (badident[i].marked && ((uint32_t)(ticks - badident[i].marked) < 3600000)) return 1;
+		return 0;
+	}
+	return 0;
+}
 
-// Per-channel DCW state: DCW MINTIME + DCW CYCLE_CHECK (por perfil)
+// v1.48 DEADCHAN: canais mortos (pedidos mas sem resposta ha X min)
+// - o motor suprime o storm de pedidos aos readers (protege o cartao/failban)
+// - de RETRY em RETRY segundos deixa passar 1 probe para detetar recuperacao
+#define DEADCHAN_MAX 64
+static struct {
+	uint16_t caid;
+	uint32_t provid;
+	uint16_t sid;
+	uint32_t lastans; // ultima resposta boa (0 = nunca)
+	uint32_t lastreq; // ultimo pedido
+	uint32_t mark;    // inicio da janela de supressao (0 = canal vivo)
+} deadchan[DEADCHAN_MAX];
+
+void deadchan_answer(uint16_t caid, uint32_t provid, uint16_t sid)
+{
+	uint32_t ticks = GetTickCount();
+	int i, free = -1, old = 0;
+	for (i=0; i<DEADCHAN_MAX; i++) {
+		if (deadchan[i].caid==caid && deadchan[i].provid==provid && deadchan[i].sid==sid) {
+			deadchan[i].lastans = ticks;
+			deadchan[i].lastreq = ticks;
+			deadchan[i].mark = 0;
+			return;
+		}
+		if (!deadchan[i].caid && free<0) free = i;
+		if (deadchan[i].lastreq < deadchan[old].lastreq) old = i;
+	}
+	i = (free>=0) ? free : old;
+	memset( &deadchan[i], 0, sizeof(deadchan[i]) );
+	deadchan[i].caid = caid;
+	deadchan[i].provid = provid;
+	deadchan[i].sid = sid;
+	deadchan[i].lastans = ticks;
+	deadchan[i].lastreq = ticks;
+}
+
+// 1 = canal morto: nao pedir aos readers agora (janela de supressao activa)
+int deadchan_suppress(uint16_t caid, uint32_t provid, uint16_t sid, struct cardserver_data *cs)
+{
+	if (!cs || !cs->option.dcw.deadchan) return 0;
+	uint32_t ticks = GetTickCount();
+	uint32_t mintime = cs->option.dcw.deadchan_mintime * 60000;
+	uint32_t retry = cs->option.dcw.deadchan_retry * 1000;
+	int i, free = -1, old = 0;
+	for (i=0; i<DEADCHAN_MAX; i++) {
+		if (deadchan[i].caid==caid && deadchan[i].provid==provid && deadchan[i].sid==sid) break;
+		if (!deadchan[i].caid && free<0) free = i;
+		if (deadchan[i].lastreq < deadchan[old].lastreq) old = i;
+	}
+	if (i==DEADCHAN_MAX) {
+		i = (free>=0) ? free : old;
+		memset( &deadchan[i], 0, sizeof(deadchan[i]) );
+		deadchan[i].caid = caid;
+		deadchan[i].provid = provid;
+		deadchan[i].sid = sid;
+	}
+	deadchan[i].lastreq = ticks;
+	if (deadchan[i].lastans && ((uint32_t)(ticks - deadchan[i].lastans) < mintime)) return 0; // vivo
+	if (deadchan[i].mark && ((uint32_t)(ticks - deadchan[i].mark) < retry)) return 1; // janela: suprime
+	// janela expirou (ou 1a vez): deixa passar ESTE pedido (probe) e re-marca
+	deadchan[i].mark = ticks;
+	if (deadchan[i].lastans) {
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," deadchan: ch %04x:%06x:%04x sem resposta ha %ds - a suprimir storm (probe de %us em %us)\n",
+			caid, provid, sid, (int)((ticks-deadchan[i].lastans)/1000), retry/1000, retry/1000);
+	}
+	else {
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," deadchan: ch %04x:%06x:%04x nunca respondeu - a suprimir storm\n", caid, provid, sid);
+	}
+	prot_event_add("DEADCHAN: ch %04x:%06x:%04x sem resposta - storm suprimido", caid, provid, sid);
+	return 0; // probe: este pedido passa; os seguintes ficam suprimidos na janela
+}
+
+// top de canais mortos (para a GUI) - por tempo desde a ultima resposta
+int deadchan_top(int max, uint16_t *caid, uint32_t *provid, uint16_t *sid, uint32_t *age)
+{
+	uint32_t ticks = GetTickCount();
+	int idx[DEADCHAN_MAX];
+	int n = 0, i, j;
+	for (i=0; i<DEADCHAN_MAX; i++) {
+		if (!deadchan[i].caid) continue;
+		if (deadchan[i].lastans) {
+			uint32_t a = (uint32_t)(ticks - deadchan[i].lastans);
+			if (a < 60000) continue; // so mortos (>1min sem resposta)
+		}
+		idx[n++] = i;
+	}
+	for (i=0; i<n-1; i++) {
+		for (j=i+1; j<n; j++) {
+			uint32_t ai = deadchan[idx[i]].lastans ? (ticks-deadchan[idx[i]].lastans) : 0xFFFFFFFF;
+			uint32_t aj = deadchan[idx[j]].lastans ? (ticks-deadchan[idx[j]].lastans) : 0xFFFFFFFF;
+			if (aj > ai) { int t = idx[i]; idx[i] = idx[j]; idx[j] = t; }
+		}
+	}
+	if (n>max) n = max;
+	for (i=0; i<n; i++) {
+		caid[i] = deadchan[idx[i]].caid;
+		provid[i] = deadchan[idx[i]].provid;
+		sid[i] = deadchan[idx[i]].sid;
+		age[i] = deadchan[idx[i]].lastans ? (ticks-deadchan[idx[i]].lastans)/1000 : 0xFFFFFFFF;
+	}
+	return n;
+}
+
+// v1.48 VERDICT: feedback real da box (abriu/nao abriu) sobre as CWs servidas
+// - a box reporta via HTTP /verdict; a CW ma marca a fonte que a serviu
+#define VERDICT_MAX 128
+static struct {
+	uint16_t caid;
+	uint32_t provid;
+	uint16_t sid;
+	uint8_t cw[16];
+	uint32_t t;
+	int srcid;
+	int srctype;
+	uint8_t reported;
+} verdict[VERDICT_MAX];
+static int verdict_idx = 0;
+static pthread_mutex_t verdict_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void verdict_serve(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, int srctype, int srcid)
+{
+	pthread_mutex_lock(&verdict_mutex);
+	verdict[verdict_idx].caid = caid;
+	verdict[verdict_idx].provid = provid;
+	verdict[verdict_idx].sid = sid;
+	memcpy(verdict[verdict_idx].cw, cw, 16);
+	verdict[verdict_idx].t = GetTickCount();
+	verdict[verdict_idx].srcid = srcid;
+	verdict[verdict_idx].srctype = srctype;
+	verdict[verdict_idx].reported = 0;
+	verdict_idx = (verdict_idx + 1) % VERDICT_MAX;
+	pthread_mutex_unlock(&verdict_mutex);
+}
+
+// 1 = CW encontrada e marcada; 0 = nao encontrada (ou ja reportada)
+int verdict_report(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, int ok)
+{
+	int i, found = 0, srcid = 0, srctype = 0;
+	pthread_mutex_lock(&verdict_mutex);
+	for (i=0; i<VERDICT_MAX; i++) {
+		int s = (verdict_idx - 1 - i + VERDICT_MAX*2) % VERDICT_MAX;
+		if (!verdict[s].caid) continue;
+		if (memcmp(verdict[s].cw, cw, 16)) continue; // a CW e a chave de match
+		if (caid && (verdict[s].caid!=caid)) continue;
+		if (verdict[s].reported) break;
+		verdict[s].reported = 1;
+		found = 1;
+		srcid = verdict[s].srcid;
+		srctype = verdict[s].srctype;
+		break;
+	}
+	pthread_mutex_unlock(&verdict_mutex);
+	if (!found) return 0;
+	FILE *fp = fopen("/var/log/multics-verdict.log","a");
+	if (fp) {
+		time_t t = time(NULL);
+		struct tm *lt = localtime(&t);
+		fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x %s cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d srv %d\n",
+			lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+			caid, provid, sid, ok?"OK":"BLACK",
+			cw[0],cw[1],cw[2],cw[3],cw[4],cw[5],cw[6],cw[7],
+			cw[8],cw[9],cw[10],cw[11],cw[12],cw[13],cw[14],cw[15],
+			srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0);
+		fclose(fp);
+	}
+	if (!ok && (srctype==DCW_SOURCE_SERVER)) {
+		dcw_badmark( srcid, caid, sid );
+		prot_event_add("VERDICT: box reporta CW MA ch %04x:%06x:%04x - fonte %d marcada", caid, provid, sid, srcid&0xffff);
+	}
+	return 1;
+}
+
+// v1.48 GRACE 1802: deteta os periodos de graca da NOS (CW raw com checksums
+// validos) vs o pairing CWPK (CW wrapped, checksums aleatorios)
+#define GRACE_MAX 64
+static struct { uint16_t caid; uint32_t provid; uint16_t sid; uint8_t state; } grace1802[GRACE_MAX];
+// state: 0=desconhecido, 1=raw (graca), 2=wrapped (CWPK activo)
+
+static void rawlog_1802_grace(uint16_t caid, uint32_t provid, uint16_t sid, int rawok)
+{
+	if (caid!=0x1802) return;
+	int i, free = -1;
+	for (i=0; i<GRACE_MAX; i++) {
+		if (grace1802[i].caid==caid && grace1802[i].provid==provid && grace1802[i].sid==sid) break;
+		if (free<0 && !grace1802[i].caid) free = i;
+	}
+	if (i==GRACE_MAX) {
+		if (free<0) return;
+		i = free;
+		grace1802[i].caid = caid;
+		grace1802[i].provid = provid;
+		grace1802[i].sid = sid;
+		grace1802[i].state = 0;
+	}
+	uint8_t newstate = rawok ? 1 : 2;
+	if (grace1802[i].state && (grace1802[i].state != newstate)) {
+		if (newstate==1) {
+			prot_event_add("GRACE ON: ch %04x:%06x:%04x entrega CW raw (pairing suspenso)", caid, provid, sid);
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," grace1802: ch %04x:%06x:%04x GRACE ON (CW raw)\n", caid, provid, sid);
+		}
+		else {
+			prot_event_add("GRACE OFF: ch %04x:%06x:%04x volta ao CWPK (CW wrapped)", caid, provid, sid);
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," grace1802: ch %04x:%06x:%04x GRACE OFF (CW wrapped)\n", caid, provid, sid);
+		}
+	}
+	grace1802[i].state = newstate;
+}
+
+// v1.48 CWPK ORACULO: anel das CWs 1802 WRAP capturadas (rawlog) para validar
+// chaves candidatas (3DES-EDE + checksums de quad) - comando CWPKTEST no telnet
+#define CWPK_RING_MAX 256
+static uint8_t cwpk_ring[CWPK_RING_MAX][16];
+static int cwpk_ring_n = 0;
+static int cwpk_ring_i = 0;
+static pthread_mutex_t cwpk_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void cwpk_ring_add(uint8_t *cw)
+{
+	pthread_mutex_lock(&cwpk_mutex);
+	memcpy(cwpk_ring[cwpk_ring_i], cw, 16);
+	cwpk_ring_i = (cwpk_ring_i + 1) % CWPK_RING_MAX;
+	if (cwpk_ring_n < CWPK_RING_MAX) cwpk_ring_n++;
+	pthread_mutex_unlock(&cwpk_mutex);
+}
+
+static int cwpk_quad_ok(uint8_t *b, int off)
+{
+	return ( ((b[off] + b[off+1] + b[off+2]) & 0xFF) == b[off+3] );
+}
+
+// 3DES-EDE decrypt de 1 bloco de 8 bytes (D com K1, E com K2, D com K1)
+static void cwpk_des3_block(uint8_t *b, byte *k1, byte *k2)
+{
+	des(k1, DES_IP, b);      // D(K1): IP + rondas em ordem de decifra
+	des(k2, DES_RIGHT, b);   // E(K2)
+	des(k1, DES_IP_1, b);    // D(K1) + IP^-1
+}
+
+// converte uma chave DES de 8 bytes (com paridade no LSB) para o formato
+// compacto de 7 bytes usado pelo des() do multics
+static void cwpk_des8_to_des7(uint8_t *in8, byte *out7)
+{
+	int i;
+	for (i=0; i<7; i++) out7[i] = (uint8_t)((in8[i] & 0xFE) | (in8[i+1] >> 7));
+	out7[7] = 0;
+}
+
+// testa uma chave candidata (16 bytes) contra as CWs WRAP capturadas.
+// 4 variantes: ordem K1/K2 e K2/K1 x chave 7B direta e 8B com paridade.
+void cwpk_test_key(uint8_t *key16, char *out, int outlen)
+{
+	static uint8_t local[CWPK_RING_MAX][16];
+	int n, i, order, layout;
+	pthread_mutex_lock(&cwpk_mutex);
+	n = cwpk_ring_n;
+	for (i=0; i<n; i++)
+		memcpy(local[i], cwpk_ring[(cwpk_ring_i - n + i + CWPK_RING_MAX*2) % CWPK_RING_MAX], 16);
+	pthread_mutex_unlock(&cwpk_mutex);
+	if (!n) {
+		snprintf(out, outlen, "CWPKTEST: sem CWs WRAP capturadas (ativar DCW RAWLOG no perfil NOS)\r\n");
+		return;
+	}
+	int pos = 0;
+	pos += snprintf(out+pos, outlen-pos, "CWPKTEST: %d CWs WRAP no anel\r\n", n);
+	for (order=0; order<2; order++) {
+		for (layout=0; layout<2; layout++) {
+			byte k1[8], k2[8];
+			uint8_t *a = order ? key16+8 : key16;
+			uint8_t *b = order ? key16   : key16+8;
+			if (layout==0) {
+				memcpy(k1, a, 7); k1[7] = 0;
+				memcpy(k2, b, 7); k2[7] = 0;
+			}
+			else {
+				cwpk_des8_to_des7(a, k1);
+				cwpk_des8_to_des7(b, k2);
+			}
+			int full = 0, quad = 0;
+			for (i=0; i<n; i++) {
+				uint8_t h0[8], h1[8];
+				memcpy(h0, local[i], 8);
+				memcpy(h1, local[i]+8, 8);
+				cwpk_des3_block(h0, k1, k2);
+				cwpk_des3_block(h1, k1, k2);
+				int q = (cwpk_quad_ok(h0,0)?1:0) + (cwpk_quad_ok(h0,4)?1:0)
+				      + (cwpk_quad_ok(h1,0)?1:0) + (cwpk_quad_ok(h1,4)?1:0);
+				quad += q;
+				if (q==4) full++;
+			}
+			pos += snprintf(out+pos, outlen-pos, "  %s/%s: full=%d/%d (%d%%) quads=%d/%d\r\n",
+				order?"K2K1":"K1K2", layout?"8B-paridade":"7B-direto",
+				full, n, n?(full*100)/n:0, quad, n*4);
+		}
+	}
+	pos += snprintf(out+pos, outlen-pos, "  (chave certa => ~100%% full numa das variantes)\r\n");
+}
+
+// Per-channel DCW state: CYCLE ENGINE v1.40 (motor unico de ciclo)
 struct dcwchan_data {
 	struct dcwchan_data *next;
 	uint16_t caid;
 	uint32_t provid;
 	uint16_t sid;
 	uint8_t cw[16];
-	uint32_t lasttime;
+	uint8_t cw2[16]; // CW anterior (janela de 2 para LASTCWONNOK)
+	uint32_t lasthash; // hash da ultima CW aceite
+	uint32_t lasttime; // tempo da ultima CW aceite
 	uint8_t lasthalf; // 0 = metade0 mudou por ultimo, 1 = metade1, 2 = ambas/desconhecido
+	uint32_t cad_ema; // EMA da cadencia em ms (16.16 fixed point)
+	uint8_t samples;  // nr de mudancas aprendidas
+	uint32_t anomalies; // total de anomalias (para a GUI)
+	uint8_t stale_cnt; // v1.44: stales recentes (janela de 60s) - gate do stale-hold
+	uint32_t stale_t0; // v1.44: inicio da janela de stales
 };
 
 static struct dcwchan_data *dcwchan_list = NULL;
 static pthread_mutex_t dcwchan_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// 0 = ok, 1 = rejeitar
-int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
+// CYCLE ENGINE v1.40: um unico motor de ciclo por canal.
+// Retorno: 0 = ok, 1 = STALE (par completo repetido com hash novo),
+//          2 = violacao do padrao (metade repetida / par completo quando alternava),
+//          3 = mudanca demasiado rapida.
+// A janela (cw/cw2) e SEMPRE actualizada (alimenta o LASTCWONNOK);
+// o caller decide a accao das anomalias conforme a opcao do perfil.
+int dcwchan_engine(ECM_DATA *ecm, uint8_t dcw[16])
 {
 	char nullcw[8] = "\0\0\0\0\0\0\0\0";
 	uint32_t now = GetTickCount();
-	int reject = 0;
+	int ret = 0;
 
 	pthread_mutex_lock(&dcwchan_mutex);
 	struct dcwchan_data *e = dcwchan_list;
@@ -168,6 +489,7 @@ int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
 		e->provid = ecm->provid;
 		e->sid = ecm->sid;
 		memcpy(e->cw, dcw, 16);
+		e->lasthash = ecm->hash;
 		e->lasttime = now;
 		e->lasthalf = 2;
 		e->next = dcwchan_list;
@@ -176,369 +498,189 @@ int dcwchan_check(ECM_DATA *ecm, uint8_t dcw[16], struct cardserver_data *cs)
 		return 0;
 	}
 
-	if (memcmp(e->cw, dcw, 16)) {
-		// DCW MINTIME: mudanca demasiado rapida
-		if (cs->option.dcw.mintime && ((uint32_t)(now - e->lasttime) < (uint32_t)cs->option.dcw.mintime)) {
-			mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: mintime reject ch %04x:%06x:%04x (%ums < %ums)\n",
-				ecm->caid, ecm->provid, ecm->sid, now - e->lasttime, cs->option.dcw.mintime);
-			reject = 1;
-		}
-		else if (cs->option.dcw.cyclecheck) {
-			// DCW CYCLE_CHECK: a metade que muda tem de alternar
-			if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) {
-				// half-null (NDS): metade preenchida tem de alternar
-				int half = dcwcmp8(dcw,nullcw) ? 0 : 1;
-				if (e->lasthalf==half) {
-					mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half %d repetida)\n",
-						ecm->caid, ecm->provid, ecm->sid, half);
-					reject = 1;
-				}
-				else e->lasthalf = half;
-			}
-			else {
-				int r0 = memcmp(e->cw, dcw, 8)!=0;
-				int r1 = memcmp(e->cw+8, dcw+8, 8)!=0;
-				if (r0 && !r1) {
-					if (e->lasthalf==0) {
-						mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half 0 repetida)\n",
-							ecm->caid, ecm->provid, ecm->sid);
-						reject = 1;
-					}
-					else e->lasthalf = 0;
-				}
-				else if (!r0 && r1) {
-					if (e->lasthalf==1) {
-						mlogf(LOGDEBUG,getdbgflag(DBG_CACHE,0,0)," dcw: cycle_check reject ch %04x:%06x:%04x (half 1 repetida)\n",
-							ecm->caid, ecm->provid, ecm->sid);
-						reject = 1;
-					}
-					else e->lasthalf = 1;
-				}
-				else e->lasthalf = 2;
-			}
+	int r0 = memcmp(e->cw, dcw, 8)!=0;
+	int r1 = memcmp(e->cw+8, dcw+8, 8)!=0;
+	uint32_t delta = now - e->lasttime;
+
+	if (!r0 && !r1) {
+		// par completo repetido
+		if (e->lasthash && (e->lasthash != ecm->hash)) {
+			e->anomalies++;
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: STALE (par repetido, hash novo) ch %04x:%06x:%04x cad~%ums\n",
+				ecm->caid, ecm->provid, ecm->sid, e->cad_ema>>16);
+			ret = 1;
+			// v1.44: janela de stales (60s) - o hold so actua com stales persistentes
+			if ( (uint32_t)(now - e->stale_t0) > 60000 ) { e->stale_cnt = 0; e->stale_t0 = now; }
+			if (e->stale_cnt < 255) e->stale_cnt++;
 		}
 	}
-
-	if (!reject) {
-		memcpy(e->cw, dcw, 16);
-		e->lasttime = now;
-	}
-
-	pthread_mutex_unlock(&dcwchan_mutex);
-	return reject;
-}
-
-
-#ifndef THREAD_DCW
-
-void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
-{
-	char nullcw[16] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-	if ( dcwcmp16(dcw,nullcw) ) return;
-
-	struct cardserver_data *cs = ecm->cs;
-	if (!cs) return;
-
-	if ( dcwcmp8(dcw,nullcw) && dcwcmp8(dcw+8,nullcw) ) return;
-
-	// FILTRO EMBUTIDO (nao configuravel): fake cw com ultimo byte XOR 0xF0
-	if ( isfakecw_xorF0(dcw) && !acceptDCW_nanoe0(dcw) ) {
-		mlogf(LOGWARNING,0," !!! fake cw detected in setdcw (last byte XOR 0xF0) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
-		return;
-	}
-
-	// CAK7: transformacao da CW (permutacao + checksum) antes de qualquer validacao
-	if (cs->option.dcw.cak7) {
-		dcw_cak7_apply(dcw);
-	}
-
-	// DCW FILTER: blacklist CWPK (cartoes marcados / fakes)
-	if ( dcw_filter_check(cs, dcw) ) {
-		ecm->lastdecode.error++;
-		mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: CW rejeitada (DROP) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
-		return;
-	}
-
-	int cwpart = 2;
-	if (ecm->cw1cycle) {
-		if (ecm->ecm[0]==ecm->cw1cycle) cwpart = 1; else cwpart = 0;
+	else if (r0 && r1) {
+		// ambas as metades mudaram: anomalia apenas se a fonte alternava antes
+		if (e->samples >= 6 && (e->lasthalf==0 || e->lasthalf==1)) {
+			e->anomalies++;
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: par completo novo (fonte nao alterna) ch %04x:%06x:%04x cad~%ums\n",
+				ecm->caid, ecm->provid, ecm->sid, e->cad_ema>>16);
+			ret = 2;
+		}
+		e->lasthalf = 2;
 	}
 	else {
-		if ( dcwcmp8(dcw,nullcw) ) cwpart = 1;
-		else if ( dcwcmp8(dcw+8,nullcw) ) cwpart = 0;
-	}
-
-	if (ecm->dcwstatus==STAT_DCW_SUCCESS) {
-		return;
-	}
-/*
-	if ( !ecmdata_check_cw( ecm->ecm[0], ecm->hash, ecm->caid, ecm->provid, ecm->sid, dcw, cwpart) ) {
-		return;
-	}
-*/
-
-#ifndef PUBLIC
-	if (srctype!=DCW_SOURCE_CACHE) {
-		pthread_mutex_lock( &prg.lockcache );
-		int f = cache_check_cw( ecm->recvtime, ecm->ecm[0], ecm->caid, ecm->hash, ecm->sid, dcw, cwpart);
-		pthread_mutex_unlock( &prg.lockcache );
-		if (!f) {
-			return;
+		// uma metade mudou (half-null: a metade preenchida conta)
+		int half = r0 ? 0 : 1;
+		if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) half = dcwcmp8(dcw,nullcw) ? 0 : 1;
+		if (e->samples >= 6 && e->lasthalf==half) {
+			e->anomalies++;
+			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: metade %d repetida (violacao de alternancia) ch %04x:%06x:%04x\n",
+				half, ecm->caid, ecm->provid, ecm->sid);
+			ret = 2;
 		}
-	}
-#endif
-
-	// filter non-nds halfnulled cw
-	if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) {
-		if ((ecm->caid>>8)!=9) {
-			return;
-		}
-		int swap = 0;
-#ifdef DCWSWAP
-		if (cs)	if (cs->option.dcw.swap) swap = 1;
-#endif
-		if ( !dcwcheck_nds( ecm, dcw, swap) ) {
-			return;
-		}
+		e->lasthalf = half;
 	}
 
-#ifdef CHECK_NEXTDCW
-	if (cs->option.dcw.check && !cs->option.dcw.halfnulled) {
-		int check = checkfreeze_setdcw(ecm,dcw);
-		if (check==0) {
-			ecm->lastdecode.error++;
-			return;
-		}
-		else if (check==1) {
-			ecm->lastdecode.counter = 0;
-			ecm->lastdecode.cwcycle = 0;
-		}
-		else if (check&2) {
-			ecm->lastdecode.counter++;
-			if (check&4) ecm->lastdecode.cwcycle = '1';
-			else ecm->lastdecode.cwcycle = '0';
-		}
-	}
-#endif
-
-#ifdef TESTCHANNEL
-	int testchannel = ( (ecm->caid==cfg.testchn.caid) && (ecm->provid==cfg.testchn.provid) && (ecm->sid==cfg.testchn.sid) );
-	if (testchannel) {
-		char dump[64];
-		array2hex( dcw, dump, 16);
-		char temp[512];
-		src2string(srctype, srcid, temp);
-		mlogf(LOGINFO,0," =(setdcw)= from %s ch %04x:%06x:%04x/%02x:%08x => %s\n", temp, ecm->caid, ecm->provid, ecm->sid, ecm->ecm[0], ecm->hash, dump);
-	}
-#endif
-
-	ecm->statusmsg = "Decode Success";
-	int instant = (ecm->dcwstatus==STAT_DCW_WAITCACHE);
-	ecm->dcwsrctype = srctype;
-	ecm->dcwsrcid = srcid;
-	ecm->dcwstatus = STAT_DCW_SUCCESS;
-	ecm->checktime = 0;
-	ecm->waitserver = 0;
-	sid_newecm(ecm);
-	memcpy( ecm->cw, dcw, 16 );
-
-	// Check timeout
-	uint32_t ecmtime = GetTickCount()-ecm->recvtime;
-			/// if ( ecmtime > cs->option.dcw.timeout*ecm->period ) return;
-
-	// Send DCW to clients
-	clients_check_sendcw(ecm);
-
-	// Update Stat
-	cs->ecmok++;
-	cs->ecmoktime += ecmtime;
-	int time = (ecmtime+50)/100;
-	if (time<99) cs->ttime[time]++; else cs->ttime[99]++;
-
-	if (srctype==DCW_SOURCE_CACHE) {
-		if (srcid&PEER_CSP) { // Cache
-			struct cachepeer_data *peer = getpeerbyid(srcid&0xffff);
-			if (peer) {
-				// setup peer last used cache
-				peer->lastcaid = ecm->caid;
-				peer->lastprov = ecm->provid;
-				peer->lastsid = ecm->sid;
-				peer->lastdecodetime = ecmtime;
-				// add to profiles hits
-				peer_hitprofile( peer, cs->id );
-				peer->hitnb++;
-				cs->hits.csp++;
-				cfg.cache.hits++;
-				if (instant) {
-					peer->ihitnb++;
-					cs->hits.instant.csp++;
-					cfg.cache.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecache[time]++; else cs->ttimecache[99]++;
-		}
-
-#ifdef CACHEEX
-		else if (srcid&PEER_CCCAM_CLIENT) { // Cacheex
-			struct cc_client_data *cli = getcecccamclientbyid(srcid&0xffff);
-			if (cli) {
-				// setup client last used cache
-				cli->cacheex.lastcaid = ecm->caid;
-				cli->cacheex.lastprov = ecm->provid;
-				cli->cacheex.lastsid = ecm->sid;
-				cli->cacheex.lastdecodetime = ecmtime;
-				// add to profiles hits
-				cacheex_cccam_hitprofile( cli, cs->id );
-				cli->cacheex.hits++;
-				cs->hits.cacheex++;
-				cfg.cacheex.hits++;
-				if (instant) {
-					cfg.cacheex.ihits++;
-					cs->hits.instant.cacheex++;
-					cli->cacheex.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
-		}
-
-#ifdef CAMD35_SRV
-		//PEERID_CAMD35
-		else if (srcid&PEER_CAMD35_CLIENT) {
-			struct camd35_client_data *cli = getcamd35clientbyid(srcid&0xffff);
-			if (cli) {
-				// setup client last used cache
-				cli->cacheex.lastcaid = ecm->caid;
-				cli->cacheex.lastprov = ecm->provid;
-				cli->cacheex.lastsid = ecm->sid;
-				cli->cacheex.lastdecodetime = ecmtime;
-				// add to profiles hits
-				cacheex_camd35_hitprofile( cli, cs->id );
-				cli->cacheex.hits++;
-				cs->hits.cacheex++;
-				cfg.cacheex.hits++;
-				if (instant) {
-					cfg.cacheex.ihits++;
-					cs->hits.instant.cacheex++;
-					cli->cacheex.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
-		}
-#endif
-
-#ifdef CS378X_SRV
-		//PEERID_CS378X
-		else if (srcid&PEER_CS378X_CLIENT) {
-			struct camd35_client_data *cli = getcs378xclientbyid(srcid&0xffff);
-			if (cli) {
-				// setup client last used cache
-				cli->cacheex.lastcaid = ecm->caid;
-				cli->cacheex.lastprov = ecm->provid;
-				cli->cacheex.lastsid = ecm->sid;
-				cli->cacheex.lastdecodetime = ecmtime;
-				// add to profiles hits
-				cacheex_cs378x_hitprofile( cli, cs->id );
-				cli->cacheex.hits++;
-				cs->hits.cacheex++;
-				cfg.cacheex.hits++;
-				if (instant) {
-					cfg.cacheex.ihits++;
-					cs->hits.instant.cacheex++;
-					cli->cacheex.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
-		}
-#endif
-
-		else if (srcid&PEER_CACHEEX_SERVER) {
-			struct server_data *srv = getcesrvbyid( srcid&0xffff );
-			if (srv) {
-				// setup client last used cache
-				srv->cacheex.lastcaid = ecm->caid;
-				srv->cacheex.lastprov = ecm->provid;
-				srv->cacheex.lastsid = ecm->sid;
-				srv->cacheex.lastdecodetime = ecmtime;
-				// add to profiles hits
-				cacheex_server_hitprofile( srv, cs->id );
-				srv->cacheex.hits++;
-				cs->hits.cacheex++;
-				cfg.cacheex.hits++;
-				if (instant) {
-					cfg.cacheex.ihits++;
-					cs->hits.instant.cacheex++;
-					srv->cacheex.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
-		}
-#endif
-	}
-	else if (srctype==DCW_SOURCE_SERVER) {
-		struct server_data *srv = getsrvbyid( srcid&0xffff );
-		if (srv) srv->hits++;
-		if (time<99) cs->ttimecards[time]++; else cs->ttimecards[99]++;
-	}
-#ifdef SRV_CSCACHE
-	else if (srctype==DCW_SOURCE_CSCLIENT) {
-		struct cs_client_data *cli = getnewcamdclientbyid( srcid&0xffff );
-		if (cli) cli->cachedcw++;
-		if (time<99) cs->ttimeclients[time]++; else cs->ttimeclients[99]++;
-	}
-	else if (srctype==DCW_SOURCE_MGCLIENT) {
-		struct mg_client_data *cli = getmgcamdclientbyid( srcid&0xffff );
-		if (cli) cli->cachedcw++;
-		if (time<99) cs->ttimeclients[time]++; else cs->ttimeclients[99]++;
-	}
-#endif
-
-#ifdef CACHEEX
-	// Send DCW to CACHE-EX servers
-	if ( cs->option.fallowcacheex )
-	if (ecmtime<cs->option.cacheexvalidtime) { // only for ecm with low time
-		pipe_send_cacheex_push_out(ecm);
-	}
-#endif
-
-	// Send DCW to Cache if not sent
-	if ( cs->option.fallowcache && cs->option.cachesendrep && !(ecm->cachestatus&ECM_CACHE_REP) ) {
-		//if (ecm->from!=ECM_FROM_CACHEEX)
-		pipe_cache_reply(ecm,cs); //Send Good Cache Reply
-		ecm->cachestatus |= ECM_CACHE_REP;
+	// guarda de velocidade minima
+	if (delta && delta < 3000) {
+		e->anomalies++;
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," cyc: mudanca demasiado rapida (%ums) ch %04x:%06x:%04x\n",
+			delta, ecm->caid, ecm->provid, ecm->sid);
+		if (!ret) ret = 3;
 	}
 
-#ifdef CLI_CSCACHE
-	// Send to Newcamd Cached Servers
-	int i;
-	for( i=0; i<20; i++ ) {
-		if (!ecm->server[i].srvid) break;
-		if (ecm->server[i].flag==ECM_SRV_REQUEST) {
-			struct server_data *srv = getsrvbyid(ecm->server[i].srvid);
-			if (!srv) continue;
-			if (!srv->busy) continue;
-			if ( (srv->type==TYPE_NEWCAMD)&&(srv->cscached) ) { // Send DCW to server
-				struct cs_custom_data srvcd;
-				unsigned char buf[32];
-				srvcd.msgid = srv->ecm.msgid;
-				srvcd.caid = ecm->caid;
-				srvcd.sid = ecm->sid;
-				srvcd.provid = ecm->provid;
-				buf[0] = ecm->ecm[0] | 0x40; // 0xC0 | 0xC1
-				buf[2] = 0x10;
-				memcpy(&buf[3], &ecm->cw,16);
-				if ( !cs_message_send( srv->handle, &srvcd, buf, 19, srv->sessionkey) ) disconnect_srv( srv );
-			}
+	// aprendizagem da cadencia (EMA 16.16)
+	if (delta >= 3000) {
+		// v1.44: clamp da amostra ao periodo real por familia de CAID.
+		// A malha estica as cadencia para 20-45s; sem clamp o EMA aprende
+		// lixo e o stale-hold/budget actuam fora do ritmo (freezes periodicos).
+		uint32_t d = delta;
+		if ( (ecm->caid>>8)==0x18 ) { // MEO/NOS 30W: periodo real 15s, alternancia 7.5s
+			if (d < 11000) d = 7500;
+			else d = 15000;
 		}
+		else if (d > 45000) d = 45000; // outras familias: nao deixar esticar sem limite
+		uint32_t cad = d<<16;
+		if (!e->cad_ema) e->cad_ema = cad;
+		else e->cad_ema = ((e->cad_ema>>2)*3) + (cad>>2); // EMA ~0.25
+		if (e->samples < 255) e->samples++;
 	}
-#endif
+
+	// janela (alimenta o LASTCWONNOK)
+	if (ret) badident_note(ecm->caid, ecm->provid); // v1.46 B8: ident com anomalias
+	memcpy(e->cw2, e->cw, 16);
+	memcpy(e->cw, dcw, 16);
+	e->lasthash = ecm->hash;
+	e->lasttime = now;
+
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return ret;
 }
 
+// cadencia aprendida do canal (ms) - 0 se ainda nao aprendeu
+uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid)
+{
+	uint32_t cad = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==caid && e->provid==provid && e->sid==sid) {
+			cad = e->cad_ema>>16;
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return cad;
+}
 
-#endif
+// v1.44: gate do stale-hold - so actua com stales persistentes (>=3 em 60s).
+// A repeticao legitima de pares do MEO (1-2 stales esporadicos) passa limpa;
+// a tempestade de desync (>=3) e que dispara o hold.
+int dcwchan_stale_hold(uint16_t caid, uint32_t provid, uint16_t sid)
+{
+	int hold = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==caid && e->provid==provid && e->sid==sid) {
+			hold = (e->stale_cnt >= 3) ? 1 : 0;
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return hold;
+}
 
+// v1.41 pagina Vigia: copia o estado do motor por canal (ordenado por anomalias desc)
+int dcwchan_stats(struct dcwchan_info *out, int max)
+{
+	int n = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e && n<max) {
+		if (e->samples || e->anomalies) {
+			out[n].caid = e->caid;
+			out[n].provid = e->provid;
+			out[n].sid = e->sid;
+			out[n].cadence = e->cad_ema>>16;
+			out[n].samples = e->samples;
+			out[n].anomalies = e->anomalies;
+			n++;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	// ordena por anomalias desc (bolha simples, listas pequenas)
+	int i, j;
+	for (i=0; i<n-1; i++)
+		for (j=i+1; j<n; j++)
+			if (out[j].anomalies > out[i].anomalies) {
+				struct dcwchan_info t = out[i];
+				out[i] = out[j];
+				out[j] = t;
+			}
+	return n;
+}
 
+// ultima CW valida do canal (para DCW LASTCWONNOK) - 1 se existe
+int dcwchan_getlast(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw[16])
+{
+	int found = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==caid && e->provid==provid && e->sid==sid) {
+			memcpy(cw, e->cw, 16);
+			found = 1;
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return found;
+}
 
-#ifdef THREAD_DCW
+// janela de 2 CWs validas do canal - devolve o nr de CWs (1 ou 2)
+int dcwchan_getlast2(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw1[16], uint8_t cw2[16])
+{
+	char nullcw[16] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+	int found = 0;
+	pthread_mutex_lock(&dcwchan_mutex);
+	struct dcwchan_data *e = dcwchan_list;
+	while (e) {
+		if (e->caid==caid && e->provid==provid && e->sid==sid) {
+			memcpy(cw1, e->cw, 16);
+			if (!dcwcmp16(e->cw2, nullcw) && dcwcmp16(e->cw2, e->cw)) { // cw2 valida e diferente
+				memcpy(cw2, e->cw2, 16);
+				found = 2;
+			}
+			else found = 1;
+			break;
+		}
+		e = e->next;
+	}
+	pthread_mutex_unlock(&dcwchan_mutex);
+	return found;
+}
+
 
 void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 {
@@ -557,15 +699,64 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	}
 
 	// CAK7: transformacao da CW (permutacao + checksum) antes de qualquer validacao
+	uint8_t rawcw[16];
+	memcpy(rawcw, dcw, 16); // A6: a CW crua antes do CAK7 (para o estudo raw vs transformada)
+	// v1.48 RAWLOG: captura pre-transformacao + classificacao raw/wrapped (checksums)
+	if (cs->option.dcw.rawlog) {
+		int rawok = checksumDCW(rawcw);
+		rawlog_1802_grace( ecm->caid, ecm->provid, ecm->sid, rawok );
+		if (ecm->caid==0x1802 && !rawok) cwpk_ring_add( rawcw ); // CWPK oraculo: guarda as WRAP
+		FILE *fp = fopen("/var/log/multics-raw.log","a");
+		if (fp) {
+			time_t t = time(NULL);
+			struct tm *lt = localtime(&t);
+			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x %s cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d srv %d\n",
+				lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+				ecm->caid, ecm->provid, ecm->sid, rawok?"RAW":"WRAP",
+				rawcw[0],rawcw[1],rawcw[2],rawcw[3],rawcw[4],rawcw[5],rawcw[6],rawcw[7],
+				rawcw[8],rawcw[9],rawcw[10],rawcw[11],rawcw[12],rawcw[13],rawcw[14],rawcw[15],
+				srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0);
+			fclose(fp);
+		}
+	}
 	if (cs->option.dcw.cak7) {
-		dcw_cak7_apply(dcw);
+		if (cs->option.dcw.cak7inv) dcw_cak7_apply_inv(dcw); // v1.48: fonte entrega icam -> inverter
+		else dcw_cak7_apply(dcw);
 	}
 
-	// DCW FILTER: blacklist CWPK (cartoes marcados / fakes)
-	if ( dcw_filter_check(cs, dcw) ) {
-		ecm->lastdecode.error++;
-		mlogf(LOGWARNING,getdbgflagpro(DBG_SERVER,0,0,cs->id)," dcwfilter: CW rejeitada (DROP) ch %04x:%06x:%04x\n", ecm->caid, ecm->provid, ecm->sid);
-		return;
+	// v1.47.2 TESTE: NOS 1802 - o swap INCONDICIONAL do par (a fonte entrega a paridade invertida;
+	// o dcwcheck_nds so actua nos half-nulled NDS e nunca chega aos pares completos da NOS)
+#ifdef DCWSWAP
+	if (cs && cs->option.dcw.swap && (ecm->caid==0x1802)) {
+		char tmp[8];
+		memcpy(tmp, dcw, 8);
+		memcpy(dcw, dcw+8, 8);
+		memcpy(dcw+8, tmp, 8);
+	}
+#endif
+
+	// DCW LOG: ficheiro de aprendizagem (canal + CW) quando o perfil tem DCW LOG: YES
+	if (cs->option.dcw.dcwlog) {
+		FILE *fp = fopen("/var/log/multics-cw.log", "a");
+		if (fp) {
+			time_t t = time(NULL);
+			struct tm *lt = localtime(&t);
+			if (cs->option.dcw.cak7) {
+				fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x raw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d srv %d\n",
+					lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+					ecm->caid, ecm->provid, ecm->sid,
+					rawcw[0],rawcw[1],rawcw[2],rawcw[3],rawcw[4],rawcw[5],rawcw[6],rawcw[7],
+					rawcw[8],rawcw[9],rawcw[10],rawcw[11],rawcw[12],rawcw[13],rawcw[14],rawcw[15],
+					srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0);
+			}
+			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d srv %d\n",
+				lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+				ecm->caid, ecm->provid, ecm->sid,
+				dcw[0],dcw[1],dcw[2],dcw[3],dcw[4],dcw[5],dcw[6],dcw[7],
+				dcw[8],dcw[9],dcw[10],dcw[11],dcw[12],dcw[13],dcw[14],dcw[15],
+				srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0);
+			fclose(fp);
+		}
 	}
 
 	int cwpart = 2;
@@ -590,22 +781,25 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	}
 */
 
-#ifndef PUBLIC
 	if (srctype!=DCW_SOURCE_CACHE) {
 		pthread_mutex_lock( &prg.lockcache );
-		int f = cache_check_cw( ecm->recvtime, ecm->ecm[0], ecm->caid, ecm->hash, ecm->sid, dcw, cwpart);
+		int f = cache_check_cw( ecm->recvtime, ecm->ecm[0], ecm->caid, ecm->hash, ecm->sid, ecm->provid, dcw, cwpart);
 		pthread_mutex_unlock( &prg.lockcache );
 		if (!f) {
 			pthread_mutex_unlock(&prg.lockecm);
 			return;
 		}
 	}
-#endif
 
 	// NAGRA PROTECTION (18xx/19xx): checksum, provider, ciclo e similaridade
 	{
 		int ncode = nagra_check( ecm, dcw );
 		if (ncode) {
+			// v1.30.1: conta CWs suspeitas por reader (qualidade no load-balance)
+			if (srctype==DCW_SOURCE_SERVER) {
+				struct server_data *s = getsrvbyid(srcid&0xffff);
+				if (s) { s->cwbad++; s->cwbad_time = GetTickCount(); }
+			}
 			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," nagra: dcw rejected (code %d) ch %04x:%06x:%04x profile '%s'%s\n",
 				ncode, ecm->caid, ecm->provid, ecm->sid, cs->name,
 				cs->option.nagra.onbad ? " (drop)" : " (log only)");
@@ -616,27 +810,74 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		}
 	}
 
-	// DCW MINTIME + DCW CYCLE_CHECK (por canal)
-	if (cs->option.dcw.mintime || cs->option.dcw.cyclecheck) {
-		if (dcwchan_check( ecm, dcw, cs )) {
-			pthread_mutex_unlock(&prg.lockecm);
-			return;
+	// CWLR (v1.29): CW NAGRA com checksum invalido = lixo -> NAO entregar.
+	// Marca a fonte (NOK cache) e deixa o ECM a espera de outra fonte;
+	// se nenhuma responder, o timeout cai no LASTCWONNOK (ultima CW boa).
+	if (cs->option.nagra.enable && cs->option.nagra.chk
+		&& (ecm->caid>=0x1813) && (ecm->caid<=0x1a12)
+		&& !checksumDCW(dcw)) {
+		if (srctype==DCW_SOURCE_SERVER) {
+			struct server_data *s = getsrvbyid(srcid&0xffff);
+			if (s) { srv_nok_record(s, ecm->caid, ecm->sid); srv_bad_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
+		}
+		mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cwlr: CW lixo (checksum) ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
+			ecm->caid, ecm->provid, ecm->sid, srctype);
+		pthread_mutex_unlock(&prg.lockecm);
+		return;
+	}
+
+	// CYCLE ENGINE (v1.40): janela + motor unico de ciclo por canal.
+	// A janela e SEMPRE actualizada (alimenta o LASTCWONNOK); as anomalias
+	// actuam conforme a opcao DCW CYCLE ENGINE do perfil.
+	{
+		int anom = dcwchan_engine( ecm, dcw );
+		if (anom && cs->option.dcw.cycleengine) {
+			if (anom==1 && (srctype==DCW_SOURCE_SERVER)) {
+				// v1.44: STALE so segura com stales persistentes (gate 3/60s)
+				if (dcwchan_stale_hold(ecm->caid, ecm->provid, ecm->sid)) {
+					// segura 1x por fonte e deixa o ECM a espera de outra fonte
+					if (!ecm->stalehold) {
+						ecm->stalehold = 1;
+						struct server_data *s = getsrvbyid(srcid&0xffff);
+						if (s) { srv_nok_record(s, ecm->caid, ecm->sid); srv_bad_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }
+						mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: STALE hold ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
+							ecm->caid, ecm->provid, ecm->sid, srctype);
+						pthread_mutex_unlock(&prg.lockecm);
+						return;
+					}
+					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: 2a stale da mesma fonte ch %04x:%06x:%04x - entregar\n",
+						ecm->caid, ecm->provid, ecm->sid);
+				}
+				else {
+					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," cyc: stale esporadico (gate) ch %04x:%06x:%04x - entregar\n",
+						ecm->caid, ecm->provid, ecm->sid);
+				}
+			}
+			else if (anom!=1 && (srctype==DCW_SOURCE_SERVER)) {
+				// violacao de padrao/rapidez: marca a fonte (reputacao), entrega a CW
+				struct server_data *s = getsrvbyid(srcid&0xffff);
+				if (s) { s->cwbad++; s->cwbad_time = GetTickCount(); }
+			}
 		}
 	}
 
-	// filter non-nds halfnulled cw
+	// filter non-nds halfnulled cw (v1.29: NAGRA 18xx half-null passa - half-cycle legitimo no circuito)
 	if ( dcwcmp8(dcw,nullcw) || dcwcmp8(dcw+8,nullcw) ) {
-		if ((ecm->caid>>8)!=9) {
+		int isnds = ((ecm->caid>>8)==9);
+		int isnagra = (ecm->caid>=0x1813)&&(ecm->caid<=0x1a12);
+		if (!isnds && !isnagra) {
 			pthread_mutex_unlock(&prg.lockecm);
 			return;
 		}
-		int swap = 0;
+		if (isnds) {
+			int swap = 0;
 #ifdef DCWSWAP
-		if (cs)	if (cs->option.dcw.swap) swap = 1;
+			if (cs)	if (cs->option.dcw.swap) swap = 1;
 #endif
-		if ( !dcwcheck_nds( ecm, dcw, swap) ) {
-			pthread_mutex_unlock(&prg.lockecm);
-			return;
+			if ( !dcwcheck_nds( ecm, dcw, swap) ) {
+				pthread_mutex_unlock(&prg.lockecm);
+				return;
+			}
 		}
 	}
 
@@ -677,12 +918,12 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	ecm->dcwsrcid = srcid;
 	ecm->dcwstatus = STAT_DCW_SUCCESS;
 	ecm->checktime = 0;
+	deadchan_answer( ecm->caid, ecm->provid, ecm->sid ); // v1.48: canal respondeu -> vivo
+	verdict_serve( ecm->caid, ecm->provid, ecm->sid, dcw, srctype, srcid ); // v1.48: anel de veredicto
 	ecm->waitserver = 0;
 	sid_newecm(ecm);
 	memcpy( ecm->cw, dcw, 16 );
 
-	// TIMING BUDGET: observar mudanca de CW para estimar o cryptoperiod
-	chnbudget_observe( ecm->caid, ecm->provid, ecm->sid, dcw );
 
 	// DEDUP: entregar o CW aos followers deste leader (mesma chave ECM)
 	ECM_DATA *flist[128];
@@ -729,6 +970,11 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	int time = (ecmtime+50)/100;
 	if (time<99) cs->ttime[time]++; else cs->ttime[99]++;
 
+	// CWFEED (estudo de CWs): registar CW entregue (pos-transform)
+	cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, dcw, 16,
+		(uint16_t)(ecmtime%60000), 1, 0,
+		(srctype==DCW_SOURCE_SERVER)?(srcid&0xffff):0, 0);
+
 	if (srctype==DCW_SOURCE_CACHE) {
 		if (srcid&PEER_CSP) { // Cache
 			struct cachepeer_data *peer = getpeerbyid(srcid&0xffff);
@@ -774,56 +1020,6 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 			}
 			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
 		}
-
-#ifdef CAMD35_SRV
-		//PEERID_CAMD35
-		else if (srcid&PEER_CAMD35_CLIENT) {
-			struct camd35_client_data *cli = getcamd35clientbyid(srcid&0xffff);
-			if (cli) {
-				// setup client last used cache
-				cli->cacheex.lastcaid = ecm->caid;
-				cli->cacheex.lastprov = ecm->provid;
-				cli->cacheex.lastsid = ecm->sid;
-				cli->cacheex.lastdecodetime = ecmtime;
-				// add to profiles hits
-				cacheex_camd35_hitprofile( cli, cs->id );
-				cli->cacheex.hits++;
-				cs->hits.cacheex++;
-				cfg.cacheex.hits++;
-				if (instant) {
-					cfg.cacheex.ihits++;
-					cs->hits.instant.cacheex++;
-					cli->cacheex.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
-		}
-#endif
-
-#ifdef CS378X_SRV
-		//PEERID_CS378X
-		else if (srcid&PEER_CS378X_CLIENT) {
-			struct camd35_client_data *cli = getcs378xclientbyid(srcid&0xffff);
-			if (cli) {
-				// setup client last used cache
-				cli->cacheex.lastcaid = ecm->caid;
-				cli->cacheex.lastprov = ecm->provid;
-				cli->cacheex.lastsid = ecm->sid;
-				cli->cacheex.lastdecodetime = ecmtime;
-				// add to profiles hits
-				cacheex_cs378x_hitprofile( cli, cs->id );
-				cli->cacheex.hits++;
-				cs->hits.cacheex++;
-				cfg.cacheex.hits++;
-				if (instant) {
-					cfg.cacheex.ihits++;
-					cs->hits.instant.cacheex++;
-					cli->cacheex.ihits++;
-				}
-			}
-			if (time<99) cs->ttimecacheex[time]++; else cs->ttimecacheex[99]++;
-		}
-#endif
 
 		else if (srcid&PEER_CACHEEX_SERVER) {
 			struct server_data *srv = getcesrvbyid( srcid&0xffff );
@@ -951,11 +1147,9 @@ void ecm_setdcw( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 void *setdcw_thread(void *param)
 {
 
-#ifndef PUBLIC
 	prg.pid_setdcw = syscall(SYS_gettid);
 	prg.tid_setdcw = pthread_self();
 	prctl(PR_SET_NAME,"Set DCW",0,0,0);
-#endif
 
 	struct pollfd pfd;
 	while (1) {
@@ -977,4 +1171,3 @@ void *setdcw_thread(void *param)
 	}
 }
 
-#endif
