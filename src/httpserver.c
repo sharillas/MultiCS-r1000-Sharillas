@@ -3221,6 +3221,22 @@ void http_send_watchdog(int sock, http_request *req)
 		tcp_writestr(&tcpbuf, sock, "</table></div>");
 	}
 
+	// === 2.6 BUDGET ENGINE: orcamento das fontes (v1.49) ===
+	{
+		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Orcamento das fontes (BUDGET ENGINE - anti-sujar cartao)</h3>"
+			"<table class='maintable'><tr><th>Fonte</th><th>Consumo/min</th></tr>");
+		srv = cfg.server;
+		while (srv) {
+			char bbuf[128];
+			srv_budget_gui(srv, bbuf, sizeof(bbuf));
+			sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s</td></tr>",
+				srv->name[0]?srv->name:"-", srv->host->name, srv->port, bbuf );
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			srv = srv->next;
+		}
+		tcp_writestr(&tcpbuf, sock, "</table></div>");
+	}
+
 	// === 3. Cycle engine: canais aprendidos ===
 	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Cycle engine (canais aprendidos, anomalias)</h3>"
 		"<table class='maintable'><tr><th>Canal</th><th>Cadencia aprendida</th><th>Amostras</th><th>Anomalias</th></tr>");

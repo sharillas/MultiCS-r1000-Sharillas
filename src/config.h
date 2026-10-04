@@ -681,6 +681,8 @@ struct PACK server_data
 	uint8_t nocheck;
 	// v1.48: reescrever o provid para 0 nos pedidos a este reader
 	uint8_t providrewrite;
+	// v1.48.2: reader stealth (server nao anuncia cards) - enviar ECMs na mesma
+	uint8_t stealth;
 	// NOK cache: ultimos NOK por canal (evita martelar o reader em zappings)
 	#define NOK_CACHE_MAX 32
 	uint32_t nok_time[NOK_CACHE_MAX]; // GetTickCount do NOK
@@ -702,6 +704,11 @@ struct PACK server_data
 	uint16_t pace_caid[PACE_CACHE_MAX];
 	uint16_t pace_sid[PACE_CACHE_MAX];
 	int pace_idx;
+	// BUDGET ENGINE (v1.49): orcamento da fonte (cws/min) - anti-sujar o cartao
+	#define BUDGET_GROUP_MAX 8
+	uint16_t budget_max;    // BUDGET MAX: teto manual em cws/min (0 = sem teto)
+	uint8_t  budget_group;  // BUDGET GROUP: id do orcamento partilhado (0 = so este reader)
+	uint8_t  budget_on;     // 1 = motor activo para este reader
 	// Share Limits
 	struct sharelimit_data sharelimits[100];
 	// ACCEPTED SIDs
@@ -826,6 +833,10 @@ struct PACK server_data
 void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
 void srv_pace_record(struct server_data *srv, uint16_t caid, uint16_t sid); // v1.48 pacing
 int srv_pace_check(struct server_data *srv, uint16_t caid, uint16_t sid, uint32_t ms); // v1.48 pacing
+void srv_budget_add(struct server_data *srv); // v1.49: CW servida pela fonte (consumo)
+int srv_budget_pressure(struct server_data *srv); // v1.49: 0-100 (% do teto usado)
+int srv_budget_full(struct server_data *srv); // v1.49: 1 = fonte no teto (nao pedir)
+void srv_budget_gui(struct server_data *srv, char *buf, int buflen); // v1.49: linha GUI
 int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
 uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid);
 int dcwchan_stale_hold(uint16_t caid, uint32_t provid, uint16_t sid); // v1.44 gate do stale-hold

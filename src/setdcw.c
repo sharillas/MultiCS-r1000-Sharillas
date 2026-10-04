@@ -925,6 +925,10 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	ecm->checktime = 0;
 	deadchan_answer( ecm->caid, ecm->provid, ecm->sid ); // v1.48: canal respondeu -> vivo
 	verdict_serve( ecm->caid, ecm->provid, ecm->sid, dcw, srctype, srcid ); // v1.48: anel de veredicto
+	if (srctype==DCW_SOURCE_SERVER) { // v1.49: consumo do orcamento da fonte
+		struct server_data *bs = getsrvbyid(srcid&0xffff);
+		if (bs) srv_budget_add(bs);
+	}
 	ecm->waitserver = 0;
 	sid_newecm(ecm);
 	memcpy( ecm->cw, dcw, 16 );

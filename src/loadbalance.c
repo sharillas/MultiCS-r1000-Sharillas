@@ -95,6 +95,107 @@ int srv_pace_check(struct server_data *srv, uint16_t caid, uint16_t sid, uint32_
 	return 0;
 }
 
+// BUDGET ENGINE (v1.49): orcamento por fonte (anti-sujar o cartao com abuso)
+// - consumo numa janela de 60s por grupo (BUDGET GROUP) ou por reader
+// - teto = BUDGET MAX (manual, cws/min); sem teto o motor nao actua
+#define BUDGET_WIN 60
+static struct {
+	uint32_t sec[BUDGET_WIN];   // CWs servidas por segundo (anel)
+	uint8_t  idx;               // posicao do segundo corrente
+	uint32_t lastsec;           // GetTickCount/1000 do ultimo roll
+	uint32_t cons;              // consumo actual na janela
+	uint32_t ceiling;           // teto em cws/60s (min dos members ou do reader)
+} budget_group[BUDGET_GROUP_MAX + 1]; // [0] = per-reader sem grupo
+
+static void budget_roll(int g, uint32_t now)
+{
+	if (now == budget_group[g].lastsec) return;
+	if (!budget_group[g].lastsec) {
+		budget_group[g].lastsec = now;
+		return;
+	}
+	uint32_t delta = now - budget_group[g].lastsec;
+	if (delta >= BUDGET_WIN) {
+		memset(budget_group[g].sec, 0, sizeof(budget_group[g].sec));
+		budget_group[g].idx = 0;
+		budget_group[g].cons = 0;
+	}
+	else {
+		while (delta--) {
+			budget_group[g].idx = (budget_group[g].idx + 1) % BUDGET_WIN;
+			if (budget_group[g].cons >= budget_group[g].sec[budget_group[g].idx])
+				budget_group[g].cons -= budget_group[g].sec[budget_group[g].idx];
+			else budget_group[g].cons = 0;
+			budget_group[g].sec[budget_group[g].idx] = 0;
+		}
+	}
+	budget_group[g].lastsec = now;
+}
+
+// ceiling efectivo do reader (cws/60s): BUDGET MAX do grupo (min) ou do reader
+static uint32_t budget_ceiling_of(struct server_data *srv)
+{
+	if (!srv) return 0;
+	uint32_t c = srv->budget_max;
+	if (srv->budget_group && srv->budget_group <= BUDGET_GROUP_MAX) {
+		uint32_t min = 0;
+		struct server_data *w = cfg.server;
+		while (w) {
+			if (w->budget_group == srv->budget_group && w->budget_max) {
+				if (!min || w->budget_max < min) min = w->budget_max;
+			}
+			w = w->next;
+		}
+		if (min) c = (c && c < min) ? c : min;
+	}
+	return c;
+}
+
+void srv_budget_add(struct server_data *srv)
+{
+	if (!srv) return;
+	int g = (srv->budget_group && srv->budget_group <= BUDGET_GROUP_MAX) ? srv->budget_group : 0;
+	uint32_t now = GetTickCount() / 1000;
+	budget_roll(g, now);
+	budget_group[g].sec[budget_group[g].idx]++;
+	budget_group[g].cons++;
+}
+
+// 0-100: percentagem do teto consumida (0 = sem teto)
+int srv_budget_pressure(struct server_data *srv)
+{
+	if (!srv || !srv->budget_on) return 0;
+	uint32_t c = budget_ceiling_of(srv);
+	if (!c) return 0;
+	int g = (srv->budget_group && srv->budget_group <= BUDGET_GROUP_MAX) ? srv->budget_group : 0;
+	uint32_t now = GetTickCount() / 1000;
+	budget_roll(g, now);
+	uint32_t cons = budget_group[g].cons;
+	return (int)((cons * 100) / c);
+}
+
+// 1 = fonte no teto (>=100%): nao pedir para nao sujar o cartao
+int srv_budget_full(struct server_data *srv)
+{
+	return srv_budget_pressure(srv) >= 100;
+}
+
+// linha de texto para a GUI (teto cws/min, consumo, pressao)
+void srv_budget_gui(struct server_data *srv, char *buf, int buflen)
+{
+	if (!srv || !srv->budget_on) {
+		snprintf(buf, buflen, "off");
+		return;
+	}
+	uint32_t c = budget_ceiling_of(srv);
+	int g = (srv->budget_group && srv->budget_group <= BUDGET_GROUP_MAX) ? srv->budget_group : 0;
+	uint32_t now = GetTickCount() / 1000;
+	budget_roll(g, now);
+	uint32_t cons = budget_group[g].cons;
+	int p = c ? (int)((cons * 100) / c) : 0;
+	snprintf(buf, buflen, "%d/min (teto %d, grp %d, %d%%)", cons, c, srv->budget_group, p);
+}
+
 // v1.41 FEEDBACK DO CLIENTE: marca a fonte que entregou uma CW que a box nao
 // conseguiu usar (o cliente repetiu o mesmo hash logo apos a entrega).
 void dcw_badmark(int srcid, uint16_t caid, uint16_t sid)
@@ -625,6 +726,30 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		}
 		psrvlist[i] = NULL;
 		nbsrv = i;
+	}
+
+	// BUDGET ENGINE (v1.49): fontes no teto saem da corrida; se TODAS estiverem
+	// no teto, nao pedir nada (proteger o cartao - o ECM espera e volta a tentar)
+	{
+		int full = 0;
+		for(j=0; j<nbsrv; j++)
+			if ( srv_budget_full(psrvlist[j]->srv) ) full++;
+		if (full && (full>=nbsrv)) {
+			nbsrv = 0;
+			mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,0)," budget: todas as fontes no teto ch %04x:%06x:%04x - a esperar\n",
+				ecm->caid, ecm->provid, ecm->sid);
+		}
+		else if (full) {
+			i=0;
+			for(j=0; j<nbsrv; j++) {
+				if ( !srv_budget_full(psrvlist[j]->srv) ) {
+					if (i<j) psrvlist[i] = psrvlist[j];
+					i++;
+				}
+			}
+			psrvlist[i] = NULL;
+			nbsrv = i;
+		}
 	}
 
 
