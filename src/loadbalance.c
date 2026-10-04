@@ -380,6 +380,11 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 	memset( srvlist, 0 , sizeof(srvlist) );
 	nbsrv = 0;
 
+	// v1.48.2 DEBUG: quantos servidores candidatos por canal (depurar stealth)
+	int dbg_totalsrv = 0;
+	srv = cfg.server;
+	while (srv) { if ( !IS_DISABLED(srv->flags)&&(srv->connection.status>0) ) dbg_totalsrv++; srv = srv->next; }
+
 	// MULTICARD Servers Selection (Newcamd,CCcam,Mgcamd...) ;)
 	unsigned int ticks = GetTickCount();
 	srv = cfg.server;
@@ -437,21 +442,24 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 							// check for any card to decode
 							pthread_mutex_lock(&srv->lock);
 
-							// best card to decode is selected, it may there is only worst one but is returned
-							struct cs_card_data *pcard = NULL;
-							int val = sidata_getval( srv, cs, ecm->caid, ecm->provid, ecm->sid, &pcard);
-							if ( !cs->option.maxfailedecm || (val > -cs->option.maxfailedecm) ) {  // available card+sid : block card that have decode failed on sid
-								if (pcard) {
-									int ecmtime = 0;
-									if (srv->type==TYPE_CCCAM)
-										if (pcard->ecmok>10) ecmtime = pcard->ecmoktime/pcard->ecmok; else ecmtime = 0;
-									else
-										if (srv->ecmok>10) ecmtime = srv->ecmoktime/srv->ecmok; else ecmtime = 0;
-									if ( !cs->option.server.validecmtime || (ecmtime<cs->option.server.validecmtime) ) {
-										srvlist[nbsrv].srv = srv;
-										srvlist[nbsrv].card = pcard; // default card
-										srvlist[nbsrv].shareid = pcard->shareid; // default card
-										srvlist[nbsrv].uphops = pcard->uphops;
+						// best card to decode is selected, it may there is only worst one but is returned
+						struct cs_card_data *pcard = NULL;
+						int val = sidata_getval( srv, cs, ecm->caid, ecm->provid, ecm->sid, &pcard);
+	// v1.48.2: reader CCcam sem cards anunciados (stealth) participa na mesma
+	// (sem cards seria inutil de qualquer forma; o server faz o match com cardid 0)
+	int usestealth = (srv->type==TYPE_CCCAM) && !srv->card;
+						if ( !cs->option.maxfailedecm || (val > -cs->option.maxfailedecm) ) {  // available card+sid : block card that have decode failed on sid
+							if (pcard || usestealth) {
+								int ecmtime = 0;
+								if (srv->type==TYPE_CCCAM)
+									if (pcard && (pcard->ecmok>10)) ecmtime = pcard->ecmoktime/pcard->ecmok; else ecmtime = 0;
+								else
+									if (srv->ecmok>10) ecmtime = srv->ecmoktime/srv->ecmok; else ecmtime = 0;
+								if ( !cs->option.server.validecmtime || (ecmtime<cs->option.server.validecmtime) ) {
+									srvlist[nbsrv].srv = srv;
+									srvlist[nbsrv].card = pcard; // default card (NULL no stealth)
+									srvlist[nbsrv].shareid = pcard ? pcard->shareid : 0; // cardid 0 no stealth
+									srvlist[nbsrv].uphops = pcard ? pcard->uphops : (srv->hop ? srv->hop : 0);
 										srvlist[nbsrv].val = val;
 										srvlist[nbsrv].ecmtime = ecmtime;
 										psrvlist[nbsrv] = &srvlist[nbsrv];
@@ -469,6 +477,11 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 		srv = srv->next;
 	}
 	//mlogf(LOGDEBUG,0, " A*srvtab_arrange(%04x:%06x:%04x) Servers = %d\n", ecm->caid, ecm->provid, ecm->sid, nbsrv);
+
+	// v1.48.2 DEBUG: resumo da seleccao
+	if (ecm->caid==0x1802)
+		mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,0)," srvtab: ch %04x:%06x:%04x conectados=%d selecionados=%d\n",
+			ecm->caid, ecm->provid, ecm->sid, dbg_totalsrv, nbsrv);
 
 	//Remove Cardservers with delay time
 	if (cs->option.server.timeperecm) {

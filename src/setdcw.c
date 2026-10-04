@@ -154,9 +154,10 @@ static struct {
 	uint16_t caid;
 	uint32_t provid;
 	uint16_t sid;
-	uint32_t lastans; // ultima resposta boa (0 = nunca)
-	uint32_t lastreq; // ultimo pedido
-	uint32_t mark;    // inicio da janela de supressao (0 = canal vivo)
+	uint32_t lastans;  // ultima resposta boa (0 = nunca)
+	uint32_t firstreq; // 1o pedido sem resposta (inicio da janela de tolerancia)
+	uint32_t lastreq;  // ultimo pedido
+	uint32_t mark;     // inicio da janela de supressao (0 = canal vivo)
 } deadchan[DEADCHAN_MAX];
 
 void deadchan_answer(uint16_t caid, uint32_t provid, uint16_t sid)
@@ -167,6 +168,7 @@ void deadchan_answer(uint16_t caid, uint32_t provid, uint16_t sid)
 		if (deadchan[i].caid==caid && deadchan[i].provid==provid && deadchan[i].sid==sid) {
 			deadchan[i].lastans = ticks;
 			deadchan[i].lastreq = ticks;
+			deadchan[i].firstreq = 0;
 			deadchan[i].mark = 0;
 			return;
 		}
@@ -204,6 +206,8 @@ int deadchan_suppress(uint16_t caid, uint32_t provid, uint16_t sid, struct cards
 	}
 	deadchan[i].lastreq = ticks;
 	if (deadchan[i].lastans && ((uint32_t)(ticks - deadchan[i].lastans) < mintime)) return 0; // vivo
+	if (!deadchan[i].firstreq) { deadchan[i].firstreq = ticks; return 0; } // 1o pedido sem resposta: deixa passar, comeca a contar
+	if ((uint32_t)(ticks - deadchan[i].firstreq) < mintime) return 0; // dentro da tolerancia: pergunta normalmente
 	if (deadchan[i].mark && ((uint32_t)(ticks - deadchan[i].mark) < retry)) return 1; // janela: suprime
 	// janela expirou (ou 1a vez): deixa passar ESTE pedido (probe) e re-marca
 	deadchan[i].mark = ticks;
@@ -212,7 +216,8 @@ int deadchan_suppress(uint16_t caid, uint32_t provid, uint16_t sid, struct cards
 			caid, provid, sid, (int)((ticks-deadchan[i].lastans)/1000), retry/1000, retry/1000);
 	}
 	else {
-		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," deadchan: ch %04x:%06x:%04x nunca respondeu - a suprimir storm\n", caid, provid, sid);
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," deadchan: ch %04x:%06x:%04x sem resposta ha %dm - a suprimir storm\n",
+			caid, provid, sid, (int)((ticks-deadchan[i].firstreq)/60000));
 	}
 	prot_event_add("DEADCHAN: ch %04x:%06x:%04x sem resposta - storm suprimido", caid, provid, sid);
 	return 0; // probe: este pedido passa; os seguintes ficam suprimidos na janela
