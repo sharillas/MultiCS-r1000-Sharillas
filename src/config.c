@@ -459,6 +459,27 @@ void parse_server_data( struct server_data *tsrv )
 					// e so respondem pelo cartao real com o wildcard)
 					tsrv->providrewrite = parse_boolean();
 				}
+				else if (!strcmp(str,"stealth")) {
+					// v1.48.2: server stealth (nao anuncia a lista de cards) -
+					// envia ECMs na mesma com cardid 0 (o server faz o match)
+					tsrv->stealth = parse_boolean();
+				}
+				else if (!strcmp(str,"budget_max")) {
+					// v1.49 BUDGET ENGINE: teto manual em cws/min (0 = off)
+					if (parse_int(str)) {
+						tsrv->budget_max = (uint16_t)atoi(str);
+						if (tsrv->budget_max>1000) tsrv->budget_max=1000;
+						if (tsrv->budget_max) tsrv->budget_on = 1;
+					}
+				}
+				else if (!strcmp(str,"budget_group")) {
+					// v1.49 BUDGET GROUP: orcamento partilhado entre readers
+					// do mesmo cartao (1..8; 0 = so este reader)
+					if (parse_int(str)) {
+						tsrv->budget_group = (uint8_t)atoi(str);
+						if (tsrv->budget_group>BUDGET_GROUP_MAX) tsrv->budget_group=0;
+					}
+				}
 #ifdef CACHEEX
 				else if (!strcmp(str,"cacheex_mode")) {
 					if (parse_hex(str)) tsrv->cacheex_mode = hex2int(str);
@@ -850,7 +871,7 @@ int read_config(struct config_data *cfg)
 			if (!strcmp(str,"ONCHANGE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				currentfile->nowatch = !parse_boolean();
@@ -860,7 +881,7 @@ int read_config(struct config_data *cfg)
 		else if ( !strcmp(str,"EDITFILE") ) {
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			currentfile->noeditor = !parse_boolean();
@@ -869,7 +890,7 @@ int read_config(struct config_data *cfg)
 		else if (!strcmp(str,"N")) {
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			struct server_data tsrv;
@@ -944,7 +965,7 @@ int read_config(struct config_data *cfg)
 			if (!strcmp(str,"CLIENTID")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_hex(str);
@@ -965,7 +986,7 @@ int read_config(struct config_data *cfg)
 			else if (!strcmp(str,"KEEPALIVE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->newcamd.keepalive = parse_boolean();
@@ -979,7 +1000,7 @@ int read_config(struct config_data *cfg)
 			}
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			parse_spaces();
@@ -1005,7 +1026,7 @@ int read_config(struct config_data *cfg)
 			}
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			for (i=0; i<14; i++) {
@@ -1284,7 +1305,7 @@ sid accept:
 			else if (!strcmp(str,"TITLE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1294,7 +1315,7 @@ sid accept:
 			else if (!strcmp(str,"FILE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1346,7 +1367,7 @@ sid accept:
 		else if (!strcmp(str,"BAD-DCW")) {
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			struct dcw_data *dcw = malloc( sizeof(struct dcw_data) );
@@ -1376,7 +1397,7 @@ sid accept:
 			if (!strcmp(str,"ENABLE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->failban.enable = parse_boolean();
@@ -1384,7 +1405,7 @@ sid accept:
 			else if (!strcmp(str,"BANTIME")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -1399,7 +1420,7 @@ sid accept:
 			else if (!strcmp(str,"EXCLUDE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				while (cfg->failban.nexclude<32) {
@@ -1422,7 +1443,7 @@ sid accept:
 			if (!strcmp(str,"MAXZAP")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -1433,7 +1454,7 @@ sid accept:
 			else if (!strcmp(str,"WINDOW")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -1444,7 +1465,7 @@ sid accept:
 			else if (!strcmp(str,"BANTIME")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -1455,7 +1476,7 @@ sid accept:
 			else if (!strcmp(str,"EXCLUDE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				while (cfg->anticascade.nexclude<32) {
@@ -1509,7 +1530,7 @@ sid accept:
 			if (!strcmp(str,"LITE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1521,7 +1542,7 @@ sid accept:
 			else if (!strcmp(str,"CHANNELINFO")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1534,7 +1555,7 @@ sid accept:
 			else if (!strcmp(str,"PROVIDERINFO")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1543,7 +1564,7 @@ sid accept:
 			else if (!strcmp(str,"IP2COUNTRY")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1552,7 +1573,7 @@ sid accept:
 			else if (!strcmp(str,"STYLESHEET")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1561,7 +1582,7 @@ sid accept:
             else if (!strcmp(str,"JAVASCRIPT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1577,7 +1598,7 @@ sid accept:
 					parse_spaces();
 				}
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -1596,7 +1617,7 @@ sid accept:
 				parse_spaces();
 			}
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			parse_spaces();
@@ -1615,7 +1636,7 @@ sid accept:
 				parse_spaces();
 			}
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			parse_spaces();
@@ -1639,7 +1660,7 @@ sid accept:
 			if (!strcmp(str,"KEY")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				for(i=0; i<14; i++) if ( parse_hex(str)!=2 ) break; else defaultcs.newcamd.key[i] = hex2int(str);
@@ -1648,7 +1669,7 @@ sid accept:
 			else if (!strcmp(str,"PORT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -1661,7 +1682,7 @@ sid accept:
 				if (!strcmp(str,"TIMEOUT")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue; 
 					} else iparser++;
 					parse_int(str);
@@ -1673,7 +1694,7 @@ sid accept:
 				else if (!strcmp(str,"MAXFAILED")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -1685,7 +1706,7 @@ sid accept:
 				else if (!strcmp(str,"RETRY")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -1697,7 +1718,7 @@ sid accept:
 				else if (!strcmp(str,"SILENT_NOK")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.dcw.silentnok = parse_boolean();
@@ -1706,7 +1727,7 @@ sid accept:
 					// v1.40 DCW CYCLE ENGINE: motor unico de ciclo (substitui MINTIME/CYCLE_CHECK/CWC/STALE_CHECK/NAGRA CYCLE)
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.dcw.cycleengine = parse_boolean();
@@ -1718,7 +1739,7 @@ sid accept:
 					if (!strcmp(str,"TTL")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						parse_int(str);
@@ -1730,7 +1751,7 @@ sid accept:
 					else if (!strcmp(str,"RECONNECT")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						parse_int(str);
@@ -1747,7 +1768,7 @@ sid accept:
 					if (!strcmp(str,"MINTIME")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						parse_int(str);
@@ -1758,7 +1779,7 @@ sid accept:
 					else if (!strcmp(str,"RETRY")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						parse_int(str);
@@ -1769,7 +1790,7 @@ sid accept:
 					else {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						defaultcs.option.dcw.deadchan = parse_boolean();
@@ -1779,7 +1800,7 @@ sid accept:
 				else if (!strcmp(str,"PACING")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -1791,7 +1812,7 @@ sid accept:
 				else if (!strcmp(str,"RAWLOG")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.dcw.rawlog = parse_boolean();
@@ -1799,7 +1820,7 @@ sid accept:
 				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.skipcwc_exclude.active = parse_boolean();
@@ -1807,7 +1828,7 @@ sid accept:
 				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDLIST")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					int x = 0;
@@ -1826,7 +1847,7 @@ sid accept:
 				else if (!strcmp(str,"CHECK")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.dcw.check = parse_boolean();
@@ -1839,7 +1860,7 @@ sid accept:
 				if (!strcmp(str,"ENABLE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.health.enable = parse_boolean();
@@ -1847,7 +1868,7 @@ sid accept:
 				else if (!strcmp(str,"WEIGHTS")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					int w1=0,w2=0,w3=0,w4=0;
@@ -1868,7 +1889,7 @@ sid accept:
 				else if (!strcmp(str,"MINECMS")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -1879,7 +1900,7 @@ sid accept:
 				else if (!strcmp(str,"DROPOFF")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -1894,7 +1915,7 @@ sid accept:
 				if (!strcmp(str,"ENABLE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallback.enable = parse_boolean();
@@ -1902,7 +1923,7 @@ sid accept:
 				else if (!strcmp(str,"ORDER")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					int oi = 0;
@@ -1929,7 +1950,7 @@ sid accept:
 				else if (!strcmp(str,"TIMEOUT")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -1944,7 +1965,7 @@ sid accept:
 				if (!strcmp(str,"ENABLE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.enable = parse_boolean();
@@ -1952,7 +1973,7 @@ sid accept:
 				else if (!strcmp(str,"CHK") || !strcmp(str,"CHECK") || !strcmp(str,"CHECKSUM")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.chk = parse_boolean();
@@ -1960,7 +1981,7 @@ sid accept:
 				else if (!strcmp(str,"PROV") || !strcmp(str,"PROVIDER")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.prov = parse_boolean();
@@ -1968,7 +1989,7 @@ sid accept:
 				else if (!strcmp(str,"ONBAD")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.onbad = parse_boolean();
@@ -1980,7 +2001,7 @@ sid accept:
 				if (!strcmp(str,"TIMEOUT")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -1990,7 +2011,7 @@ sid accept:
 				else if (!strcmp(str,"MAX")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2001,7 +2022,7 @@ sid accept:
 				else if (!strcmp(str,"INTERVAL")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2012,7 +2033,7 @@ sid accept:
 				else if (!strcmp(str,"VALIDECMTIME")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2022,7 +2043,7 @@ sid accept:
 				else if (!strcmp(str,"FIRST")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2033,7 +2054,7 @@ sid accept:
 				else if ( (!strcmp(str,"ECMTIME"))||(!strcmp(str,"TIMEPERECM")) ) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2043,7 +2064,7 @@ sid accept:
 				else if (!strcmp(str,"THRESHOLD")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2057,7 +2078,7 @@ sid accept:
 					if (!strcmp(str,"SID")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						defaultcs.option.cssendsid = parse_boolean();
@@ -2065,7 +2086,7 @@ sid accept:
 					else if (!strcmp(str,"CAID")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						defaultcs.option.cssendcaid = parse_boolean();
@@ -2073,7 +2094,7 @@ sid accept:
 					else if (!strcmp(str,"PROVIDER")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						defaultcs.option.cssendprovid = parse_boolean();
@@ -2088,7 +2109,7 @@ sid accept:
 				if (!strcmp(str,"NEWCAMD")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2099,7 +2120,7 @@ sid accept:
 				else if (!strcmp(str,"CCCAM")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2117,7 +2138,7 @@ sid accept:
 				if (!strcmp(str,"VALIDECMTIME")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2127,7 +2148,7 @@ sid accept:
 				else if (!strcmp(str,"MAXHOP")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2144,7 +2165,7 @@ sid accept:
 				if (!strcmp(str,"TIMEOUT")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -2155,7 +2176,7 @@ sid accept:
 				else if (!strcmp(str,"SENDREQ")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue; 
 					} else iparser++;
 					defaultcs.option.cachesendreq = parse_boolean();
@@ -2163,7 +2184,7 @@ sid accept:
 				else if (!strcmp(str,"RESENDREQ")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue; 
 					} else iparser++;
 					defaultcs.option.cacheresendreq = parse_boolean();
@@ -2171,7 +2192,7 @@ sid accept:
 				else if (!strcmp(str,"SENDREP")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue; 
 					} else iparser++;
 					defaultcs.option.cachesendrep = parse_boolean();
@@ -2186,7 +2207,7 @@ sid accept:
 					if (!strcmp(str,"SID")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						defaultcs.option.faccept0sid = parse_boolean();
@@ -2194,7 +2215,7 @@ sid accept:
 					else if (!strcmp(str,"CAID")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						defaultcs.option.faccept0caid = parse_boolean();
@@ -2202,7 +2223,7 @@ sid accept:
 					else if (!strcmp(str,"PROVIDER")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						defaultcs.option.faccept0provider = parse_boolean();
@@ -2215,7 +2236,7 @@ sid accept:
 				if (!strcmp(str,"CCCAM")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowcccam = !parse_boolean();
@@ -2223,7 +2244,7 @@ sid accept:
 				else if (!strcmp(str,"NEWCAMD")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallownewcamd = !parse_boolean();
@@ -2231,7 +2252,7 @@ sid accept:
 				else if (!strcmp(str,"CACHE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowcache = !parse_boolean();
@@ -2239,7 +2260,7 @@ sid accept:
 				else if (!strcmp(str,"SKIPCWC")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowskipcwc = !parse_boolean();
@@ -2248,7 +2269,7 @@ sid accept:
 				else if (!strcmp(str,"CACHEEX")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowcacheex = !parse_boolean();
@@ -2261,7 +2282,7 @@ sid accept:
 				if (!strcmp(str,"CCCAM")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowcccam = parse_boolean();
@@ -2269,7 +2290,7 @@ sid accept:
 				else if (!strcmp(str,"NEWCAMD")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallownewcamd = parse_boolean();
@@ -2277,7 +2298,7 @@ sid accept:
 				else if (!strcmp(str,"CACHE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowcache = parse_boolean();
@@ -2285,7 +2306,7 @@ sid accept:
 				else if (!strcmp(str,"SKIPCWC")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowskipcwc = parse_boolean();
@@ -2300,7 +2321,7 @@ sid accept:
 			if (!strcmp(str,"SIDTIME")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -2311,7 +2332,7 @@ sid accept:
 			else if (!strcmp(str,"MAXECM")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -2324,7 +2345,7 @@ sid accept:
 		else if (!strcmp(str,"HEALTH")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.health.enable = parse_boolean();
@@ -2332,7 +2353,7 @@ sid accept:
 				else if (!strcmp(str,"FALLBACK")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallback.enable = parse_boolean();
@@ -2340,7 +2361,7 @@ sid accept:
 				else if (!strcmp(str,"NAGRA")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.nagra.enable = parse_boolean();
@@ -2348,7 +2369,7 @@ sid accept:
 				else if (!strcmp(str,"LITE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fenablelite = parse_boolean();
@@ -2357,7 +2378,7 @@ sid accept:
 				else if (!strcmp(str,"CACHEEX")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					defaultcs.option.fallowcacheex = parse_boolean();
@@ -2374,7 +2395,7 @@ sid accept:
 link_cccam_server:
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			srv = malloc( sizeof(struct server_data) );
@@ -2405,7 +2426,7 @@ link_cccam_client:
 			// F : user pass <downhops> <uphops>
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			struct cc_client_data *cli = malloc( sizeof(struct cc_client_data) );
@@ -2553,7 +2574,7 @@ link_cccam_client:
 		//else if (!strcmp(str,"NODEID")) {
 		//	parse_spaces();
 		//	if ((*iparser!=':')&&(*iparser!='=')) {
-		//		mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+		//		mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 		//		continue;
 		//	} else iparser++;
 		//	if ( parse_hex(str)==16 ) hex2array( str, cfg->nodeid );
@@ -2566,7 +2587,7 @@ link_cccam_client:
 			if (!strcmp(str,"VERSION")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_str(str);
@@ -2604,7 +2625,7 @@ link_cccam_client:
 			else if (!strcmp(str,"PORT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -2621,7 +2642,7 @@ link_cccam_client:
 			else if (!strcmp(str,"PROFILES")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				for(i=0;i<MAX_CSPORTS;i++) {
@@ -2637,7 +2658,7 @@ link_cccam_client:
 			else if (!strcmp(str,"KEEPALIVE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->cccam.keepalive = parse_boolean();
@@ -2667,7 +2688,7 @@ link_cccam_client:
 			else if (!strcmp(str,"SERVER")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				srv = malloc( sizeof(struct server_data) );
@@ -2693,7 +2714,7 @@ link_cccam_client:
 				}
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				struct camd35_client_data *cli = malloc( sizeof(struct camd35_client_data) );
@@ -2753,7 +2774,7 @@ link_cccam_client:
 			if (!strcmp(str,"PORT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -2773,7 +2794,7 @@ link_cccam_client:
 				}
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				struct camd35_client_data *cli = malloc( sizeof(struct camd35_client_data) );
@@ -2829,7 +2850,7 @@ link_cccam_client:
 			else if (!strcmp(str,"SERVER")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				srv = malloc( sizeof(struct server_data) );
@@ -2851,7 +2872,7 @@ link_cccam_client:
 			else if (!strcmp(str,"KEEPALIVE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->cs378x.keepalive = parse_boolean();
@@ -2868,7 +2889,7 @@ link_mgcamd_user:
 			}
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			struct mg_client_data *cli = malloc( sizeof(struct mg_client_data) );
@@ -2977,7 +2998,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"PORT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3000,7 +3021,7 @@ link_mgcamd_user:
 				}
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				for(i=0; i<14; i++)
@@ -3032,7 +3053,7 @@ link_mgcamd_user:
 				}
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				for(i=0;i<MAX_CSPORTS;i++) {
@@ -3047,7 +3068,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"KEEPALIVE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->mgcamd.keepalive = parse_boolean();
@@ -3061,7 +3082,7 @@ link_mgcamd_user:
 		else if (!strcmp(str,"HOST")) {
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			parse_str(str);
@@ -3075,7 +3096,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"VALIDECMTIME")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3087,7 +3108,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"MAXHOP")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3106,7 +3127,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"PORT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3122,7 +3143,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"PEER")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				// must check for reuse of same user
@@ -3186,7 +3207,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"TIMEOUT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3204,7 +3225,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"ALIVETIME")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				if ( parse_int(str) ) {
@@ -3218,7 +3239,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"ADAPTIVETTL")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->cache.adaptivettl = parse_boolean();
@@ -3226,7 +3247,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"STRICTPROVID")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->cache.strictprov = parse_boolean();
@@ -3234,7 +3255,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"AUTOADD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				cfg->cache.autoadd = parse_boolean();
@@ -3247,7 +3268,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"THRESHOLD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3258,7 +3279,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"DCWCHECK2")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->cache.dcwcheck2 = parse_boolean();
@@ -3266,7 +3287,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"DCWCHECK3")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cfg->cache.dcwcheck3 = parse_boolean();
@@ -3284,7 +3305,7 @@ link_mgcamd_user:
 				if (!strcmp(str,"TIME")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue; 
 					} else iparser++;
 					if ( parse_int(str) ) {
@@ -3299,7 +3320,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"DCWCHECK2")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				cfg->cache.dcwcheck2 = parse_boolean();
@@ -3308,7 +3329,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"DCWCHECK3")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				cfg->cache.dcwcheck3 = parse_boolean();
@@ -3317,7 +3338,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"FORWARD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				cfg->cache.forward = parse_boolean();
@@ -3330,7 +3351,7 @@ link_mgcamd_user:
 				}
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				parse_name(str);
@@ -3346,7 +3367,7 @@ link_mgcamd_user:
 				}
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				parse_name(str);
@@ -3361,7 +3382,7 @@ link_mgcamd_user:
 				}
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				parse_name(str);
@@ -3383,7 +3404,7 @@ link_mgcamd_user:
 			}
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			parse_hex(str);
@@ -3397,7 +3418,7 @@ link_mgcamd_user:
 			}
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			cardserver->card.nbprov = 0;
@@ -3416,7 +3437,7 @@ link_mgcamd_user:
 		else if (!strcmp(str,"USER")) {
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 
@@ -3457,7 +3478,7 @@ link_mgcamd_user:
 								usr->card.caid = hex2int(str);
 								if (!parse_expect(':')) {
 									usr->card.caid = 0;
-									mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+									mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 									break;
 								}
 								usr->card.nbprov = 0;
@@ -3574,7 +3595,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"LENGTH")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 
@@ -3596,7 +3617,7 @@ link_mgcamd_user:
 					if (!strcmp(str,"LENGTH")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						cardserver->option.checkecmlength = parse_boolean();
@@ -3616,7 +3637,7 @@ link_mgcamd_user:
 					if (!strcmp(str,"MODE")) {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
-							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 							continue;
 						} else iparser++;
 						parse_name(str);
@@ -3697,7 +3718,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"TIMEOUT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue; 
 				} else iparser++;
 				parse_int(str);
@@ -3709,7 +3730,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"MAXFAILED")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3721,7 +3742,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"RETRY")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3733,7 +3754,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"SILENT_NOK")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.dcw.silentnok = parse_boolean();
@@ -3742,7 +3763,7 @@ link_mgcamd_user:
 				// v1.40 DCW CYCLE ENGINE: motor unico de ciclo (substitui MINTIME/CYCLE_CHECK/CWC/STALE_CHECK/NAGRA CYCLE)
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.dcw.cycleengine = parse_boolean();
@@ -3751,7 +3772,7 @@ link_mgcamd_user:
 				// v1.40 SERVERS: lista explicita de readers (ids) que este perfil pode usar
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				int x = 0;
@@ -3773,7 +3794,7 @@ link_mgcamd_user:
 				if (!strcmp(str,"TTL")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -3785,7 +3806,7 @@ link_mgcamd_user:
 				else if (!strcmp(str,"RECONNECT")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -3801,7 +3822,7 @@ link_mgcamd_user:
 				if (!strcmp(str,"MINTIME")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -3812,7 +3833,7 @@ link_mgcamd_user:
 				else if (!strcmp(str,"RETRY")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -3823,7 +3844,7 @@ link_mgcamd_user:
 				else {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					cardserver->option.dcw.deadchan = parse_boolean();
@@ -3833,7 +3854,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"PACING")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3845,7 +3866,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"RAWLOG")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.dcw.rawlog = parse_boolean();
@@ -3853,7 +3874,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.skipcwc_exclude.active = parse_boolean();
@@ -3861,7 +3882,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDLIST")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				int x = 0;
@@ -3881,7 +3902,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"CHECK")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.dcw.check = parse_boolean();
@@ -3889,7 +3910,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"HALFNULLED")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.dcw.halfnulled = parse_boolean();
@@ -3898,7 +3919,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"SWAP")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.dcw.swap = parse_boolean();
@@ -3912,7 +3933,7 @@ link_mgcamd_user:
 				if (!strcmp(str,"INVERSE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					cardserver->option.dcw.cak7inv = parse_boolean();
@@ -3920,7 +3941,7 @@ link_mgcamd_user:
 				else {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					cardserver->option.dcw.cak7 = parse_boolean();
@@ -3930,7 +3951,7 @@ link_mgcamd_user:
 			// DCW LOG: YES - regista as CWs em hex no debug (aprendizagem CAK7)
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			cardserver->option.dcw.dcwlog = parse_boolean();
@@ -3939,7 +3960,7 @@ link_mgcamd_user:
 			// DCW LASTCWONNOK: YES - em NOK reenvia a ultima CW valida do canal (nao para o descrambler)
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			cardserver->option.dcw.lastcwon_nok = parse_boolean();
@@ -3956,7 +3977,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"ENABLE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.health.enable = parse_boolean();
@@ -3964,7 +3985,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"WEIGHTS")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				int w1=0,w2=0,w3=0,w4=0;
@@ -3985,7 +4006,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"MINECMS")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -3996,7 +4017,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"DROPOFF")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4016,7 +4037,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"ENABLE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallback.enable = parse_boolean();
@@ -4024,7 +4045,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"ORDER")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				int oi = 0;
@@ -4052,7 +4073,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"TIMEOUT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4072,7 +4093,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"ENABLE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.nagra.enable = parse_boolean();
@@ -4080,7 +4101,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"CHK") || !strcmp(str,"CHECK") || !strcmp(str,"CHECKSUM")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.nagra.chk = parse_boolean();
@@ -4088,7 +4109,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"PROV") || !strcmp(str,"PROVIDER")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.nagra.prov = parse_boolean();
@@ -4096,7 +4117,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"ONBAD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.nagra.onbad = parse_boolean();
@@ -4113,7 +4134,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"TIMEOUT")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4123,7 +4144,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"MAX")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4134,7 +4155,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"INTERVAL")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4145,7 +4166,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"VALIDECMTIME")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4155,7 +4176,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"FIRST")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4166,7 +4187,7 @@ link_mgcamd_user:
 			else if ( (!strcmp(str,"ECMTIME"))||(!strcmp(str,"TIMEPERECM")) ) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4176,7 +4197,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"THRESHOLD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4190,7 +4211,7 @@ link_mgcamd_user:
 				if (!strcmp(str,"SID")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -4199,7 +4220,7 @@ link_mgcamd_user:
 				else if (!strcmp(str,"CAID")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -4208,7 +4229,7 @@ link_mgcamd_user:
 				else if (!strcmp(str,"PROVID")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					parse_int(str);
@@ -4229,7 +4250,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"NEWCAMD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4240,7 +4261,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"CCCAM")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_int(str);
@@ -4258,7 +4279,7 @@ link_mgcamd_user:
 			}
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			parse_hex(str);
@@ -4278,7 +4299,7 @@ link_mgcamd_user:
 				if (!strcmp(str,"SID")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					cardserver->option.faccept0sid = parse_boolean();
@@ -4286,7 +4307,7 @@ link_mgcamd_user:
 				else if (!strcmp(str,"CAID")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					cardserver->option.faccept0caid = parse_boolean();
@@ -4294,7 +4315,7 @@ link_mgcamd_user:
 				else if (!strcmp(str,"PROVIDER")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					cardserver->option.faccept0provider = parse_boolean();
@@ -4303,7 +4324,7 @@ link_mgcamd_user:
 				else if (!strcmp(str,"ONID")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
-						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 						continue;
 					} else iparser++;
 					cfg->cache.faccept0onid = parse_boolean();
@@ -4321,7 +4342,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"CCCAM")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallowcccam = !parse_boolean();
@@ -4329,7 +4350,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"NEWCAMD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallownewcamd = !parse_boolean();
@@ -4337,7 +4358,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"CACHE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallowcache = !parse_boolean();
@@ -4345,7 +4366,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"SKIPCWC")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallowskipcwc = !parse_boolean();
@@ -4354,7 +4375,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"CACHEEX")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallowcacheex = !parse_boolean();
@@ -4373,7 +4394,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"CCCAM")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallowcccam = parse_boolean();
@@ -4381,7 +4402,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"NEWCAMD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallownewcamd = parse_boolean();
@@ -4389,7 +4410,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"CACHE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallowcache = parse_boolean();
@@ -4397,7 +4418,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"SKIPCWC")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallowskipcwc = parse_boolean();
@@ -4405,7 +4426,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"HEALTH")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.health.enable = parse_boolean();
@@ -4413,7 +4434,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"FALLBACK")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallback.enable = parse_boolean();
@@ -4421,7 +4442,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"NAGRA")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.nagra.enable = parse_boolean();
@@ -4429,7 +4450,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"LITE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fenablelite = parse_boolean();
@@ -4438,7 +4459,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"CACHEEX")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fallowcacheex = parse_boolean();
@@ -4457,7 +4478,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"CCCAM")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fsharecccam = parse_boolean();
@@ -4465,7 +4486,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"NEWCAMD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fsharenewcamd = parse_boolean();
@@ -4473,7 +4494,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"MGCAMD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fsharemgcamd = parse_boolean();
@@ -4481,7 +4502,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"EXPIRED")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->option.fshareexpired = parse_boolean();
@@ -4494,7 +4515,7 @@ link_mgcamd_user:
 			if (!strcmp(str,"COUNTRY")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				memset( cfg->blockcountry, 0, sizeof(cfg->blockcountry) );
@@ -4530,7 +4551,7 @@ link_mgcamd_user:
 					iparser++;
 				}
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 
@@ -4592,7 +4613,7 @@ link_mgcamd_user:
 			else if (!strcmp(str,"DENYLIST")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				cardserver->sidlist.deny = parse_boolean();
@@ -4607,7 +4628,7 @@ link_mgcamd_user:
 				}
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 					continue;
 				} else iparser++;
 				parse_spaces();
@@ -4684,7 +4705,7 @@ link_mgcamd_user:
 		else if (!strcmp(str,"TRACE")) {
 			parse_spaces();
 			if ((*iparser!=':')&&(*iparser!='=')) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ':' expected\n",file->nbline,iparser-currentline);
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
 				continue;
 			} else iparser++;
 			
