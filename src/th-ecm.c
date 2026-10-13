@@ -350,8 +350,16 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				asrv = asrv->next;
 			}
 			if (!done) {
-				ecm->arbiter_asked = 1;
-				ecm->arbiter_time = GetTickCount();
+				// v1.60.1: arbitro ocupado (outro ECM em validacao) - NAO desistir:
+				// re-tentar no proximo ciclo (o arbitro liberta em ~300ms; o deadline
+				// aguenta). Desistir aqui = NOK + freeze ciclico com varios clientes.
+				if ((GetTickCount() - ecm->recvtime) < 3000) {
+					ecm->checktime = GetTickCount() + 150;
+				}
+				else {
+					ecm->arbiter_asked = 1;
+					ecm->arbiter_time = GetTickCount();
+				}
 			}
 		}
 
@@ -391,9 +399,14 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 					asrv = asrv->next;
 				}
 				if (!done) {
-					// arbitro indisponivel: degradar graciosamente (timeout entrega o stash)
-					ecm->arbiter_asked = 1;
-					ecm->arbiter_time = GetTickCount();
+					// v1.60.1: arbitro ocupado - re-tentar no proximo ciclo
+					if ((GetTickCount() - ecm->recvtime) < 3000) {
+						ecm->checktime = GetTickCount() + 150;
+					}
+					else {
+						ecm->arbiter_asked = 1;
+						ecm->arbiter_time = GetTickCount();
+					}
 				}
 			}
 			else if ((GetTickCount() - ecm->arbiter_time) > 2500) {
