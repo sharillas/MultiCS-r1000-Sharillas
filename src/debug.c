@@ -7,13 +7,6 @@
 #include <stdint.h>
 
 
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-
-#else
-
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -28,9 +21,16 @@
 #include <netinet/tcp.h>
 #include <errno.h>
 
-#endif
-
 #include "debug.h"
+
+// v1.49 LOGFILE: caminho do ficheiro de log completo (definido pela config)
+static char g_logfile[256];
+void debug_logfile_set(const char *path)
+{
+	if (path) strncpy(g_logfile, path, sizeof(g_logfile)-1);
+	else g_logfile[0] = 0;
+	g_logfile[sizeof(g_logfile)-1] = 0;
+}
 
 char *strloglevels[]={ "CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE" };
 
@@ -205,7 +205,6 @@ void mlogf(int lineloglevel, uint32_t flag, char *format, ...)
 
 	if (lineloglevel<=loglevel)
 	{
-		if (!chkdbgflag(flag)) return;
 		int index;
 		char debugline[MAX_DBGLINE_LEN];
 		if (fstr[0]==' ') { // ADD TIME
@@ -233,6 +232,16 @@ void mlogf(int lineloglevel, uint32_t flag, char *format, ...)
 		vsnprintf( debugline+index, sizeof(debugline)-index, fstr, args);
 		va_end( args );
 
+		// v1.49 LOGFILE: grava TUDO (independente dos flags do anel de debug)
+		if (g_logfile[0]) {
+			FILE *lf = fopen(g_logfile, "a");
+			if (lf) {
+				fprintf(lf, "%s\n", debugline);
+				fclose(lf);
+			}
+		}
+
+		if (!chkdbgflag(flag)) return;
 		dbgflag[idbgline] = flag;
 		debug(debugline);
 	}

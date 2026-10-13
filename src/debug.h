@@ -29,9 +29,6 @@ struct trace_data {
 };
 
 extern int flag_debugscr;
-#ifdef DEBUG_NETWORK
-extern int flag_debugnet;
-#endif
 extern int flag_debugfile;
 extern char debug_file[256];
 extern int loglevel;
@@ -66,6 +63,7 @@ char* debugtime(char *str);
 void debug(char *str);
 
 void mlogf( int lineloglevel,uint32_t flag, char *format, ...);
+void debug_logfile_set(const char *path); // v1.49 LOGFILE
 void debughex(uint8_t *buffer, int len);
 
 void fdebug(char *str);

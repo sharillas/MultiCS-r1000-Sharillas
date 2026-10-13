@@ -232,6 +232,8 @@ void init_cardserver(struct cardserver_data *cs)
 
 	cs->option.dcw.timeout = 3000;
 	cs->option.server.max = 0;		// Max cs per ecm ( 0:unlimited )
+	cs->option.server.ask = 0;		// v1.55.1: fan-out por ECM (0 = classico: 1 server por ronda)
+	cs->option.dcw.agree = 0;		// v1.55.1: consenso por ECM (0/1 = off)
 	cs->option.server.interval = 1000;	// interval between 2 same ecm to diffrent cs
 	cs->option.server.timeout = 2000; // timeout for resending ecm to cs
 	cs->option.server.timeperecm = 0; // min time to do a request
@@ -276,6 +278,11 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.dcw.deadchan_retry = 60;
 	cs->option.dcw.pacing = 0;      // v1.48: off por defeito
 	cs->option.dcw.rawlog = 0;      // v1.48: off por defeito
+	cs->option.dcw.halfrotate = 0;      // v1.55: off por defeito
+	cs->option.dcw.halfrepeat_ttl = 3;  // v1.55: 3 pares por defeito
+	cs->option.dcw.arbiter = 0;         // v1.55: off por defeito
+	cs->option.dcw.arbiter_serve = 0;   // v1.55: so validar (nao servir) por defeito
+	cs->option.dcw.arbiter_rate = 100;  // v1.55: validar todos os ECMs quando ligado
 	cs->option.health.minecms = 10; // v1.41-fix: readers sem amostras participam ate ganharem historial (fix ovo-e-galinha)
 	// Shares
 	cs->option.fsharecccam = 1;
@@ -464,6 +471,11 @@ void parse_server_data( struct server_data *tsrv )
 					// envia ECMs na mesma com cardid 0 (o server faz o match)
 					tsrv->stealth = parse_boolean();
 				}
+				else if (!strcmp(str,"arbiter")) {
+					// v1.55: reader arbiter (fonte de confianca) - fora da rotacao
+					// normal; so perguntado para VALIDAR CWs (ver DCW ARBITER)
+					tsrv->arbiter = parse_boolean();
+				}
 				else if (!strcmp(str,"budget_max")) {
 					// v1.49 BUDGET ENGINE: teto manual em cws/min (0 = off)
 					if (parse_int(str)) {
@@ -472,14 +484,33 @@ void parse_server_data( struct server_data *tsrv )
 						if (tsrv->budget_max) tsrv->budget_on = 1;
 					}
 				}
-				else if (!strcmp(str,"budget_group")) {
-					// v1.49 BUDGET GROUP: orcamento partilhado entre readers
-					// do mesmo cartao (1..8; 0 = so este reader)
-					if (parse_int(str)) {
-						tsrv->budget_group = (uint8_t)atoi(str);
-						if (tsrv->budget_group>BUDGET_GROUP_MAX) tsrv->budget_group=0;
-					}
+			else if (!strcmp(str,"budget_group")) {
+				// v1.49 BUDGET GROUP: orcamento partilhado entre readers
+				// do mesmo cartao (1..8; 0 = so este reader)
+				if (parse_int(str)) {
+					tsrv->budget_group = (uint8_t)atoi(str);
+					if (tsrv->budget_group>BUDGET_GROUP_MAX) tsrv->budget_group=0;
 				}
+			}
+			else if (!strcmp(str,"budget_ask")) {
+				// v1.50 BUDGET ASK: teto de PEDIDOS por segundo para este
+				// reader (0 = sem teto). O cartao upstream ve no maximo
+				// N asks/s do nosso saco inteiro = "um cliente legitimo"
+				if (parse_int(str)) {
+					tsrv->budget_ask = (uint16_t)atoi(str);
+					if (tsrv->budget_ask>50) tsrv->budget_ask=50;
+					if (tsrv->budget_ask) tsrv->budget_on = 1;
+				}
+			}
+			else if (!strcmp(str,"type")) {
+				// v1.51: grupo de APRESENTACAO na GUI (o runtime mantem o tipo
+				// real do protocolo) - ex: type=mgcamd num reader N-line
+				parse_value(str,"\r\n\t;:,= ");
+				uppercase(str);
+				if (!strcmp(str,"MGCAMD")) tsrv->guigroup = TYPE_MGCAMD;
+				else if (!strcmp(str,"NEWCAMD")) tsrv->guigroup = TYPE_NEWCAMD;
+				else if (!strcmp(str,"CCCAM")) tsrv->guigroup = TYPE_CCCAM;
+			}
 #ifdef CACHEEX
 				else if (!strcmp(str,"cacheex_mode")) {
 					if (parse_hex(str)) tsrv->cacheex_mode = hex2int(str);
@@ -795,12 +826,24 @@ int read_config(struct config_data *cfg)
 		g_parse_filename[sizeof(g_parse_filename)-1] = 0;
 		g_parse_nbline = file->nbline;
 
+		// v1.54: linha comentada "#N:" "#C:" "#CS378X SERVER:" "#CAMD35 SERVER:"
+		// = reader desactivado pela GUI (mantem a entrada com FLAG_DISABLE para o ON)
+		// (o '#' imediatamente antes da keyword: as linhas de exemplo "#    N: ..." nao contam)
+		int disabled_line = 0;
+		{
+			char *q = currentline;
+			if (*q=='#' && (!strncmp(q+1,"N:",2)||!strncmp(q+1,"C:",2)||!strncmp(q+1,"CS378X SERVER:",14)||!strncmp(q+1,"CAMD35 SERVER:",13))) {
+				disabled_line = 1;
+				memmove(currentline, q+1, strlen(q+1)+1);
+			}
+		}
+
 		while (1) {
 			char *pos;
-			// Remove Comments
+			// Remove Comments ('#' = comentario so no inicio da linha ou apos espaco/tab)
 			pos = currentline;
 			while (*pos) { 
-				if (*pos=='#') {
+				if (*pos=='#' && (pos==currentline || *(pos-1)==' ' || *(pos-1)=='\t')) {
 					*pos=0;
 					break;
 				}
@@ -833,14 +876,27 @@ int read_config(struct config_data *cfg)
 				continue;
 			} else iparser++;
 
-			cardserver = malloc( sizeof(struct cardserver_data) );
-			memcpy( cardserver, &defaultcs, sizeof(struct cardserver_data) );
-			// Newcamd Port
-			cardserver->newcamd.port = defaultcs.newcamd.port;
-			if (defaultcs.newcamd.port) defaultcs.newcamd.port++;
-			// Name
-			strcpy(cardserver->name, str);
-			cfg_addprofile(cfg, cardserver);
+			// v1.51: find-or-create - re-declarar uma seccao noutro ficheiro
+			// (ex: Clients.cfg re-declara [MEO] so para os USERs) reutiliza o
+			// perfil existente em vez de criar um duplicado
+			cardserver = NULL;
+			{
+				struct cardserver_data *w = cfg->cardserver;
+				while (w) {
+					if (!strcmp(w->name, str)) { cardserver = w; break; }
+					w = w->next;
+				}
+			}
+			if (!cardserver) {
+				cardserver = malloc( sizeof(struct cardserver_data) );
+				memcpy( cardserver, &defaultcs, sizeof(struct cardserver_data) );
+				// Newcamd Port
+				cardserver->newcamd.port = defaultcs.newcamd.port;
+				if (defaultcs.newcamd.port) defaultcs.newcamd.port++;
+				// Name
+				strcpy(cardserver->name, str);
+				cfg_addprofile(cfg, cardserver);
+			}
 			continue;
 		}
 
@@ -946,11 +1002,12 @@ int read_config(struct config_data *cfg)
 			// Create Servers
 			while (ports) {
 				for (i=ports->first; i<=ports->last; i++) {
-					struct server_data *srv = malloc( sizeof(struct server_data) );
-					memcpy(srv,&tsrv,sizeof(struct server_data) );
-					srv->port = i;
-					pthread_mutex_init( &srv->lock, NULL );
-					cfg_addserver(cfg, srv);
+				struct server_data *srv = malloc( sizeof(struct server_data) );
+				memcpy(srv,&tsrv,sizeof(struct server_data) );
+				srv->port = i;
+				pthread_mutex_init( &srv->lock, NULL );
+				if (disabled_line) srv->flags |= FLAG_DISABLE;
+				cfg_addserver(cfg, srv);
 				}
 				// Remove Ports
 				struct port_data *tmp = ports;
@@ -1074,18 +1131,27 @@ int read_config(struct config_data *cfg)
 				continue;
 			} else iparser++;
 			if (parse_int(str)) 
-			{
-				int tmploglevel=atoi(str);
+			{				int tmploglevel=atoi(str);
 				if (tmploglevel<0 || tmploglevel>6)
 				{
 					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0),"LOGLEVEL must be between 0 and 5\n");
 					continue;
 				}
-				else
-				{
-					loglevel=tmploglevel;
-				}
+			else
+			{
+				loglevel=tmploglevel;
 			}
+		}
+	}
+		else if (!strcmp(str,"LOGFILE")) {
+			// v1.49: ficheiro de log completo (todas as linhas acima do LOGLEVEL)
+			parse_spaces();
+			if ((*iparser!=':')&&(*iparser!='=')) {
+				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0),"':' expected\n");
+				continue;
+			} else iparser++;
+			parse_name(cfg->logfile);
+			debug_logfile_set(cfg->logfile);
 		}
 
 #ifdef TELNET
@@ -1817,6 +1883,73 @@ sid accept:
 					} else iparser++;
 					defaultcs.option.dcw.rawlog = parse_boolean();
 				}
+				// v1.55 DCW HALFROTATE: filtro de rotacao CW0/CW1 (anti-fake de periodo)
+				else if (!strcmp(str,"HALFROTATE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+						continue;
+					} else iparser++;
+					defaultcs.option.dcw.halfrotate = parse_boolean();
+				}
+				// v1.55 DCW HALFREPEAT TTL: janela de repeticoes de meia-CW (2..8)
+				else if (!strcmp(str,"HALFREPEAT")) {
+					parse_name(str);
+					uppercase(str);
+					if (!strcmp(str,"TTL")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+							continue;
+						} else iparser++;
+						parse_int(str);
+						defaultcs.option.dcw.halfrepeat_ttl = atoi(str);
+						if (defaultcs.option.dcw.halfrepeat_ttl<2) defaultcs.option.dcw.halfrepeat_ttl=2;
+						else if (defaultcs.option.dcw.halfrepeat_ttl>8) defaultcs.option.dcw.halfrepeat_ttl=8;
+					}
+				}
+				// v1.55 DCW ARBITER: validar a CW contra o reader de confianca (arbiter=yes)
+				else if (!strcmp(str,"ARBITER")) {
+					parse_name(str);
+					uppercase(str);
+					if (!strcmp(str,"SERVE")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+							continue;
+						} else iparser++;
+						defaultcs.option.dcw.arbiter_serve = parse_boolean();
+					}
+					else if (!strcmp(str,"RATE")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+							continue;
+						} else iparser++;
+						parse_int(str);
+						defaultcs.option.dcw.arbiter_rate = atoi(str);
+						if (defaultcs.option.dcw.arbiter_rate>100) defaultcs.option.dcw.arbiter_rate=100;
+					}
+					else {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+							continue;
+						} else iparser++;
+						defaultcs.option.dcw.arbiter = parse_boolean();
+					}
+				}
+				// v1.55.1 DCW AGREE: consenso - N fontes com a MESMA CW para aceitar
+				else if (!strcmp(str,"AGREE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.dcw.agree = atoi(str);
+					if (defaultcs.option.dcw.agree>6) defaultcs.option.dcw.agree=6;
+				}
 				else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 					parse_spaces();
 					if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2018,6 +2151,18 @@ sid accept:
 					defaultcs.option.server.max = atoi(str);
 					if (defaultcs.option.server.max<0) defaultcs.option.server.max=0;
 					else if (defaultcs.option.server.max>10) defaultcs.option.server.max=10;
+				}
+				// v1.55.1 SERVER ASK: quantos servers perguntar em paralelo por ECM
+				else if (!strcmp(str,"ASK")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					defaultcs.option.server.ask = atoi(str);
+					if (defaultcs.option.server.ask<0) defaultcs.option.server.ask=0;
+					else if (defaultcs.option.server.ask>8) defaultcs.option.server.ask=8;
 				}
 				else if (!strcmp(str,"INTERVAL")) {
 					parse_spaces();
@@ -2312,10 +2457,6 @@ sid accept:
 					defaultcs.option.fallowskipcwc = parse_boolean();
 				}
 		else if (!strcmp(str,"ECMRATELIMIT")) {
-			if (!cardserver) {
-				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Skip ECMRATELIMIT, undefined profile\n",file->nbline,iparser-currentline);
-				continue;
-			}
 			parse_name(str);
 			uppercase(str);
 			if (!strcmp(str,"SIDTIME")) {
@@ -2325,9 +2466,9 @@ sid accept:
 					continue;
 				} else iparser++;
 				parse_int(str);
-				cardserver->option.ratelimit.sidtime = atoi(str);
-				if (cardserver->option.ratelimit.sidtime<0) cardserver->option.ratelimit.sidtime=0;
-				else if (cardserver->option.ratelimit.sidtime>60000) cardserver->option.ratelimit.sidtime=60000;
+				defaultcs.option.ratelimit.sidtime = atoi(str);
+				if (defaultcs.option.ratelimit.sidtime<0) defaultcs.option.ratelimit.sidtime=0;
+				else if (defaultcs.option.ratelimit.sidtime>60000) defaultcs.option.ratelimit.sidtime=60000;
 			}
 			else if (!strcmp(str,"MAXECM")) {
 				parse_spaces();
@@ -2336,9 +2477,9 @@ sid accept:
 					continue;
 				} else iparser++;
 				parse_int(str);
-				cardserver->option.ratelimit.maxecm = atoi(str);
-				if (cardserver->option.ratelimit.maxecm<0) cardserver->option.ratelimit.maxecm=0;
-				else if (cardserver->option.ratelimit.maxecm>10000) cardserver->option.ratelimit.maxecm=10000;
+				defaultcs.option.ratelimit.maxecm = atoi(str);
+				if (defaultcs.option.ratelimit.maxecm<0) defaultcs.option.ratelimit.maxecm=0;
+				else if (defaultcs.option.ratelimit.maxecm>10000) defaultcs.option.ratelimit.maxecm=10000;
 			}
 		}
 
@@ -2412,6 +2553,7 @@ link_cccam_server:
 			parse_server_data( srv );
 			srv->handle = -1;
 			pthread_mutex_init( &srv->lock, NULL );
+			if (disabled_line) srv->flags |= FLAG_DISABLE;
 			cfg_addserver(cfg, srv);
 		}
 #endif
@@ -2704,6 +2846,7 @@ link_cccam_client:
 				parse_server_data( srv );
 				srv->handle = -1;
 				pthread_mutex_init( &srv->lock, NULL );
+				if (disabled_line) srv->flags |= FLAG_DISABLE;
 				cfg_addserver(cfg, srv);
 				camd35_init_data( srv->user, srv->pass, &srv->encryptkey, &srv->decryptkey, &srv->ucrc);
 			}
@@ -2866,6 +3009,7 @@ link_cccam_client:
 				parse_server_data( srv );
 				srv->handle = -1;
 				pthread_mutex_init( &srv->lock, NULL );
+				if (disabled_line) srv->flags |= FLAG_DISABLE;
 				cfg_addserver(cfg, srv);
 				camd35_init_data( srv->user, srv->pass, &srv->encryptkey, &srv->decryptkey, &srv->ucrc);
 			}
@@ -3317,24 +3461,6 @@ link_mgcamd_user:
 					else mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): Invalid integer (FILTER TIME)\n",file->nbline,iparser-currentline);
 				}
 			}
-			else if (!strcmp(str,"DCWCHECK2")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
-					continue; 
-				} else iparser++;
-				cfg->cache.dcwcheck2 = parse_boolean();
-			}
-
-			else if (!strcmp(str,"DCWCHECK3")) {
-				parse_spaces();
-				if ((*iparser!=':')&&(*iparser!='=')) {
-					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
-					continue; 
-				} else iparser++;
-				cfg->cache.dcwcheck3 = parse_boolean();
-			}
-
 			else if (!strcmp(str,"FORWARD")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3495,6 +3621,36 @@ link_mgcamd_user:
 #ifdef CHECK_NEXTDCW
 						else if (!strcmp(str,"dcwcheck")) usr->dcwcheck = parse_boolean();
 #endif
+						// v1.51: opcoes que o parser descartava (name/host/expire)
+						else if (!strcmp(str,"name")) {
+							char nb[256];
+							parse_spaces();
+							if (*iparser=='"') parse_quotes('"', nb);
+							else parse_str( nb );
+							if (!usr->realname) {
+								usr->realname = malloc( 128 );
+								strcpy( usr->realname, nb );
+							}
+						}
+						else if (!strcmp(str,"host")) {
+							char hb[256];
+							parse_str( hb );
+							usr->host = add_host( cfg, hb );
+							usr->host->clip = 1;
+						}
+#ifdef EXPIREDATE
+						else if (!strcmp(str,"expire")) {
+							char eb[64];
+							parse_str( eb );
+							if ( (eb[4]=='-')&&(eb[7]=='-') ) strptime( eb, "%Y-%m-%d", &usr->enddate );
+							else if ( (eb[2]=='-')&&(eb[5]=='-') ) strptime( eb, "%d-%m-%Y", &usr->enddate );
+						}
+#endif
+						else {
+							// opcao desconhecida: consumir o valor para nao
+							// partir o parse das restantes
+							parse_value(str,"\r\n\t;");
+						}
 
 						parse_spaces();
 						if (*iparser==';') iparser++; else break;
@@ -3871,6 +4027,73 @@ link_mgcamd_user:
 				} else iparser++;
 				cardserver->option.dcw.rawlog = parse_boolean();
 			}
+			// v1.55 DCW HALFROTATE: filtro de rotacao CW0/CW1 (anti-fake de periodo)
+			else if (!strcmp(str,"HALFROTATE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+					continue;
+				} else iparser++;
+				cardserver->option.dcw.halfrotate = parse_boolean();
+			}
+			// v1.55 DCW HALFREPEAT TTL: janela de repeticoes de meia-CW (2..8)
+			else if (!strcmp(str,"HALFREPEAT")) {
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"TTL")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					cardserver->option.dcw.halfrepeat_ttl = atoi(str);
+					if (cardserver->option.dcw.halfrepeat_ttl<2) cardserver->option.dcw.halfrepeat_ttl=2;
+					else if (cardserver->option.dcw.halfrepeat_ttl>8) cardserver->option.dcw.halfrepeat_ttl=8;
+				}
+			}
+			// v1.55 DCW ARBITER: validar a CW contra o reader de confianca (arbiter=yes)
+			else if (!strcmp(str,"ARBITER")) {
+				parse_name(str);
+				uppercase(str);
+				if (!strcmp(str,"SERVE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+						continue;
+					} else iparser++;
+					cardserver->option.dcw.arbiter_serve = parse_boolean();
+				}
+				else if (!strcmp(str,"RATE")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					cardserver->option.dcw.arbiter_rate = atoi(str);
+					if (cardserver->option.dcw.arbiter_rate>100) cardserver->option.dcw.arbiter_rate=100;
+				}
+				else {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+						continue;
+					} else iparser++;
+					cardserver->option.dcw.arbiter = parse_boolean();
+				}
+			}
+			// v1.55.1 DCW AGREE: consenso - N fontes com a MESMA CW para aceitar
+			else if (!strcmp(str,"AGREE")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.dcw.agree = atoi(str);
+				if (cardserver->option.dcw.agree>6) cardserver->option.dcw.agree=6;
+			}
 			else if (!strcmp(str,"SKIPCWC_EXCLUDE_SIDS_ACTIVE")) {
 				parse_spaces();
 				if ((*iparser!=':')&&(*iparser!='=')) {
@@ -3937,6 +4160,9 @@ link_mgcamd_user:
 						continue;
 					} else iparser++;
 					cardserver->option.dcw.cak7inv = parse_boolean();
+					// v1.52 FIX: INVERSE sozinho era inerte (o setdcw so aplica
+					// a transformacao com cak7=1) -> INVERSE implica cak7 ON
+					if (cardserver->option.dcw.cak7inv) cardserver->option.dcw.cak7 = 1;
 				}
 				else {
 					parse_spaces();
@@ -4151,6 +4377,18 @@ link_mgcamd_user:
 				cardserver->option.server.max = atoi(str);
 				if (cardserver->option.server.max<0) cardserver->option.server.max=0;
 				else if (cardserver->option.server.max>10) cardserver->option.server.max=10;
+			}
+			// v1.55.1 SERVER ASK: quantos servers perguntar em paralelo por ECM
+			else if (!strcmp(str,"ASK")) {
+				parse_spaces();
+				if ((*iparser!=':')&&(*iparser!='=')) {
+					mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+					continue;
+				} else iparser++;
+				parse_int(str);
+				cardserver->option.server.ask = atoi(str);
+				if (cardserver->option.server.ask<0) cardserver->option.server.ask=0;
+				else if (cardserver->option.server.ask>8) cardserver->option.server.ask=8;
 			}
 			else if (!strcmp(str,"INTERVAL")) {
 				parse_spaces();
@@ -6665,6 +6903,17 @@ void reread_config( struct config_data *cfg )
 	cfg->mgcamd.keepalive = newcfg.mgcamd.keepalive;
 	cfg->cccam.dcwcheck = newcfg.cccam.dcwcheck;
 	cfg->cccam.keepalive = newcfg.cccam.keepalive;
+#ifdef CS378X_SRV
+	cfg->cs378x.keepalive = newcfg.cs378x.keepalive;
+#endif
+
+	// v1.52: campos que nao sobreviviam ao reload
+	cfg->http.loginfails = newcfg.http.loginfails;
+	cfg->http.locktime = newcfg.http.locktime;
+	memcpy( &cfg->failban, &newcfg.failban, sizeof(cfg->failban) );
+	memcpy( &cfg->anticascade, &newcfg.anticascade, sizeof(cfg->anticascade) );
+	memcpy( cfg->cccam.version, newcfg.cccam.version, sizeof(cfg->cccam.version) );
+	memcpy( cfg->cccam.build, newcfg.cccam.build, sizeof(cfg->cccam.build) );
 
 	update_servers( cfg, &newcfg );
 	update_cacheexservers( cfg, &newcfg );

@@ -134,11 +134,3 @@ int similarcw( uint8_t *cw1, uint8_t *cw2 )
 	return 0;
 }
 
-// for nds
-int ishalfnulledcw( uint8_t dcw[16] )
-{
-	char nullcw[8] = "\0\0\0\0\0\0\0\0";
-	if ( !memcmp(dcw,nullcw,8) || !memcmp(dcw+8,nullcw,8) ) return 1;
-	return 0;
-}
-

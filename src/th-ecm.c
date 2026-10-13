@@ -214,6 +214,8 @@ void ecm_faileddcw( ECM_DATA *ecm )
 	}
 	ecm->dedupnext = NULL;
 
+	srv_failhash_note(ecm); // v1.50: hash falhado entra na janela negativa
+
 	ecm->dcwstatus = STAT_DCW_FAILED;
 	ecm->checktime = 0;
 	ecm->waitserver = 0;
@@ -310,6 +312,121 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 			g_ecm_unique++;
 			dedup_ch_add( ecm->caid, ecm->sid, 1 );
 		}
+		// v1.55.5 ARBITER PRE-ASK: perguntar ao arbitro EM PARALELO com a rotacao
+		// (o arbitro e rapido e e a fonte da verdade -> entrega em ~800ms em vez
+		// dos ~3s do ciclo stash->validar; a latencia baixa evita o wedge da box)
+		if (cs->option.dcw.arbiter && cs->option.dcw.arbiter_rate>0
+			&& !ecm->arbiter_asked && !ecm->arbiter_pending
+			&& ((ecm->hash % 100) < cs->option.dcw.arbiter_rate)) {
+			struct server_data *asrv = cfg.server;
+			int done = 0;
+			while (asrv) {
+				if ( asrv->arbiter && !IS_DISABLED(asrv->flags) && (asrv->handle>0) && !asrv->busy ) {
+					struct cs_card_data *arc = asrv->card;
+					uint32_t arcid = 0;
+					while (arc) {
+						if (arc->caid==ecm->caid) { arcid = arc->shareid; break; }
+						arc = arc->next;
+					}
+					int sent = 0;
+					asrv->busycardid = arcid;
+					if (asrv->type==TYPE_NEWCAMD) sent = cs_sendecm_srv(cs, asrv, ecm);
+#ifdef CCCAM_CLI
+					else if (asrv->type==TYPE_CCCAM) sent = cc_sendecm_srv(asrv, ecm);
+#endif
+					if (sent>0) {
+						asrv->lastecmtime = GetTickCount();
+						asrv->busy = 1;
+						asrv->ecm.request = ecm;
+						asrv->ecm.hash = ecm->hash;
+						asrv->retry = 0;
+						ecm->arbiter_asked = 1;
+						ecm->arbiter_time = GetTickCount();
+						mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,asrv->id,cs->id)," -> ecm to ARBITER (pre-ask) (%s:%d) ch %04x:%06x:%04x:%08x\n",
+							asrv->host->name, asrv->port, ecm->caid, ecm->provid, ecm->sid, ecm->hash);
+						done = 1;
+					}
+				}
+				asrv = asrv->next;
+			}
+			if (!done) {
+				ecm->arbiter_asked = 1;
+				ecm->arbiter_time = GetTickCount();
+			}
+		}
+
+		// v1.55 ARBITER: ha uma CW em validacao - perguntar ao arbitro o MESMO ECM
+		if (ecm->arbiter_pending==1) {
+			if (!ecm->arbiter_asked) {
+				struct server_data *asrv = cfg.server;
+				int done = 0;
+				while (asrv) {
+					if ( asrv->arbiter && !IS_DISABLED(asrv->flags) && (asrv->handle>0) && !asrv->busy ) {
+						// shareid do cartao que serve este caid (0 = stealth)
+						struct cs_card_data *arc = asrv->card;
+						uint32_t arcid = 0;
+						while (arc) {
+							if (arc->caid==ecm->caid) { arcid = arc->shareid; break; }
+							arc = arc->next;
+						}
+						int sent = 0;
+						asrv->busycardid = arcid;
+						if (asrv->type==TYPE_NEWCAMD) sent = cs_sendecm_srv(cs, asrv, ecm);
+#ifdef CCCAM_CLI
+						else if (asrv->type==TYPE_CCCAM) sent = cc_sendecm_srv(asrv, ecm);
+#endif
+						if (sent>0) {
+							asrv->lastecmtime = GetTickCount();
+							asrv->busy = 1;
+							asrv->ecm.request = ecm;
+							asrv->ecm.hash = ecm->hash;
+							asrv->retry = 0;
+							ecm->arbiter_asked = 1;
+							ecm->arbiter_time = GetTickCount();
+							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,asrv->id,cs->id)," -> ecm to ARBITER (%s:%d) ch %04x:%06x:%04x:%08x\n",
+								asrv->host->name, asrv->port, ecm->caid, ecm->provid, ecm->sid, ecm->hash);
+							done = 1;
+						}
+					}
+					asrv = asrv->next;
+				}
+				if (!done) {
+					// arbitro indisponivel: degradar graciosamente (timeout entrega o stash)
+					ecm->arbiter_asked = 1;
+					ecm->arbiter_time = GetTickCount();
+				}
+			}
+			else if ((GetTickCount() - ecm->arbiter_time) > 2500) {
+				// v1.55.3: SEM validacao nao se entrega o candidato - um par
+				// errado dessincroniza o descrambler da box (freeze ate re-sync).
+				// Marcar a fonte e deixar o ECM seguir (NOK honesto no deadline;
+				// a box recupera limpa no proximo periodo validado).
+				ecm->arbiter_pending = 0;
+				struct server_data *ps = getsrvbyid(ecm->stashsrcid&0xffff);
+				if (ps) { srv_bad_record(ps, ecm->caid, ecm->sid); ps->cwbad++; ps->cwbad_time = GetTickCount(); }
+				mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," arb: timeout do arbitro - candidato DESCARTADO ch %04x:%06x:%04x (sem validacao)\n",
+					ecm->caid, ecm->provid, ecm->sid);
+				// v1.55.2: checktime=0 = "nunca re-verificar" (ECM orfao!) -
+				// reagendar SEMPRE
+				ecm->checktime = GetTickCount() + 200;
+				return;
+			}
+		}
+		// v1.50 NEG-HASH: este hash ja foi pedido e ficou sem resposta ha pouco
+		// -> nao repetir o ask na mesma janela (1 pedido por criptoperiodo;
+		// evita double-ask quando o cliente ou o retry insistem no mesmo hash)
+		{
+			uint32_t next = srv_failhash_check(ecm, ticks);
+			if (next) {
+				uint32_t limit = ecm->recvtime + dcwtimeout(cs, ecm);
+				if (next < limit) {
+					mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,0)," neghash: ask suprimido ch %04x:%06x:%04x:%08x (janela negativa)\n",
+						ecm->caid, ecm->provid, ecm->sid, ecm->hash);
+					ecm->checktime = next;
+					return;
+				}
+			}
+		}
 		//check for decode failed
 		// Check for Max used Servers
 		if ( (cs->option.server.max>0) && (ecm->server_totalsent>=cs->option.server.max) ) {
@@ -324,8 +441,12 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 			}
 			else ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 		}
-		// Check for ECM TimeOut
-		else if ( (ticks-ecm->recvtime) >= dcwtimeout(cs, ecm) ) {
+		// Check for ECM TimeOut (ABSOLUTO = base + janela de resposta do server)
+		// v1.52 FIX: o timeout base ja nao mata o ECM antes da rotacao para o
+		// server seguinte (antes: com DCW TIMEOUT 1500 == SERVER INTERVAL 1500,
+		// a rotacao calhava exactamente no deadline e o ramo do timeout corria
+		// primeiro -> failover impossivel; o 2o/3o server nunca era perguntado)
+		else if ( (ticks-ecm->recvtime) >= (dcwtimeout(cs, ecm) + cs->option.server.timeout) ) {
 			ecm->statusmsg = "Decode failed, dcw timeout";
 			ecm_faileddcw( ecm );
 			// Send DCW to Cache if not sent
@@ -334,8 +455,8 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				ecm->cachestatus = ECM_CACHE_REP;
 			}
 		}
-		// Check for ECM sending
-		else if ( (ticks-ecm->recvtime) <= (cs->option.server.timeout*ecm->period) ) { // ~ cfg.cardserver.option.dcw.timeout*2/3 is the cardserver timeout
+		// Check for ECM sending (janela base aberta OU ha servers por tentar)
+		else if ( ( (ticks-ecm->recvtime) <= (cs->option.server.timeout*ecm->period) ) || !ecm->server_totalwait ) { // ~ cfg.cardserver.option.dcw.timeout*2/3 is the cardserver timeout
 			// Check for cache request
 			if ( (ecm->cachestatus==ECM_CACHE_NONE) && cs->option.fallowcache && cs->option.cachesendreq ) {
 				pipe_cache_request(ecm,cs);
@@ -358,69 +479,69 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				//mlogf(LOGDEBUG,0," check_sendecm[%s] ch %04x:%06x:%04x\n", cs->name,ecm->caid,ecm->provid,ecm->sid);
 				struct server_data *newsrv = NULL;
 				if ( srvtab_arrange(cs, ecm, ecm->server_totalsent > 0 )==-1 ) { // No more servers to decode
-					//mlogf(LOGDEBUG,0," sendecm: no servers found to decode\n");
-/*#ifdef PUBLIC
-					if (!ecm->server_totalwait) {
-						ecm->statusmsg = "Decode failed, No servers found to decode";
-						ecm_faileddcw( ecm );
-						// Send DCW to Cache if not sent
-						if ( cs->option.fallowcache && cs->option.cachesendrep && (ecm->cachestatus!=ECM_CACHE_REP) ) {
-							//pipe_send_cache_reply(ecm,cs); //Send Failed Cache Reply
-							ecm->cachestatus=ECM_CACHE_REP;
-						}
-					}
-					else
-#endif   */
-					ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
+					// v1.52 FIX: re-poll curto em vez de esperar ate ao deadline.
+					// (antes: checktime = recvtime+dcwtimeout = o ECM MORRIA no
+					// primeiro re-check, porque o ramo do timeout corre primeiro;
+					// o ask adiado pelo budget/cache nunca tinha 2a oportunidade
+					// -> freezes de 3s exatos. Agora re-poll a cada 300ms e o
+					// ask sai no instante em que uma fonte se liberta.)
+					ecm->checktime = ticks + 300;
 					return;
 				}
 				else if (psrvlist[0] && psrvlist[0]->srv) {
-					// SEND ECM
-					newsrv = psrvlist[0]->srv;
-					newsrv->busycard = psrvlist[0]->card; // dont save pointers!!!
-					newsrv->busycardid = psrvlist[0]->shareid;
-					//mlogf(LOGDEBUG,0," sendecm: selected server to decode (%s:%d)\n", newsrv->host->name, newsrv->port);
-					if (newsrv->type==TYPE_NEWCAMD) {
-						if (cs_sendecm_srv(cs, newsrv, ecm)>0) {
-							ecm->lastsendtime = ticks;
-							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to Newcamd server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
-							newsrv->lastecmtime = ticks;
-							srv_pace_record( newsrv, ecm->caid, ecm->sid ); // v1.48: pacing
-							newsrv->ecmnb++;
-							newsrv->busy=1;
-							newsrv->ecm.request = ecm;
-							newsrv->ecm.hash = ecm->hash;
-							newsrv->retry=0;
-							ecm_addsrv(ecm, newsrv->id);
-							ecm_addsrvip(ecm, newsrv->host->ip);
+					// v1.55.1 SERVER ASK: fan-out - perguntar a N servers em paralelo
+					// (DCW AGREE>1 sem arbitro obriga a pelo menos AGREE candidatos por ronda)
+					int askn = cs->option.server.ask;
+					if (askn<1) askn = 1;
+					if ( (cs->option.dcw.agree>1) && !cs->option.dcw.arbiter && (askn<cs->option.dcw.agree) ) askn = cs->option.dcw.agree;
+					int pi;
+					for (pi=0; pi<askn; pi++) {
+						if (!psrvlist[pi] || !psrvlist[pi]->srv) break;
+						// SEND ECM
+						newsrv = psrvlist[pi]->srv;
+						newsrv->busycard = psrvlist[pi]->card; // dont save pointers!!!
+						newsrv->busycardid = psrvlist[pi]->shareid;
+						//mlogf(LOGDEBUG,0," sendecm: selected server to decode (%s:%d)\n", newsrv->host->name, newsrv->port);
+						if (newsrv->type==TYPE_NEWCAMD) {
+							if (cs_sendecm_srv(cs, newsrv, ecm)>0) {
+								ecm->lastsendtime = ticks;
+								mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to Newcamd server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
+								newsrv->lastecmtime = ticks;
+								srv_pace_record( newsrv, ecm->caid, ecm->sid ); // v1.48: pacing
+								newsrv->ecmnb++;
+								newsrv->busy=1;
+								newsrv->ecm.request = ecm;
+								newsrv->ecm.hash = ecm->hash;
+								newsrv->retry=0;
+								ecm_addsrv(ecm, newsrv->id);
+								ecm_addsrvip(ecm, newsrv->host->ip);
+								uint8_t fp = 2;
+								cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, NULL, 0, 0, 0, fp, newsrv->id, 0);
+							}
 						}
-					}
 #ifdef CCCAM_CLI
-					else if (newsrv->type==TYPE_CCCAM) {
-						if (cc_sendecm_srv(newsrv, ecm)>0) {
-							ecm->lastsendtime = ticks;
-							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to CCcam server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
-							newsrv->lastecmtime = ticks;
-							srv_pace_record( newsrv, ecm->caid, ecm->sid ); // v1.48: pacing
-							newsrv->ecmnb++;
-							struct cs_card_data *card = cc_getcardbyid( newsrv, newsrv->busycardid );
-							if (card) card->ecmnb++;
-							newsrv->busy=1;
-							newsrv->ecm.request = ecm;
-							newsrv->ecm.hash = ecm->hash;
-							newsrv->retry=0;
-							ecm_addsrv(ecm, newsrv->id);
-							ecm_addsrvip(ecm, newsrv->host->ip);
+						else if (newsrv->type==TYPE_CCCAM) {
+							if (cc_sendecm_srv(newsrv, ecm)>0) {
+								ecm->lastsendtime = ticks;
+								mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,newsrv->id,cs->id)," -> ecm to CCcam server%d (%s:%d) ch %04x:%06x:%04x:%08x\n",(1+ecm->server_totalsent),newsrv->host->name,newsrv->port,ecm->caid,ecm->provid,ecm->sid,ecm->hash);
+								newsrv->lastecmtime = ticks;
+								srv_pace_record( newsrv, ecm->caid, ecm->sid ); // v1.48: pacing
+								newsrv->ecmnb++;
+								struct cs_card_data *card = cc_getcardbyid( newsrv, newsrv->busycardid );
+								if (card) card->ecmnb++;
+								newsrv->busy=1;
+								newsrv->ecm.request = ecm;
+								newsrv->ecm.hash = ecm->hash;
+								newsrv->retry=0;
+								ecm_addsrv(ecm, newsrv->id);
+								ecm_addsrvip(ecm, newsrv->host->ip);
+								uint8_t fp = 1;
+								cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, NULL, 0, 0, 0, fp, newsrv->id, 0);
+							}
 						}
-					}
 #endif
-
-					// CWFEED (estudo de CWs): registar envio ao server
-					if (newsrv) {
-						uint8_t fp = (newsrv->type==TYPE_CCCAM)?1:
-							(newsrv->type==TYPE_NEWCAMD)?2:0;
-						cwfeed_add(ecm->caid, ecm->provid, ecm->sid, ecm->ecm, ecm->ecmlen, NULL, 0, 0, 0, fp, newsrv->id, 0);
 					}
+
 					ecm->statusmsg = "Waiting for servers...";
 					if ( cs->option.server.first > (ecm->server_totalsent+1) ) ecm->checktime = ticks + 10;
 					else {
@@ -430,13 +551,9 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				}
 				else {
 					ecm->statusmsg = "Wait for available servers";
-
-					//mlogf(LOGDEBUG, getdbgflag(DBG_NEWCAMD,cs->id,0), " check_sendecm[%s] ch %04x:%06x:%04x, Wait for available server...\n", cs->name,ecm->caid,ecm->provid,ecm->sid);
-
-					// PROBLEM HERE ??????
-					ecm->waitserver = 1; // XXX
-					ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm); // till the end if there is no server
-
+					// v1.52 FIX: re-poll curto (mesmo bug do caso acima)
+					ecm->waitserver = 1;
+					ecm->checktime = ticks + 300;
 					return;
 				}
 			}
@@ -445,21 +562,18 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				if ( (ecm->checktime-ecm->recvtime) > (cs->option.server.timeout*ecm->period) ) ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
 			}
 		}
-		else if (!ecm->server_totalwait) {
-			ecm->statusmsg = "Decode failed, no server open this channel";
-			ecm_faileddcw( ecm );
-			// Send DCW to Cache if not sent
-			if ( cs->option.fallowcache && cs->option.cachesendrep && (ecm->cachestatus!=ECM_CACHE_REP) ) {
-				//pipe_send_cache_reply(ecm,cs); //Send Failed Cache Reply
-				ecm->cachestatus = ECM_CACHE_REP;
-			}
-		}
 		else if ( cs->option.fallowcache && cs->option.cacheresendreq && (ecm->cachestatus==ECM_CACHE_REQ) ) {
 			pipe_cache_resendreq(ecm, cs);
 			ecm->cachestatus = ECM_CACHE_REQ2;
-			ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
+			ecm->checktime = ticks + 200;
 		}
-		else ecm->checktime = ecm->recvtime + dcwtimeout(cs, ecm);
+		else {
+			// v1.52: deadline base passou mas ha asks em voo - espera curta
+			// pela resposta (o abs-deadline no ramo acima da o kill final)
+			ecm->checktime = ticks + 200;
+			uint32_t abslimit = ecm->recvtime + dcwtimeout(cs, ecm) + cs->option.server.timeout;
+			if ( ecm->checktime > abslimit ) ecm->checktime = abslimit;
+		}
 	}
 }
 

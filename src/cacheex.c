@@ -58,23 +58,6 @@ int pipe_send_cacheex_push_cache(struct cache_data *pcache, uint8_t *cw, uint8_t
 	return 1;
 }
 
-int pipe_send_cacheex_push_in(struct cache_data *pcache, uint8_t cw[16], int clid, int hop)
-{
-	uint8_t buf[128];
-	buf[0] = PIPE_CACHEEX_PUSH_IN;
-	buf[1] = (pcache->caid)>>8; buf[2] = (pcache->caid)&0xff;
-	buf[3] = pcache->tag;
-	buf[4] = pcache->provid>>16; buf[5] = pcache->provid>>8; buf[6] = pcache->provid & 0xff;
-	buf[7] = (pcache->sid)>>8; buf[8] = (pcache->sid)&0xff;
-	buf[9] = pcache->hash>>24; buf[10] = pcache->hash>>16; buf[11] = pcache->hash>>8; buf[12] = pcache->hash & 0xff;
-	memcpy(buf+13, pcache->ecmd5, 16);
-	memcpy(buf+29, cw, 16);
-	buf[45] = clid>>8;
-	buf[46] = clid;
-	buf[47] = hop;
-	pipe_send( prg.pipe.cacheex[1], buf, 48);
-	return 1;
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUSH OUT 
@@ -119,6 +102,7 @@ inline int get_cccam_cacheex_push(struct cache_data *pcache, uint8_t cw[16], uin
 	return 57+8;
 }
 
+// v1.45: pacote cacheex no formato camd35/cs378x (mesma estrutura nos dois)
 inline int get_camd35_cacheex_push(struct cache_data *pcache, uint8_t cw[16], uint8_t *buf, uint8_t *nodeid )
 {
 	memset(buf, 0, 57+8 );
@@ -142,7 +126,7 @@ inline int get_camd35_cacheex_push(struct cache_data *pcache, uint8_t cw[16], ui
 	buf[36] = pcache->hash;
 	buf[37] = pcache->hash >> 8;
 	buf[38] = pcache->hash >> 16;
-	buf[39] = pcache->hash >> 24; 
+	buf[39] = pcache->hash >> 24;
 	memcpy(buf+40, cw, 16);
 	if (nodeid) {
 		buf[1] += 8;
@@ -158,10 +142,10 @@ inline int get_camd35_cacheex_push(struct cache_data *pcache, uint8_t cw[16], ui
 
 inline void cacheex_push(struct cache_data *pcache, uint8_t cw[16], uint8_t *nodeid )
 {
-	uint8_t camd35buf[128];
-	int camd35len = get_camd35_cacheex_push( pcache, cw, camd35buf, nodeid );
 	uint8_t cccambuf[128];
 	int cccamlen = get_cccam_cacheex_push( pcache, cw, cccambuf, nodeid );
+	uint8_t camd35buf[128];
+	int camd35len = get_camd35_cacheex_push( pcache, cw, camd35buf, nodeid );
 
 	// PUSH TO SERVERS cacheex=3
 	struct server_data *srv = cfg.cacheexserver;
@@ -217,7 +201,6 @@ inline void cacheex_push(struct cache_data *pcache, uint8_t cw[16], uint8_t *nod
 				camd35_sendto( camd35->handle, cli->ip, cli->port, &cli->encryptkey, cli->ucrc, camd35buf, camd35len);
 				cli->cacheex.push[0]++;
 				if (nodeid) cli->cacheex.push[2]++; else cli->cacheex.push[1]++;
-				//mlogf(LOGDEBUG,getdbgflag(DBG_CACHEEX, 0, 0)," CACHEEX PUSH to client %04x:%06x:%04x:%08x\n",pcache->caid,pcache->provid,pcache->sid,pcache->hash);// debughex(req.cw,16);
 			}
 			cli = cli->next;
 		}
@@ -237,7 +220,6 @@ inline void cacheex_push(struct cache_data *pcache, uint8_t cw[16], uint8_t *nod
 				if ( !cs378x_send( cli->handle, &cli->encryptkey, cli->ucrc, camd35buf, camd35len) ) cs378x_disconnect_cli(cli);
 				cli->cacheex.push[0]++;
 				if (nodeid) cli->cacheex.push[2]++; else cli->cacheex.push[1]++;
-				//mlogf(LOGDEBUG,getdbgflag(DBG_CACHEEX, 0, 0)," CACHEEX PUSH to client %04x:%06x:%04x:%08x\n",pcache->caid,pcache->provid,pcache->sid,pcache->hash);// debughex(req.cw,16);
 			}
 			cli = cli->next;
 		}

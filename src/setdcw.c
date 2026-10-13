@@ -54,6 +54,84 @@ inline void cacheex_server_hitprofile( struct server_data *srv, int csid )
 #endif
 
 
+// v1.55 HALFROTATE: historico de CWs por canal (filtro de rotacao CW0/CW1)
+// Uma CW legitima partilha sempre UMA meia com o par anterior (a metade
+// que nao rodou) e nunca repete uma meia do mesmo parity apos o carry.
+// Fakes de periodo (CWs reais de outros ciclos) falham estes testes.
+#define CWHIST_MAX 128
+#define CWHIST_RING 8
+static struct {
+	uint16_t caid; uint32_t provid; uint16_t sid;
+	uint32_t srcid; // v1.55.1: cadeia de rotacao POR FONTE (fakes de fonte A nao sujam a B)
+	uint8_t cw[CWHIST_RING][16];
+	uint8_t n;
+	uint32_t last;
+} cwhist[CWHIST_MAX];
+
+static int dcw_rotation_ok( uint16_t caid, uint32_t provid, uint16_t sid, uint32_t srcid, uint8_t dcw[16], uint8_t ttl )
+{
+	uint32_t ticks = GetTickCount();
+	int i, freei = -1, oldi = 0, k;
+	for (i=0; i<CWHIST_MAX; i++) {
+		if ( (cwhist[i].caid==caid) && (cwhist[i].provid==provid) && (cwhist[i].sid==sid) && (cwhist[i].srcid==srcid) ) {
+			// canal parado muito tempo (criptoperiodos saltados) -> historico invalido, reiniciar
+			if ( (ticks - cwhist[i].last) > 20000 ) {
+				memset( &cwhist[i], 0, sizeof(cwhist[i]) );
+				cwhist[i].caid = caid; cwhist[i].provid = provid; cwhist[i].sid = sid; cwhist[i].srcid = srcid;
+				memcpy( cwhist[i].cw[0], dcw, 16 );
+				cwhist[i].n = 1;
+				cwhist[i].last = ticks;
+				return 1;
+			}
+			int n = cwhist[i].n;
+			// HALFROTATE: tem de partilhar pelo menos uma meia com o par anterior
+			if (n>0) {
+				int share0 = dcwcmp8( dcw, cwhist[i].cw[n-1] );
+				int share1 = dcwcmp8( dcw+8, cwhist[i].cw[n-1]+8 );
+				if (!share0 && !share1) {
+					mlogf(LOGWARNING,0," hrot: sem meia em comum ch %04x:%06x:%04x srv %04x (fake de periodo?)\n", caid, provid, sid, srcid);
+					return 0;
+				}
+				// HALFREPEAT: meia igual a uma de pares anteriores (alem do carry)
+				int lim = (ttl>1)?ttl:2;
+				if (lim > (n-1)) lim = n-1;
+				for (k=1; k<=lim; k++) {
+					if (n-1-k < 0) break;
+					if ( dcwcmp8( dcw, cwhist[i].cw[n-1-k] ) ) {
+						mlogf(LOGWARNING,0," hrot: CW0 repetida ch %04x:%06x:%04x srv %04x (fake de periodo?)\n", caid, provid, sid, srcid);
+						return 0;
+					}
+					if ( dcwcmp8( dcw+8, cwhist[i].cw[n-1-k]+8 ) ) {
+						mlogf(LOGWARNING,0," hrot: CW1 repetida ch %04x:%06x:%04x srv %04x (fake de periodo?)\n", caid, provid, sid, srcid);
+						return 0;
+					}
+				}
+			}
+			// aceitar e registar
+			if (n>=CWHIST_RING) {
+				for (k=0; k<CWHIST_RING-1; k++) memcpy( cwhist[i].cw[k], cwhist[i].cw[k+1], 16 );
+				memcpy( cwhist[i].cw[CWHIST_RING-1], dcw, 16 );
+			}
+			else {
+				memcpy( cwhist[i].cw[n], dcw, 16 );
+				cwhist[i].n = n+1;
+			}
+			cwhist[i].last = ticks;
+			return 1;
+		}
+		if (!cwhist[i].caid && (freei<0)) freei = i;
+		if (cwhist[i].last < cwhist[oldi].last) oldi = i;
+	}
+	i = (freei>=0) ? freei : oldi;
+	memset( &cwhist[i], 0, sizeof(cwhist[i]) );
+	cwhist[i].caid = caid; cwhist[i].provid = provid; cwhist[i].sid = sid; cwhist[i].srcid = srcid;
+	memcpy( cwhist[i].cw[0], dcw, 16 );
+	cwhist[i].n = 1;
+	cwhist[i].last = ticks;
+	return 1;
+}
+
+
 inline int dcwcheck_nds( ECM_DATA *ecm, uint8_t dcw[16], int swap )
 {
 	char nullcw[8] = "\0\0\0\0\0\0\0\0";
@@ -568,7 +646,11 @@ int dcwchan_engine(ECM_DATA *ecm, uint8_t dcw[16])
 	}
 
 	// janela (alimenta o LASTCWONNOK)
-	if (ret) badident_note(ecm->caid, ecm->provid); // v1.46 B8: ident com anomalias
+	// v1.52 FIX: so o STALE (ret==1) conta como ident mau, e nunca o
+	// wildcard 000000 (banir o wildcard = blackscreen de TODO o operador).
+	// ret==2 (metade repetida / par completo) e ret==3 (mudanca rapida)
+	// sao comportamento NORMAL dos canais paired (CWPK): meia CW por ECM.
+	if (ret==1 && ecm->provid) badident_note(ecm->caid, ecm->provid); // v1.46 B8: ident com anomalias
 	memcpy(e->cw2, e->cw, 16);
 	memcpy(e->cw, dcw, 16);
 	e->lasthash = ecm->hash;
@@ -643,24 +725,6 @@ int dcwchan_stats(struct dcwchan_info *out, int max)
 				out[j] = t;
 			}
 	return n;
-}
-
-// ultima CW valida do canal (para DCW LASTCWONNOK) - 1 se existe
-int dcwchan_getlast(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw[16])
-{
-	int found = 0;
-	pthread_mutex_lock(&dcwchan_mutex);
-	struct dcwchan_data *e = dcwchan_list;
-	while (e) {
-		if (e->caid==caid && e->provid==provid && e->sid==sid) {
-			memcpy(cw, e->cw, 16);
-			found = 1;
-			break;
-		}
-		e = e->next;
-	}
-	pthread_mutex_unlock(&dcwchan_mutex);
-	return found;
 }
 
 // janela de 2 CWs validas do canal - devolve o nr de CWs (1 ou 2)
@@ -862,6 +926,107 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 				// violacao de padrao/rapidez: marca a fonte (reputacao), entrega a CW
 				struct server_data *s = getsrvbyid(srcid&0xffff);
 				if (s) { s->cwbad++; s->cwbad_time = GetTickCount(); }
+			}
+		}
+	}
+
+	// v1.55 HALFROTATE: filtro de rotacao por canal+FONTE (anti-fake de periodo)
+	// (o arbitro nao passa por aqui: e confiavel por construcao - a comparacao
+	// com o stash E a validacao dele)
+	// v1.55.2: o stash re-entrado (arbiter_pending==2) ja passou nos filtros
+	// na primeira chegada - salta para nao duplicar a validacao (falso positivo
+	// da meia carregada contra a propria cadeia ja registada)
+	struct server_data *asrv0 = (srctype==DCW_SOURCE_SERVER) ? getsrvbyid(srcid&0xffff) : NULL;
+	int from_arbiter0 = asrv0 && asrv0->arbiter;
+	int isstashreentry = (ecm->arbiter_pending==2);
+	if (!isstashreentry && cs->option.dcw.halfrotate && (srctype==DCW_SOURCE_SERVER) && !from_arbiter0) {
+		if (!dcw_rotation_ok(ecm->caid, ecm->provid, ecm->sid, srcid&0xffff, dcw, cs->option.dcw.halfrepeat_ttl)) {
+			if (asrv0) { asrv0->cwbad++; asrv0->cwbad_time = GetTickCount(); srv_bad_record(asrv0, ecm->caid, ecm->sid); }
+			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," hrot: CW fora da rotacao ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
+				ecm->caid, ecm->provid, ecm->sid, srctype);
+			pthread_mutex_unlock(&prg.lockecm);
+			return;
+		}
+	}
+
+	// v1.55.1 DCW AGREE: consenso - a mesma CW tem de vir de N fontes
+	// (com SERVER ASK o fan-out pede a todas em paralelo; sem acordo,
+	// o ECM espera pelas restantes e o timeout entrega NOK honesto).
+	// Com DCW ARBITER activo, o arbitro E o consenso (este filtro dorme).
+	if (!isstashreentry && cs->option.dcw.agree>1 && !cs->option.dcw.arbiter && (srctype==DCW_SOURCE_SERVER) && !from_arbiter0) {
+		int agree_need = cs->option.dcw.agree;
+		int asked = ecm->server_totalsent;
+		if (agree_need > asked) agree_need = asked;
+		if (agree_need < 1) agree_need = 1;
+		int same = 0;
+		int ai;
+		for (ai=0; ai<ecm->server_totalsent; ai++) {
+			if ( (ecm->server[ai].flag==ECM_SRV_REPLY_GOOD) && !dcwcmp16(ecm->server[ai].dcw, dcw) ) same++;
+		}
+		if (same >= agree_need) {
+			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," agree: %d/%d fontes concordam ch %04x:%06x:%04x\n",
+				same, agree_need, ecm->caid, ecm->provid, ecm->sid);
+			// cai no arbiter/finalizacao
+		}
+		else {
+			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," agree: so %d/%d ch %04x:%06x:%04x - a espera de mais fontes\n",
+				same, agree_need, ecm->caid, ecm->provid, ecm->sid);
+			pthread_mutex_unlock(&prg.lockecm);
+			return;
+		}
+	}
+
+	// v1.55 ARBITER: validar a CW contra o reader de confianca (arbiter=yes)
+	if (cs->option.dcw.arbiter && cs->option.dcw.arbiter_rate>0 && (srctype==DCW_SOURCE_SERVER)) {
+		struct server_data *asrv = getsrvbyid(srcid&0xffff);
+		int from_arbiter = asrv && asrv->arbiter;
+		if (from_arbiter) {
+			if (ecm->arbiter_pending==1) {
+				if (memcmp(ecm->cwstash, dcw, 16)) {
+					ecm->arbiter_pending = 0;
+					if (cs->option.dcw.arbiter_serve) {
+						mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," arb: DISCORDA ch %04x:%06x:%04x - entregar a CW do arbitro\n",
+							ecm->caid, ecm->provid, ecm->sid);
+						// cai no fluxo normal com a CW do arbitro
+					}
+					else {
+						struct server_data *ps = getsrvbyid(ecm->stashsrcid&0xffff);
+						if (ps) { srv_nok_record(ps, ecm->caid, ecm->sid); srv_bad_record(ps, ecm->caid, ecm->sid); ps->cwbad++; ps->cwbad_time = GetTickCount(); }
+						mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," arb: DISCORDA ch %04x:%06x:%04x - fonte marcada, CW rejeitada\n",
+							ecm->caid, ecm->provid, ecm->sid);
+						pthread_mutex_unlock(&prg.lockecm);
+						return;
+					}
+				}
+				else {
+					ecm->arbiter_pending = 0;
+					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," arb: CW validada (match) ch %04x:%06x:%04x\n",
+						ecm->caid, ecm->provid, ecm->sid);
+					// cai no fluxo normal (a CW e igual)
+				}
+			}
+		}
+		else if (((ecm->hash % 100) < cs->option.dcw.arbiter_rate)) {
+			if (ecm->arbiter_pending==0) {
+				memcpy(ecm->cwstash, dcw, 16);
+				ecm->stashsrctype = srctype;
+				ecm->stashsrcid = srcid;
+				ecm->arbiter_pending = 1;
+				ecm->arbiter_asked = 0;
+				ecm->arbiter_time = GetTickCount();
+				ecm->checktime = GetTickCount() + 30; // acordar o ecm thread para perguntar ao arbitro
+				mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," arb: CW em validacao ch %04x:%06x:%04x src %d\n",
+					ecm->caid, ecm->provid, ecm->sid, srcid&0xffff);
+				pthread_mutex_unlock(&prg.lockecm);
+				return;
+			}
+			else if (ecm->arbiter_pending==2) {
+				// finalizacao do stash (timeout do arbitro): segue o fluxo normal
+			}
+			else {
+				// segunda fonte respondeu enquanto o arbitro valida: ignorar
+				pthread_mutex_unlock(&prg.lockecm);
+				return;
 			}
 		}
 	}

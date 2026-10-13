@@ -40,7 +40,6 @@ typedef enum
 #define DCW_SOURCE_MGCLIENT  4
 #endif
 #define DCW_SOURCE_CCCLIENT  6
-#define DCW_SOURCE_EMU       7
 
 struct ecm_request {
 	struct ecm_request *next;
@@ -82,6 +81,15 @@ struct ecm_request {
 
 	char *statusmsg; // DCW status message
 	uint8_t nokbiss; // BISS NOK (sem chave/emulador desligado) -> NOK amarelo na GUI
+	uint8_t stalehold; // v1.30 STALE_CHECK: ja segurou 1x uma CW stale desta fonte
+
+	// v1.55 ARBITER: CW em validacao contra o reader de confianca
+	uint8_t cwstash[16];
+	int stashsrctype;
+	int stashsrcid;
+	uint8_t arbiter_pending; // 0=off 1=a espera do arbitro 2=finalizar stash (timeout do arbitro)
+	uint8_t arbiter_asked;   // arbitro ja perguntado para este ECM
+	uint32_t arbiter_time;   // quando a validacao comecou (ms)
 
 #ifdef CHECK_NEXTDCW
 	// Last Successive ECM/DCW
@@ -162,16 +170,15 @@ int ecm_nbsentsrv(ECM_DATA *ecm);
 int ecm_nbwaitsrv(ECM_DATA *ecm);
 int ecm_setsrvflag(ECM_DATA *ecm, unsigned int srvid, int flag);
 int ecm_setsrvflagdcw(ECM_DATA *ecm, unsigned int srvid, int flag, uint8_t dcw[16]);
-int ecm_getsrvflag(ECM_DATA *ecm, unsigned int srvid);
 
-
-int ishalfnulledcw( uint8_t dcw[16] );
+// v1.50 NEG-HASH (coalescing negativo): declaracoes (definidas em loadbalance.c)
+uint32_t srv_failhash_check(ECM_DATA *ecm, uint32_t ticks); // 0=ok, senao tick de retoma
+void srv_failhash_note(ECM_DATA *ecm); // regista hash que falhou (ask sem resposta)
 
 int ecmdata_check_cw( uint8_t tag, uint32_t hash, unsigned short caid, unsigned int provid , unsigned short sid, uint8_t cw[16], int cwpart );
 
 #ifdef CHECK_NEXTDCW
 
-void checkfreeze_storeECM(ECM_DATA *ecm);
 void checkfreeze_checkECM( ECM_DATA *ecm, ECM_DATA *oldecm );
 int checkfreeze_setdcw( ECM_DATA *ecm, uint8_t dcw[16] );
 
