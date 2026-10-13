@@ -4,23 +4,8 @@
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <stdlib.h>
 
-
-#ifdef WIN32
-
-#include <windows.h>
-#include <sys/types.h>
-#include <sys/_default_fcntl.h>
-#include <sys/poll.h>
-#include <cygwin/types.h>
-#include <cygwin/socket.h>
-#include <sys/errno.h>
-#include <cygwin/in.h>
-#include <sched.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-
-#else
 
 #include <fcntl.h>
 #include <sys/time.h>
@@ -35,8 +20,6 @@
 #include <errno.h>
 #include <poll.h>
 
-#endif
-
 #include "debug.h"
 #include "convert.h"
 #include "tools.h"
@@ -49,6 +32,7 @@
 #endif
 
 #include "config.h"
+struct server_data *getsrvbyid(uint32_t id); // v1.50 (definido em cli-common.c)
 extern struct config_data cfg;
 
 struct ecm_request *ecmdata = NULL;
@@ -324,9 +308,6 @@ struct ecm_request *store_ecmdata(struct cardserver_data *cs,uint8_t *ecm,int ec
 
 	new->period = 1; // First try
 
-	// Emulator: se existe chave constante, acorda ja o check_ecm
-	if (emu_has_constcw(caid, provid, sid)) new->checktime = 1;
-
 #ifdef CHECK_NEXTDCW
 	//checkfreeze_storeECM(new);
 #endif
@@ -504,18 +485,6 @@ int ecm_checksrvip(ECM_DATA *ecm, unsigned int ip)
 // SERVER FUNCTIONS
 ////////////////////////////////////////////////////////////////////////////////
 
-int ecm_nbservers(ECM_DATA *ecm)
-{
-	int i;
-	int count=0;
-	for(i=0; i<20; i++) {
-		if (ecm->server[i].srvid) {
-			count++;
-		} else break;
-	}
-	return count;
-}
-
 int ecm_nbsentsrv(ECM_DATA *ecm)
 {
 	int i;
@@ -552,6 +521,8 @@ int ecm_addsrv(ECM_DATA *ecm, unsigned int srvid)
 			ecm->server[i].statustime = ticks; // last changed status time
 			ecm->server_totalsent = ecm_nbsentsrv(ecm);
 			ecm->server_totalwait = ecm_nbwaitsrv(ecm);
+			// v1.50 BUDGET ASK: conta o pedido enviado a fonte (teto asks/s)
+			srv_budget_ask_add( getsrvbyid(srvid) );
 			return 1;
 		}
 	}
@@ -593,84 +564,12 @@ int ecm_setsrvflagdcw(ECM_DATA *ecm, unsigned int srvid, int flag, uint8_t dcw[1
 	return 0;
 }
 
-int ecm_getsrvflag(ECM_DATA *ecm, unsigned int srvid)
-{
-	int i;
-	for(i=0; i<20; i++) {
-		if (ecm->server[i].srvid) {
-			if (ecm->server[i].srvid==srvid) {
-				return ecm->server[i].flag;
-			}
-		} else break;
-	}
-	return 0;
-}
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // DCW CHECK
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifdef CHECK_NEXTDCW
-
-// Get Last DCW for the same Channel
-void checkfreeze_storeECM(ECM_DATA *ecm)
-{
-	struct ecm_request *xecm = NULL;
-
-	// find after storing ecm
-	if (!ecm) return;
-
-	if ( (!ecm->lastdecode.ecm)&&(ecm->dcwstatus!=STAT_DCW_SUCCESS) ) {
-		//mlogf(LOGDEBUG,0," \n[SROTE ECM] New (%04x:%06x:%04x/%08x)\n",ecm->caid, ecm->provid, ecm->sid, ecm->hash);
-
-		uint32_t ticks = GetTickCount();
-		struct ecm_request *oldecm = ecm->csnext;
-		while (oldecm) {
-			if ( (oldecm->recvtime+TIME_ECMALIVE*2) < ticks ) break;
-
-			if ( (oldecm->ecmlen==ecm->ecmlen)&&(oldecm->caid==ecm->caid)&&(oldecm->provid==ecm->provid)&&(oldecm->sid==ecm->sid) ) {
-
-				if ( (oldecm->dcwstatus==STAT_DCW_SUCCESS)&&(oldecm->hash!=ecm->hash)&&(oldecm->ecm[0]!=ecm->ecm[0]) ) {
-					//ecm->lastdecode.request = oldecm;
-					if ( (oldecm->lastdecode.ecm)&&(oldecm->lastdecode.counter>1) ) {
-						if ((ecm->recvtime-oldecm->recvtime)<(oldecm->lastdecode.dcwchangetime*3/2)) xecm = oldecm;
-						break;
-					}
-					else if (!xecm) xecm = oldecm;
-				}
-
-				else if ( (oldecm->dcwstatus==STAT_DCW_FAILED)&&(oldecm->hash==ecm->hash)&& !memcmp(oldecm->ecm+3, ecm->ecm+3, ecm->ecmlen-3) ) { // the same channel but we have freeze
-					memcpy( &ecm->lastdecode, &oldecm->lastdecode, sizeof(ecm->lastdecode) );
-					return; // copy and exit
-					//mlogf(LOGDEBUG,0," Updating Cycles data after freeze ch %04x:%06x:%04x:%08x (%d)\n",ecm->caid, ecm->provid, ecm->sid, ecm->hash, ecm->lastdecode.counter);
-				}
-
-			}
-			oldecm = oldecm->csnext;
-			if (oldecm==ecm) break;
-		}
-
-
-		if (xecm) {
-			ecm->lastdecode.ecm = xecm; // status -> last ecm
-			ecm->lastdecode.counter = xecm->lastdecode.counter;
-			ecm->lastdecode.dcwchangetime = (xecm->lastdecode.dcwchangetime*xecm->lastdecode.counter+(ecm->recvtime-xecm->recvtime)) / (xecm->lastdecode.counter+1);
-			ecm->lastdecode.dcwchangetime = ((ecm->lastdecode.dcwchangetime+500)/1000)*1000;
-			memcpy( ecm->lastdecode.dcw, xecm->lastdecode.dcw, 16); // Store latest DCW
-#ifdef TESTCHANNEL
-			int testchannel = ( (ecm->caid==cfg.testchn.caid) && (ecm->provid==cfg.testchn.provid) && (ecm->sid==cfg.testchn.sid) );
-			if (testchannel) {
-				char dump[64];
-				array2hex( xecm->cw, dump, 16);
-				mlogf(LOGINFO,0," Update Cycle ch %04x:%06x:%04x %02x:%08x ( %02x:%08x %s/%d)\n",ecm->caid, ecm->provid, ecm->sid, ecm->ecm[0],ecm->hash,
-					xecm->ecm[0], xecm->hash, dump, ecm->lastdecode.counter);
-			}
-#endif
-		}
-
-	}
-}
 
 void checkfreeze_checkECM( ECM_DATA *ecm, ECM_DATA *oldecm )
 {

@@ -158,7 +158,7 @@ void cs378x_srv_accept(struct camd35_server_data *srv)
 		}
 		else {
 			pthread_t srv_tid;
-			if (cfg.cccam.keepalive) SetSocketKeepalive(newfd);
+			if (cfg.cs378x.keepalive) SetSocketKeepalive(newfd);
 			SetSocketNoDelay(newfd);
 			SetSoketNonBlocking(newfd);
 			//mlogf(LOGDEBUG,getdbgflag(DBG_CS378X,0,0)," cs378x: new client Connection(%d)...%s\n", newfd, ip2string(newip) );
@@ -417,6 +417,19 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 			//if ( !checkECMD5(cacheex.ecmd5) ) cli->cacheex.totalcsp++;
 			cacheex.hash = (buf[43]<<24) | (buf[42]<<16) | (buf[41]<<8) | buf[40];
 			if (!cacheex_check(&cacheex)) break;
+			// v1.46 A1+A2: validacao do motor + aprendizagem da cadencia pelo ritmo
+			{
+				ECM_DATA tmp;
+				memset(&tmp, 0, sizeof(tmp));
+				tmp.caid = cacheex.caid;
+				tmp.provid = cacheex.provid;
+				tmp.sid = cacheex.sid;
+				tmp.hash = cacheex.hash;
+				int anom = dcwchan_engine(&tmp, cw);
+				if (anom==1) { cli->cacheex.badcw++; break; }
+				if (anom==3) { cli->cacheex.badcw++; break; }
+				if (anom==2) cli->cacheex.badcw++;
+			}
 			cli->cacheex.got[0]++;
 			int uphop = buf[60];
 			if (uphop<10) cli->cacheex.got[uphop]++;
@@ -476,9 +489,11 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 				else mlogf(LOGINFO,getdbgflag(DBG_CS378X,0,cli->id)," <!> decode failed to client '%s' ch %04x:%06x:%04x, Invalid CAID/PROVIDER\n", cli->user,caid,provid,sid);
 				break;
 			}
-			// Check for Accepted sids
-			uint8_t cw1cycle;
-			if ( !accept_sid(cs, provid, sid, ecm_getchid(ecmdata,caid), ecmlen, &cw1cycle) ) {
+		// Check for Accepted sids
+		uint8_t cw1cycle;
+		// CWFEED (estudo de CWs): pedido do cliente
+		cwfeed_add(caid, provid, sid, ecmdata, ecmlen, NULL, 0, 0, 0, 5, 0, cli->id);
+		if ( !accept_sid(cs, provid, sid, ecm_getchid(ecmdata,caid), ecmlen, &cw1cycle) ) {
 				cli->ecmdenied++;
 				cs->ecmdenied++;
 				buf[4] = 0x44;
@@ -539,17 +554,6 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 						pthread_mutex_unlock(&prg.lockecm);
 						cs378x_senddcw_cli(cli);
 						break;
-						if ( cli->dcwcheck && !cs->option.dcw.halfnulled && (ecm->dcwstatus==STAT_DCW_SUCCESS) && !checkfreeze_setdcw(ecm,ecm->cw) ) { // ??? last ecm is wrong
-							ecm->dcwstatus = STAT_DCW_WAIT;
-							memset( ecm->cw, 0, 16 );
-							ecm->checktime = 1; // Wakeup Now
-							pipe_wakeup( prg.pipe.ecm[1] );
-						}
-						else {
-							pthread_mutex_unlock(&prg.lockecm);
-							cs378x_senddcw_cli(cli);
-							break;
-						}
 					}
 				}
 			}

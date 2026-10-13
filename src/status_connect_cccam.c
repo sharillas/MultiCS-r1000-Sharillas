@@ -254,9 +254,7 @@ int cc_connector_recvmsg(struct cccam_connect_status_data *connector)
 				return -1;
 			}
 			// Check for Nodeid/CCcam Version
-#ifndef PUBLIC
 			if (cli->option.checknodeid)
-#endif
 			if (cli->option.nodeid[0] && cli->option.nodeid[7]) {
 				if (memcmp(cli->option.nodeid, buf+24, 8)) { // diff nodeid
 					mlogf(LOGWARNING,getdbgflag(DBG_CCCAM,cli->parent->id,cli->id)," CCcam%d: login failed from client '%s' (%s), wrong nodeid\n", cccam->id, cli->user, ip2string(connector->ip));
@@ -290,13 +288,11 @@ int cc_connector_recvmsg(struct cccam_connect_status_data *connector)
 			// Get Saved Data
 			memcpy(&cli->sendblock, &connector->sendblock,sizeof(connector->sendblock));
 			memcpy(&cli->recvblock, &connector->recvblock,sizeof(connector->recvblock));
-#ifndef PUBLIC
 			// store nodeid if not set :)
 			if (!cli->option.nodeid[0] && !cli->option.nodeid[7]) {
 				memcpy(cli->option.nodeid, buf+24, 8);
 				prg.updatenodes = 1;
 			}
-#endif
 			memcpy(cli->nodeid, buf+24, 8);
 			memcpy(cli->version, buf+33, 31);
 			memcpy(cli->build, buf+65, 31 );

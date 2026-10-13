@@ -180,20 +180,117 @@ int srv_budget_full(struct server_data *srv)
 	return srv_budget_pressure(srv) >= 100;
 }
 
-// linha de texto para a GUI (teto cws/min, consumo, pressao)
-void srv_budget_gui(struct server_data *srv, char *buf, int buflen)
+// v1.51: valores separados do orcamento (para a GUI com colunas reais)
+void srv_budget_values(struct server_data *srv, uint32_t *cons, uint32_t *ceiling, int *pct)
 {
-	if (!srv || !srv->budget_on) {
-		snprintf(buf, buflen, "off");
-		return;
-	}
+	if (cons) *cons = 0;
+	if (ceiling) *ceiling = 0;
+	if (pct) *pct = 0;
+	if (!srv || !srv->budget_on) return;
 	uint32_t c = budget_ceiling_of(srv);
 	int g = (srv->budget_group && srv->budget_group <= BUDGET_GROUP_MAX) ? srv->budget_group : 0;
 	uint32_t now = GetTickCount() / 1000;
 	budget_roll(g, now);
-	uint32_t cons = budget_group[g].cons;
-	int p = c ? (int)((cons * 100) / c) : 0;
-	snprintf(buf, buflen, "%d/min (teto %d, grp %d, %d%%)", cons, c, srv->budget_group, p);
+	if (cons) *cons = budget_group[g].cons;
+	if (ceiling) *ceiling = c;
+	if (pct && c) *pct = (int)((budget_group[g].cons * 100) / c);
+}
+
+// v1.50 BUDGET ASK: teto de PEDIDOS por segundo por grupo (token bucket de 1s).
+// O cartao upstream ve no maximo min(budget_ask) asks/s do saco inteiro
+// (grupo partilhado) = "um cliente oscam legitimo", o anti-share nunca dispara.
+static struct {
+	uint32_t cur;  // asks no segundo corrente
+	uint32_t sec;  // segundo corrente
+} budget_ask_grp[BUDGET_GROUP_MAX + 1];
+
+static uint32_t budget_ask_ceiling_of(struct server_data *srv)
+{
+	if (!srv) return 0;
+	uint32_t c = srv->budget_ask;
+	if (srv->budget_group && srv->budget_group <= BUDGET_GROUP_MAX) {
+		uint32_t min = 0;
+		struct server_data *w = cfg.server;
+		while (w) {
+			if (w->budget_group == srv->budget_group && w->budget_ask) {
+				if (!min || w->budget_ask < min) min = w->budget_ask;
+			}
+			w = w->next;
+		}
+		if (min) c = (c && c < min) ? c : min;
+	}
+	return c;
+}
+
+static int budget_ask_grpof(struct server_data *srv)
+{
+	return (srv->budget_group && srv->budget_group <= BUDGET_GROUP_MAX) ? srv->budget_group : 0;
+}
+
+// 1 = pode perguntar a este reader agora (teto de asks/s do grupo nao rebentado)
+int srv_budget_ask_check(struct server_data *srv)
+{
+	if (!srv) return 1;
+	uint32_t c = budget_ask_ceiling_of(srv);
+	if (!c) return 1; // ninguem define teto de asks no grupo
+	int g = budget_ask_grpof(srv);
+	uint32_t now = GetTickCount() / 1000;
+	if (budget_ask_grp[g].sec != now) return 1; // novo segundo: balde cheio
+	return budget_ask_grp[g].cur < c;
+}
+
+void srv_budget_ask_add(struct server_data *srv)
+{
+	if (!srv) return;
+	if (!budget_ask_ceiling_of(srv)) return;
+	int g = budget_ask_grpof(srv);
+	uint32_t now = GetTickCount() / 1000;
+	if (budget_ask_grp[g].sec != now) {
+		budget_ask_grp[g].sec = now;
+		budget_ask_grp[g].cur = 0;
+	}
+	budget_ask_grp[g].cur++;
+}
+
+// v1.50 NEG-HASH: coalescing negativo de asks falhados. Um hash que ja foi
+// pedido ao upstream e ficou sem resposta NAO e repetido durante NEGHASH_MS
+// (o mesmo criptoperiodo nao leva 2 asks - anti-storm na fonte).
+#define NEGHASH_MS 5000
+#define NEGHASH_MAX 64
+static struct {
+	uint16_t caid;
+	uint32_t provid;
+	uint16_t sid;
+	uint32_t hash;
+	uint32_t t;
+} failhash_tab[NEGHASH_MAX];
+static int failhash_idx = 0;
+
+void srv_failhash_note(ECM_DATA *ecm)
+{
+	if (!ecm || !ecm->server_totalsent) return; // so asks reais (enviados a fonte)
+	failhash_tab[failhash_idx].caid = ecm->caid;
+	failhash_tab[failhash_idx].provid = ecm->provid;
+	failhash_tab[failhash_idx].sid = ecm->sid;
+	failhash_tab[failhash_idx].hash = ecm->hash;
+	failhash_tab[failhash_idx].t = GetTickCount();
+	failhash_idx = (failhash_idx + 1) % NEGHASH_MAX;
+}
+
+// 0 = pode pedir; >0 = tick em que pode voltar a tentar (janela negativa activa)
+uint32_t srv_failhash_check(ECM_DATA *ecm, uint32_t ticks)
+{
+	if (!ecm) return 0;
+	int i;
+	for (i=0; i<NEGHASH_MAX; i++) {
+		if ( (failhash_tab[i].caid==ecm->caid) && (failhash_tab[i].sid==ecm->sid)
+			&& (failhash_tab[i].hash==ecm->hash) ) {
+			uint32_t age = ticks - failhash_tab[i].t;
+			if (age < NEGHASH_MS) return failhash_tab[i].t + NEGHASH_MS;
+			return 0; // janela expirada: pode voltar a pedir
+		}
+	}
+	return 0;
 }
 
 // v1.41 FEEDBACK DO CLIENTE: marca a fonte que entregou uma CW que a box nao
@@ -490,6 +587,9 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 	unsigned int ticks = GetTickCount();
 	srv = cfg.server;
 	while ( srv && (nbsrv<MAXSRVTAB) ) {
+		// v1.55 ARBITER: reader de confianca NAO participa na rotacao normal
+		// (so e perguntado para validar CWs - ver DCW ARBITER no perfil)
+		if ( srv->arbiter ) { srv = srv->next; continue; }
 		if ( !IS_DISABLED(srv->flags)&&(srv->connection.status>0) )
 		if (
 			( cs->option.fallownewcamd && (srv->type==TYPE_NEWCAMD) )
@@ -743,6 +843,30 @@ int srvtab_arrange(struct cardserver_data *cs, ECM_DATA *ecm, int bestone )
 			i=0;
 			for(j=0; j<nbsrv; j++) {
 				if ( !srv_budget_full(psrvlist[j]->srv) ) {
+					if (i<j) psrvlist[i] = psrvlist[j];
+					i++;
+				}
+			}
+			psrvlist[i] = NULL;
+			nbsrv = i;
+		}
+	}
+
+	// BUDGET ASK (v1.50): teto de pedidos/s do grupo. Readers no teto saem
+	// desta ronda (o ask espera o segundo seguinte - o cartao nunca leva um storm)
+	{
+		int capped = 0;
+		for(j=0; j<nbsrv; j++)
+			if ( !srv_budget_ask_check(psrvlist[j]->srv) ) capped++;
+		if (capped && (capped>=nbsrv)) {
+			nbsrv = 0;
+			mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,0)," budget: teto de asks/s atingido ch %04x:%06x:%04x - a esperar\n",
+				ecm->caid, ecm->provid, ecm->sid);
+		}
+		else if (capped) {
+			i=0;
+			for(j=0; j<nbsrv; j++) {
+				if ( srv_budget_ask_check(psrvlist[j]->srv) ) {
 					if (i<j) psrvlist[i] = psrvlist[j];
 					i++;
 				}

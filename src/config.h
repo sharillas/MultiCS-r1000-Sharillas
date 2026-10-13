@@ -454,6 +454,12 @@ struct cardserver_data
 			uint32_t deadchan_retry;   // v1.48 DEADCHAN RETRY: segundos entre probes de recuperacao (def 60)
 			uint32_t pacing;       // v1.48 DCW PACING: intervalo minimo (ms) entre pedidos do mesmo canal ao mesmo reader (0=off)
 			uint8_t rawlog;        // v1.48 DCW RAWLOG: captura a CW crua (pre-transformacao) + classifica raw/wrapped
+			uint8_t halfrotate;    // v1.55 DCW HALFROTATE: filtro de rotacao CW0/CW1 (rejeita fakes de periodo)
+			uint8_t halfrepeat_ttl; // v1.55 DCW HALFREPEAT TTL: janela de repeticoes de meia-CW (2..8, def 3)
+			uint8_t arbiter;       // v1.55 DCW ARBITER: validar a CW contra o reader marcado arbiter=yes
+			uint8_t arbiter_serve; // v1.55 DCW ARBITER SERVE: em discordancia entregar a CW do arbitro
+			uint32_t arbiter_rate; // v1.55 DCW ARBITER RATE: % dos ECMs validados (0=off, 100=todos)
+			uint8_t agree;         // v1.55.1 DCW AGREE: N fontes com a MESMA CW p/ aceitar (0/1=off)
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
@@ -556,6 +562,7 @@ struct cardserver_data
 		struct {
 			uint32_t max;		// Maximum sevrer nb available to decode one ecm request
 			uint32_t first; // on start request servers number
+			uint32_t ask;    // v1.55.1 SERVER ASK: quantos servers perguntar em paralelo por ECM (0=classico 1)
 			uint32_t interval;    // interval between 2 same ecm request to diffrent server
 			uint32_t timeout;     // timeout for resending ecm request to server
 			uint32_t timeperecm;  // min time to senddo a request
@@ -683,6 +690,9 @@ struct PACK server_data
 	uint8_t providrewrite;
 	// v1.48.2: reader stealth (server nao anuncia cards) - enviar ECMs na mesma
 	uint8_t stealth;
+	// v1.55: reader arbiter (fonte de confianca) - fora da rotacao normal,
+	// so e perguntado para VALIDAR CWs (ver DCW ARBITER no perfil)
+	uint8_t arbiter;
 	// NOK cache: ultimos NOK por canal (evita martelar o reader em zappings)
 	#define NOK_CACHE_MAX 32
 	uint32_t nok_time[NOK_CACHE_MAX]; // GetTickCount do NOK
@@ -707,8 +717,10 @@ struct PACK server_data
 	// BUDGET ENGINE (v1.49): orcamento da fonte (cws/min) - anti-sujar o cartao
 	#define BUDGET_GROUP_MAX 8
 	uint16_t budget_max;    // BUDGET MAX: teto manual em cws/min (0 = sem teto)
+	uint16_t budget_ask;    // v1.50 BUDGET ASK: teto de pedidos/segundo (0 = sem teto)
 	uint8_t  budget_group;  // BUDGET GROUP: id do orcamento partilhado (0 = so este reader)
 	uint8_t  budget_on;     // 1 = motor activo para este reader
+	uint8_t  guigroup;      // v1.51: grupo de apresentacao na GUI (0 = usar o type)
 	// Share Limits
 	struct sharelimit_data sharelimits[100];
 	// ACCEPTED SIDs
@@ -836,7 +848,9 @@ int srv_pace_check(struct server_data *srv, uint16_t caid, uint16_t sid, uint32_
 void srv_budget_add(struct server_data *srv); // v1.49: CW servida pela fonte (consumo)
 int srv_budget_pressure(struct server_data *srv); // v1.49: 0-100 (% do teto usado)
 int srv_budget_full(struct server_data *srv); // v1.49: 1 = fonte no teto (nao pedir)
-void srv_budget_gui(struct server_data *srv, char *buf, int buflen); // v1.49: linha GUI
+void srv_budget_values(struct server_data *srv, uint32_t *cons, uint32_t *ceiling, int *pct); // v1.51: valores separados
+int srv_budget_ask_check(struct server_data *srv); // v1.50: 1 = pode pedir (teto de asks/s)
+void srv_budget_ask_add(struct server_data *srv); // v1.50: conta 1 ask enviado
 int srv_nok_check(struct server_data *srv, uint16_t caid, uint16_t sid);
 uint32_t dcwchan_getcadence(uint16_t caid, uint32_t provid, uint16_t sid);
 int dcwchan_stale_hold(uint16_t caid, uint32_t provid, uint16_t sid); // v1.44 gate do stale-hold
@@ -1361,6 +1375,7 @@ struct config_data
 	char ip2country_file[256];
 	char lite_file[256];
 	char blockedip_file[256];
+	char logfile[256]; // v1.49 LOGFILE: ficheiro de log completo (opcional)
 	struct ip2country_data *ip2country;
 	struct chninfo_data *chninfo;
 	struct providers_data *providers;

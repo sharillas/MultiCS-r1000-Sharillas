@@ -312,6 +312,20 @@ void cs378x_srv_recvmsg(struct server_data *srv)
 			cacheex.hash = (buf[43]<<24) | (buf[42]<<16) | (buf[41]<<8) | buf[40];
 			if (!cacheex_check(&cacheex)) break;
 			mlogf(LOGTRACE,getdbgflag(DBG_SERVER,0,srv->id), " CACHEEX PUSH from server(%s:%d) %04x:%06x:%04x (%08x)\n",srv->host->name, srv->port,cacheex.caid,cacheex.provid,cacheex.sid,cacheex.hash);
+			// v1.46 A1+A2: o motor valida o push (stale/rapidez) e aprende a
+			// cadencia do canal pelo ritmo dos pushes da fonte
+			{
+				ECM_DATA tmp;
+				memset(&tmp, 0, sizeof(tmp));
+				tmp.caid = cacheex.caid;
+				tmp.provid = cacheex.provid;
+				tmp.sid = cacheex.sid;
+				tmp.hash = cacheex.hash;
+				int anom = dcwchan_engine(&tmp, cw);
+				if (anom==1) { srv->cacheex.badcw++; mlogf(LOGINFO,getdbgflag(DBG_CACHEEX,0,0)," cacheex: push STALE rejeitado ch %04x:%06x:%04x\n", cacheex.caid, cacheex.provid, cacheex.sid); break; }
+				if (anom==3) { srv->cacheex.badcw++; mlogf(LOGINFO,getdbgflag(DBG_CACHEEX,0,0)," cacheex: push rapido rejeitado ch %04x:%06x:%04x\n", cacheex.caid, cacheex.provid, cacheex.sid); break; }
+				if (anom==2) srv->cacheex.badcw++;
+			}
 			srv->cacheex.got[0]++;
 			int uphop = buf[60];
 			if (uphop<10) srv->cacheex.got[uphop]++;

@@ -1,3 +1,47 @@
+## v1.60 (2026-10-13)
+- **Editor linha-a-linha** (pagina Editor): para `Servers.cfg` e `Clients.cfg` - cada linha ativa aparece como linha editavel com botoes ON/OFF (toggle do comentario - respeito total pelo mecanismo disabled da v1.54), SAVE (edicao inline via base64), DEL e ADD. Tudo com reload de config imediato (sem restart).
+- Versao GUI/relatorio alinhada (VERSION_STR 1.60).
+
+## v1.55.5 (2026-10-11)
+- **ARBITER PRE-ASK**: o reader arbiter e perguntado EM PARALELO com a rotacao no inicio do ECM. Como e rapido (~300ms) e e a fonte da verdade, a entrega ao cliente cai de ~3s para ~300ms - a latencia alta era o gatilho do wedge do descrambler 1802 na box (freezes de 1-frame).
+- **SILENT NOK desligavel por perfil** (recomendado NO no 1802): o NOK adiado fazia a box repetir o pedido e o cache responder com CW velha - dessincronizava o descrambler.
+- Estudo completo documentado: veneno de periodo (CWs checksum-validas de outros criptoperiodos), filtros por comparacao #SUM, protocolo ponta-a-ponta.
+
+## v1.55.4
+- **ENABLE CACHE: NO no perfil 1802**: o cache servia CWs de periodos anteriores em re-requests do cliente (resposta 0ms) - causa raiz de freezes residuais.
+- DCW TIMEOUT mais generoso no NOS (2500) para o ciclo pergunta+validacao.
+
+## v1.55.3
+- Arbitro sem resposta em 2.5s: o candidato NAO validado e DESCARTADO (marca a fonte) em vez de entregue - nunca entregar CWs nao confirmadas (um par errado dessincroniza a box).
+
+## v1.55.2
+- **STUCK RECOVERY**: busy preso de cliente (ECM orfao) > 10s -> reset automatico e aceite do pedido novo (auto-recuperacao; fim dos blackouts prolongados).
+- Fix checktime=0 ("nunca re-verificar") no ramo de timeout do arbitro - o ECM ficava orfao para sempre e o busy do cliente nunca limpava.
+- Stash re-entrado salta os filtros (falso positivo da meia carregada contra a propria cadeia).
+
+## v1.55.1
+- **DCW AGREE**: consenso - a mesma CW tem de vir de N fontes (`DCW AGREE: 2`); com arbitro ativo o arbitro e o consenso.
+- **SERVER ASK**: fan-out - perguntar a N servers em paralelo por ECM (`SERVER ASK: 3`).
+
+## v1.55
+- **DCW HALFROTATE / HALFREPEAT TTL**: filtro de rotacao CW0/CW1 por canal+FONTE - rejeita pares sem meia em comum com o anterior e meias repetidas (o fingerprint das CWs envenenadas de periodo).
+- **DCW ARBITER**: reader de confianca (`arbiter=yes` na linha, fora da rotacao normal) valida a CW de cada fonte; `DCW ARBITER SERVE: YES` entrega a CW do arbitro em discordancia; `DCW ARBITER RATE` limita a % de ECMs validados (protecao do cartao do arbitro). Degradacao graciosa quando o arbitro desaparece.
+- Fonte do problema NOS 1802 identificada e neutralizada: cards marcados do saco devolvem CWs de criptoperiodos errados (checksum valido); o arbitro (fonte limpa) corrige.
+
+## v1.54
+- **Fix OFF/ON da GUI**: linhas comentadas (`#N:`/`#C:`/...) sao lidas como readers DISABLED (FLAG_DISABLE) - o OFF ja nao faz a linha desaparecer e o ON volta sempre. Exemplos de documentacao (`#    N: ...`) continuam ignorados.
+
+## v1.53
+- **Fix passwords com '#"**: o '#' so e comentario no inicio da linha ou apos espaco/tab - linhas C: com passwords a conter '#' (ex: `FiL#nW0$A9u0B`) passam a ser lidas corretamente.
+
+## v1.52
+- Fix badident (provider do ECM mal identificado), re-poll curto (300ms) quando as fontes estao ocupadas, fix da race timeout-vs-rotacao (o 2o/3o server nunca era perguntado), CAK7 INVERSE.
+
+## v1.51
+- Seccoes find-or-create (re-declarar [perfil] noutro ficheiro reutiliza o existente), grupo de apresentacao na GUI por reader, values de budget separados.
+
+## v1.50
+- **BUDGET ASK**: teto de pedidos/s por reader (anti rate-limit upstream por pedido, nao so por CW).
 ## v1.48 (2026-10-03)
 - **DEADCHAN**: canais mortos (sem resposta ha N minutos) deixam de martelar os readers - NOK rapido ao cliente + 1 probe de recuperacao a cada RETRY segundos. Config: `DCW DEADCHAN: YES`, `DCW DEADCHAN MINTIME: 5`, `DCW DEADCHAN RETRY: 60`. Lista na pagina CW Monitoring.
 - **PACING**: intervalo minimo entre pedidos do MESMO canal ao MESMO reader (`DCW PACING: 2000`) - anti rate-limit upstream (1 pedido por janela em vez do storm de retries).

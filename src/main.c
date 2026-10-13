@@ -320,45 +320,6 @@ int accept_sid(struct cardserver_data *cs, uint32_t provid, uint16_t sid, uint16
 	return 1;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// Return
-//  0: not accepted
-//  1: accepted
-int accept_sid0(struct cardserver_data *cs, uint16_t sid, uint16_t chid, uint16_t ecmlen, uint8_t *cw1cycle )
-{
-	*cw1cycle = 0;
-	if (cs->sidlist.data) {
-		int i;
-		int accepted = 0;
-		struct sid_chid_ecmlen_data *sids = cs->sidlist.data;
-		for(i=0;i<MAX_SIDS;i++,sids++) {
-			if (!sids->sid) {
-				if (!sids->chid) {
-					if (!sids->ecmlen) break; // end of sids
-					else if (sids->ecmlen==ecmlen) {
-						accepted = 1;
-						*cw1cycle = sids->cw1cycle;
-						break;
-					}
-				}
-				else if ( (sids->chid==chid)&&(!sids->ecmlen||(sids->ecmlen==ecmlen)) ) {
-					accepted = 1;
-					*cw1cycle = sids->cw1cycle;
-					break;
-				}
-			}
-			else if ( (sids->sid==sid)&&(!sids->chid||(sids->chid==chid))&&(!sids->ecmlen||(sids->ecmlen==ecmlen)) ) {
-				accepted = 1;
-				*cw1cycle = sids->cw1cycle;
-				break;
-			}
-		}
-		if (cs->sidlist.deny) return !accepted; else return accepted;
-	}
-	else if ( !sid && !cs->option.faccept0sid ) return 0;
-	return 1;
-}
-
 int accept_prov(struct cardserver_data *cs, uint32_t prov)
 {
 	int i;
