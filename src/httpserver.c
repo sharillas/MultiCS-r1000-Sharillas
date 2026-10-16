@@ -1,4 +1,4 @@
-﻿#include "common.h"
+#include "common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,6 +65,8 @@ struct mg_client_data *getmgcamdclientbyid(uint32_t id);
 struct mg_client_data *getmgcamdclientbyname(struct mgcamdserver_data *mgcamd, char *name);
 void mg_disconnect_cli(struct mg_client_data *cli);
 #endif
+
+extern char *base64_pdecode(const char *in, char *out);
 
 
 #define LIST_ACTIVE       0
@@ -217,7 +219,7 @@ void explode_get(http_request *req, char *get) // Get Variables
   while ( (end=strchr(get, '&')) ) 
   {
 	*end = '\0';
-        if (i>8) break; //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        if (i>=MAXHEADERS-1) break; // v1.61: limite real do array (era 9 - cortava params do editor popup)
 	if ( (a=strchr(get, '=')) ) {
 	  *a='\0';
 	  strncpy(req->getlist[i].name,get,255); 
@@ -1313,40 +1315,53 @@ void http_send_index(int sock, http_request *req)
 	}
 	tcp_writestr(&tcpbuf, sock, "</div></div>");
 
-	// Servers
+	// Servers (v1.62: so totais basicos)
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
 	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Servers</h3><div class=stat-value>");
-	sprintf( http_buf, "<span class=stat-label>Total Profiles:</span> %d<br>", cfg.totalprofiles );
+	sprintf( http_buf, "<span class=stat-label>Total:</span> %d<br>", cfg.totalservers );
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>Total Servers:</span> %d<br>", cfg.totalservers );
+	{
+		int actv = 0;
+		struct server_data *sw = cfg.server;
+		while (sw) { if (!IS_DISABLED(sw->flags)) actv++; sw = sw->next; }
+		sprintf( http_buf, "<span class=stat-label>Activos:</span> %d<br>", actv );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	}
+	tcp_writestr(&tcpbuf, sock, "</div></div>");
+
+	// Clients (v1.62: so totais basicos)
+	int activeecm = 0;
+	{
+		ECM_DATA *ecmwalk = ecmdata;
+		while (ecmwalk) { if (ecmwalk->dcwstatus==STAT_DCW_WAIT) activeecm++; ecmwalk=ecmwalk->next; if (ecmwalk==ecmdata) break; }
+	}
+	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
+	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Clients</h3><div class=stat-value>");
+	sprintf( http_buf, "<span class=stat-label>Conectados:</span> %d<br>", connected_all_clients() );
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>Total Cache Servers:</span> %d<br>", cfg.cache.totalservers );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>Total CCcam Servers:</span> %d<br>", cfg.cccam.totalservers );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>Total Mgcamd Servers:</span> %d<br>", cfg.mgcamd.totalservers );
+	sprintf( http_buf, "<span class=stat-label>ECM activos:</span> %d<br>", activeecm );
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "</div></div>");
 
-	// Clients
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Clients</h3><div class=stat-value>");
-	sprintf( http_buf, "<span class=stat-label>Connected Clients:</span> %d<br>", connected_all_clients() );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>ECM Total:</span> %d<br>", totalecm );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	int activeecm=0;
-	ECM_DATA *ecmwalk=ecmdata;
-	while (ecmwalk) { if (ecmwalk->dcwstatus==STAT_DCW_WAIT) activeecm++; ecmwalk=ecmwalk->next; if (ecmwalk==ecmdata) break; }
-	sprintf( http_buf, "<span class=stat-label>Active ECMs:</span> %d<br>", activeecm );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#ifdef CACHEEX
-	sprintf( http_buf, "<span class=stat-label>CacheEX Servers:</span> %d<br>", total_cacheex_servers() );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-#endif
-	sprintf( http_buf,"<span class=stat-label>NodeID =</span> %02x%02x%02x%02x%02x%02x%02x%02x", cfg.nodeid[0], cfg.nodeid[1], cfg.nodeid[2], cfg.nodeid[3], cfg.nodeid[4], cfg.nodeid[5], cfg.nodeid[6], cfg.nodeid[7]);
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "</div></div></div>");
+	// ECM totais (v1.62: total/ok/nok de todo o projecto)
+	{
+		int ttot = 0, tok = 0;
+		struct cardserver_data *cw = cfg.cardserver;
+		while (cw) {
+			ttot += cw->ecmaccepted + cw->ecmdenied;
+			tok += cw->ecmok;
+			cw = cw->next;
+		}
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
+		tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >ECM</h3><div class=stat-value>");
+		sprintf( http_buf, "<span class=stat-label>Total:</span> %d<br>", ttot );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<span class=stat-label>OK:</span> <span style='color:#2ecc71'>%d</span><br>", tok );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<span class=stat-label>NOK:</span> <span style='color:#e74c3c'>%d</span><br>", ttot-tok );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_writestr(&tcpbuf, sock, "</div></div></div>");
+	}
 
 	// === tiles (Stats Tiles v1.28) ===
 	{
@@ -1357,7 +1372,13 @@ void http_send_index(int sock, http_request *req)
 			if (rampct<0) rampct = 0; if (rampct>100) rampct = 100;
 		}
 		tcp_writestr(&tcpbuf, sock, "<div class='trow'>");
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>Uptime</div><div class='big c-cyan'>%02dd %02dh</div><div class='sub'>desde o ultimo boot</div></div>", d/(3600*24), (d/3600)%24);
+		{
+			char upbig[64];
+			if (d >= 86400) sprintf(upbig, "%dd %02dh", (int)(d/86400), (int)((d/3600)%24));
+			else if (d >= 3600) sprintf(upbig, "%02dh %02dm", (int)((d/3600)%24), (int)((d/60)%60));
+			else sprintf(upbig, "%02dm %02ds", (int)((d/60)%60), (int)(d%60));
+			sprintf( http_buf, "<div class='tile'><div class='lbl'>Uptime</div><div class='big c-cyan'>%s</div><div class='sub'>uptime</div></div>", upbig);
+		}
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		sprintf( http_buf, "<div class='tile'><div class='lbl'>Servers</div><div class='big c-violet'>%d</div><div class='sub'>%d profiles configurados</div></div>", cfg.totalservers, cfg.totalprofiles);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -1366,6 +1387,66 @@ void http_send_index(int sock, http_request *req)
 		sprintf( http_buf, "<div class='tile'><div class='lbl'>ECM Totais</div><div class='big c-green'>%d</div><div class='sub'>%d activos neste ciclo</div></div>", totalecm, activeecm);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		sprintf( http_buf, "<div class='tile'><div class='lbl'>RAM</div><div class='big c-amber'>%d%%</div><div class='sub'>%d / %d MB</div></div>", rampct, memtotal?((memtotal-memavail>0&&memavail)?(memtotal-memavail):(memtotal-memfree))/1024:0, memtotal/1024);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+		// v1.62: tiles de saude por perfil (MEO/NOS) - a cor do OK%
+		{
+			struct cardserver_data *hw = cfg.cardserver;
+			while (hw) {
+				if (!strcmp(hw->name,"DEFAULT") || !strcmp(hw->name,"BISS Emu")) { hw = hw->next; continue; }
+				int pct = hw->ecmaccepted ? (hw->ecmok*100)/hw->ecmaccepted : 0;
+				const char *cls = pct>=90?"c-green":(pct>=60?"c-amber":"c-red");
+				sprintf( http_buf, "<div class='tile'><div class='lbl'>%s</div><div class='big %s'>%d%%</div><div class='sub'>%d OK / %d ECM</div></div>",
+					hw->name, cls, pct, hw->ecmok, hw->ecmaccepted+hw->ecmdenied);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+				hw = hw->next;
+			}
+		}
+
+		// v1.62: tile do REFEREE (estado + validacoes, sem host)
+		{
+			int aon = 0;
+			struct server_data *aw = cfg.server;
+			while (aw) {
+				if (aw->arbiter) {
+					aon = (aw->handle>0) ? 1 : 0;
+					break;
+				}
+				aw = aw->next;
+			}
+			if (aw) {
+				sprintf( http_buf, "<div class='tile'><div class='lbl'>Referee</div><div class='big %s'>%s</div><div class='sub'>%u ask | %u match | %u disagree</div></div>",
+					aon?"c-green":"c-red", aon?"ONLINE":"OFFLINE",
+					g_arbiter_asks, g_arbiter_match, g_arbiter_discorda);
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+			else {
+				sprintf( http_buf, "<div class='tile'><div class='lbl'>Referee</div><div class='big c-gray'>--</div><div class='sub'>sem fonte de confianca</div></div>");
+				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			}
+		}
+		tcp_writestr(&tcpbuf, sock, "</div>");
+	}
+
+	// v1.62: widgets Fair-Share + Protecoes (lado a lado)
+	{
+		char fairbuf[1024];
+		int fairn = arbiter_fairshare_dump(fairbuf, sizeof(fairbuf));
+		tcp_writestr(&tcpbuf, sock, "<div class='trow'>");
+		if (fairn) {
+			sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Fair-Share (ultimo min)</h3><div class=stat-value>%s</div></div>", fairbuf);
+		}
+		else {
+			sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Fair-Share (ultimo min)</h3><div class=stat-value><span style='color:#8899aa'>sem validacoes</span></div></div>");
+		}
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Protecoes (desde boot)</h3><div class=stat-value>"
+			"<span class=stat-label>CW Infected:</span> %u<br>"
+			"<span class=stat-label>Rejected:</span> %u<br>"
+			"<span class=stat-label>Disagree by Referee:</span> %u<br>"
+			"<span class=stat-label>Discard by Referee:</span> %u<br>"
+			"<span class=stat-label>Verdict OK:</span> <span style='color:#2ecc71'>%u</span> &nbsp; <span class=stat-label>BLACK:</span> <span style='color:#e74c3c'>%u</span></div></div>",
+			g_hrot_rej, g_agree_rej, g_arbiter_discorda, g_arbiter_discard, g_verdict_ok, g_verdict_black);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "</div>");
 	}
@@ -1455,6 +1536,8 @@ static void camd35cells(struct camd35_client_data *cli, char cell[11][2048], con
 		}
 	}
 	sprintf( temp," <span class='icobtn del' title='DELETE (remove do Clients.cfg)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('%s?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,path,cli->id);
+	strcat( cell[9], temp );
+	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup)' onclick=\"leOpen('%s',%d)\">Edit</span>", (!strcmp(path,"/cs378xclient"))?"cs378xc":"camd35c", cli->id);
 	strcat( cell[9], temp );
 	strcat( cell[9], "</span>");
 }
@@ -3650,13 +3733,13 @@ char *caid_pkg_name( unsigned short caid )
 	return NULL;
 }
 
-void getservercells(struct server_data *srv, char cell[15][2048] )
+void getservercells(struct server_data *srv, char cell[16][2048] )
 {
 	char temp[2048];
 	unsigned int ticks = GetTickCount();
 	uint32_t d;
 	int i;
-	for (i=0; i<15; i++) cell[i][0] = 0;
+	for (i=0; i<16; i++) cell[i][0] = 0;
 
 	// [0] READER: ponto de estado + nome + versao
 	{
@@ -3792,6 +3875,20 @@ void getservercells(struct server_data *srv, char cell[15][2048] )
 		}
 	}
 
+	// [15] TRUTH (v1.62): % de CWs validas + raw/wrap + nodeid do cartao
+	{
+		int tt = srv->ecmok + srv->cwbad;
+		int pct = tt ? (srv->ecmok*100)/tt : 0;
+		const char *cls = pct>=90?"g":(pct>=60?"a":"r");
+		char extra[256] = "";
+		if (srv->cws_raw || srv->cws_wrap)
+			snprintf( extra, sizeof(extra), "<br><span class='muted' style='font-size:10px'>RAW %u / WRAP %u</span>", srv->cws_raw, srv->cws_wrap);
+		if (srv->nodeid[0])
+			snprintf( extra+strlen(extra), sizeof(extra)-strlen(extra), "<br><span class='muted' style='font-size:10px;font-family:monospace'>%02x%02x%02x%02x%02x%02x%02x%02x</span>",
+				srv->nodeid[0],srv->nodeid[1],srv->nodeid[2],srv->nodeid[3],srv->nodeid[4],srv->nodeid[5],srv->nodeid[6],srv->nodeid[7]);
+		sprintf( cell[15], "<span class='dot %s'></span> %d%%%s", cls, pct, extra);
+	}
+
 	// [11] ACTIONS
 	strcpy( cell[13], "<span style='display:inline-flex;gap:2px;white-space:nowrap;'>");
 	if ( !(srv->flags&(FLAG_DELETE|FLAG_EXPIRED)) ) {
@@ -3805,6 +3902,8 @@ void getservercells(struct server_data *srv, char cell[15][2048] )
 		}
 	}
 	sprintf( temp," <span class='icobtn inf' title='Info completa do server (todos os cards e detalhes)' onclick=\"location.href='/server?id=%d'\">INF</span>",srv->id);
+	strcat( cell[13], temp );
+	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup: protocolo, host, user, pass, options)' onclick=\"leOpen('server',%d)\">Edit</span>",srv->id);
 	strcat( cell[13], temp );
 	sprintf( temp," <span class='icobtn del' title='DELETE (remove do Servers.cfg)' onclick=\"if(confirm('Apagar o server %s:%d do ficheiro de config?')) imgrequest('/server?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",srv->host?srv->host->name:"?",srv->port,srv->id);
 	strcat( cell[13], temp );
@@ -3849,7 +3948,7 @@ void http_send_servers(int sock, http_request *req)
 	char rowbuf[18000];
 	struct tcp_buffer_data tcpbuf;
 
-	char cell[15][2048];
+	char cell[16][2048];
 	struct server_data *srv;
 	int i;
 
@@ -4029,7 +4128,7 @@ void http_send_servers(int sock, http_request *req)
 		// separador do protocolo + cabecalho
 		sprintf( http_buf, "<tr class='proto-sep'><td colspan=14><b>%s</b> <span class='muted'>servers</span></td></tr>\n", groups[g].title);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_writestr(&tcpbuf, sock, "<tr class='proto-head'><th>Reader</th><th>IP</th><th>Porta</th><th>Time</th><th>ECM OK</th><th>Total %</th><th>Health</th><th>Hits</th><th>Resp.</th><th>Last Cw</th><th>Qt. Cards</th><th>Cards</th><th>Hop's</th><th style='width:110px;min-width:110px;'>Actions</th></tr>\n");
+		tcp_writestr(&tcpbuf, sock, "<tr class='proto-head'><th>Reader</th><th>IP</th><th>Porta</th><th>Time</th><th>ECM OK</th><th>Total %</th><th>Health</th><th>Hits</th><th>Resp.</th><th>Last Cw</th><th>Qt. Cards</th><th>Cards</th><th>Hop's</th><th>Truth</th><th style='width:110px;min-width:110px;'>Actions</th></tr>\n");
 		// as linhas deste protocolo (lista normal + lista cacheex)
 		int listi;
 		for (listi=0; listi<2; listi++) {
@@ -4040,7 +4139,7 @@ void http_send_servers(int sock, http_request *req)
 				if ( ((get_list&LIST_CONNECTED)&&(srv->handle>0))||((get_list&LIST_DISCONNECTED)&&(srv->handle<=0))||(get_list==LIST_ALL) ) {
 					if (alt==1) alt=2; else alt=1;
 					getservercells(srv,cell);
-					snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=\"alt%d row-%s\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,cell[14],srv->id,cell[0],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9],cell[10],cell[11],cell[12],cell[13]);
+					snprintf( rowbuf, sizeof(rowbuf),"<tr id=\"Row%d\" class=\"alt%d row-%s\" onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",srv->id,alt,cell[14],srv->id,cell[0],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9],cell[10],cell[11],cell[12],cell[15],cell[13]);
 					tcp_write(&tcpbuf, sock, rowbuf, strlen(rowbuf) );
 				}
 				srv = srv->next;
@@ -4963,7 +5062,7 @@ void http_send_cache_peer(int sock, http_request *req)
 ///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////
-void getprofilecells(struct cardserver_data *cs, char cell[11][8192])
+void getprofilecells(struct cardserver_data *cs, char cell[13][8192])
 {
 	char temp[2048];
 	// CELL0 # Profile name + ponto de estado (v1.51)
@@ -4989,24 +5088,18 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][8192])
 	getstatcell( cs->ecmaccepted, ecmnb, cell[4] );
 	// CELL5 # ECM OK
 	getstatcell( cs->ecmok, cs->ecmaccepted, cell[5] );
-	// CELL6 # CacheHits
+	// CELL6 # CacheHits (cache + cacheex somados - 1 barra so)
+#ifdef CACHEEX
+	getstatcell( cs->hits.csp + cs->hits.cacheex, cs->ecmok, cell[6] );
+#else
 	getstatcell( cs->hits.csp, cs->ecmok, cell[6] );
+#endif
+	// CELL7 # Cache iHits (idem)
 #ifdef CACHEEX
-	if (cs->option.fallowcacheex) {
-		getstatcell( cs->hits.cacheex, cs->ecmok, temp );
-		strcat( cell[6], "<br>" );
-		strcat( cell[6], temp );
-	}
-#endif 
-	// CELL7 # Cache iHits
+	getstatcell( cs->hits.instant.csp + cs->hits.instant.cacheex, cs->hits.csp + cs->hits.cacheex, cell[7] );
+#else
 	getstatcell( cs->hits.instant.csp, cs->hits.csp, cell[7] );
-#ifdef CACHEEX
-	if (cs->option.fallowcacheex) {
-		getstatcell( cs->hits.instant.cacheex, cs->hits.cacheex, temp );
-		strcat( cell[7], "<br>" );
-		strcat( cell[7], temp );
-	}
-#endif 
+#endif
 	// CELL8 # Clients
 	int i=0;
 	int j=0;
@@ -5017,31 +5110,24 @@ void getprofilecells(struct cardserver_data *cs, char cell[11][8192])
 		usr = usr->next;
 	}
 	getstatcell2(j,i,cell[8]);
-	// CELL9 # Caid:Providers (com nomes de ident do CCcam.providers)
-	char *provname = providerID(cs->card.caid, cs->card.prov[0].id);
-	if (provname) sprintf( cell[9],"<b>%04X:</b> %06x <font color=#CC3300>%s</font>",cs->card.caid,cs->card.prov[0].id,provname);
-	else sprintf( cell[9],"<b>%04X:</b> %06x",cs->card.caid,cs->card.prov[0].id);
+	// CELL9 # Caid (coluna propria)
+	sprintf( cell[9], "<b>%04X</b>", cs->card.caid );
+	// CELL11 # Ident Provider (so os idents)
+	cell[11][0] = 0;
+	sprintf( cell[11], "%06x", cs->card.prov[0].id);
 	for(i=1; i<cs->card.nbprov; i++) {
-		provname = providerID(cs->card.caid, cs->card.prov[i].id);
-		if (provname) sprintf( temp,", %06x <font color=#CC3300>%s</font>",cs->card.prov[i].id,provname);
-		else sprintf( temp,", %06x",cs->card.prov[i].id);
-		if ( (strlen(cell[9])+strlen(temp)) < (sizeof(cell[9])-16) ) strcat( cell[9], temp );
+		sprintf( temp,", %06x",cs->card.prov[i].id);
+		if ( (strlen(cell[11])+strlen(temp)) < (sizeof(cell[11])-16) ) strcat( cell[11], temp );
 	}
 
-	// botoes em linha propria (guard de tamanho)
-	#define C9ADD(s) if ( (strlen(cell[9])+strlen(s)) < (sizeof(cell[9])-16) ) strcat( cell[9], s )
-	C9ADD("<br><span style='display:inline-flex;gap:2px;white-space:nowrap;margin-top:4px;'>");
+	// CELL12 # Actions (ON/OFF do perfil)
+	cell[12][0] = 0;
 	if (cs->flags&FLAG_DISABLE) {
-		sprintf( temp," <span class='icobtn on' title='Ativar' onclick=\"imgrequest('/profile?id=%d&action=enable',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span>",cs->id);
-		C9ADD(temp);
+		sprintf( cell[12], "<span class='icobtn on' title='Ativar' onclick=\"imgrequest('/profile?id=%d&action=enable',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span>",cs->id);
 	}
 	else {
-		sprintf( temp," <span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">OFF</span>",cs->id);
-		C9ADD(temp);
+		sprintf( cell[12], "<span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">OFF</span>",cs->id);
 	}
-	C9ADD(temp);
-	C9ADD("</span>");
-	#undef C9ADD
 }
 
 
@@ -5167,6 +5253,288 @@ int config_line_edit(char *filestr, char *match, int action)
 	return 0;
 }
 
+// v1.61: substitui a linha que contem 'match' por 'newline' (se nao encontrar, acrescenta no fim)
+int config_line_replace(char *filestr, char *match, const char *newline)
+{
+	char *fname = NULL;
+	struct filename_data *fs = cfg.files;
+	while (fs) {
+		if (strstr(fs->name, filestr)) { fname = fs->name; break; }
+		fs = fs->next;
+	}
+	if (!fname || !match || !newline) return -1;
+	pthread_mutex_lock(&pfile_mutex);
+	FILE *fp = fopen(fname, "r");
+	if (!fp) { pthread_mutex_unlock(&pfile_mutex); return -1; }
+	int size = (int)fread(pfilebuf, 1, PFILE_MAX, fp);
+	fclose(fp);
+	if ((size<=0)||(size>=PFILE_MAX)) { pthread_mutex_unlock(&pfile_mutex); return -1; }
+	pfilebuf[size] = 0;
+	FILE *fo = fopen(fname, "w");
+	if (!fo) { pthread_mutex_unlock(&pfile_mutex); return -1; }
+	char *p = pfilebuf;
+	int replaced = 0;
+	while (*p) {
+		char *start = p;
+		while (*p && *p!='\n') p++;
+		int hasnl = (*p=='\n');
+		char *eol = p;
+		if (*p) p++;
+		*eol = 0;
+		if (!replaced && strstr(start, match)) {
+			fwrite(newline,1,strlen(newline),fo);
+			replaced = 1;
+		}
+		else fwrite(start,1,strlen(start),fo);
+		if (hasnl) fwrite("\n",1,1,fo);
+	}
+	if (!replaced) {
+		fwrite(newline,1,strlen(newline),fo);
+		fwrite("\n",1,1,fo);
+	}
+	fclose(fo);
+	pthread_mutex_unlock(&pfile_mutex);
+	mlogf(LOGINFO, DBG_HTTP, " http: linha '%s' substituida no %s (reload automatico)\n", match, fname);
+	return 0;
+}
+
+// v1.61: EDIT LINHA - popup com campos (servers e clients)
+void http_send_lineedit(int sock, http_request *req)
+{
+	char http_buf[2048];
+	struct tcp_buffer_data tcpbuf;
+	char *str_action = isset_get(req, "action");
+	if (!str_action) { http_send_text(sock, "?"); return; }
+
+	char *str_type = isset_get(req, "type");
+	char *str_id = isset_get(req, "id");
+	const char *type = str_type ? str_type : "server";
+	int id = str_id ? atoi(str_id) : 0;
+
+	if (!strcmp(str_action, "form")) {
+		char host[128], user[64], pass[64], key[64], opts[640], oldmatch[256];
+		host[0]=user[0]=pass[0]=key[0]=opts[0]=oldmatch[0]=0;
+		int port = 0;
+		int isserver = !strcmp(type,"server");
+		char proto[16];
+		strcpy(proto, isserver ? "cccam" : "user");
+		tcp_init(&tcpbuf);
+
+		if (isserver) {
+			struct server_data *srv = getsrvbyid(id);
+			if (!srv) { http_send_text(sock, "<span class='miss'>Server nao encontrado</span>"); return; }
+			strcpy(host, srv->host ? (char*)srv->host->name : "");
+			strcpy(user, srv->user);
+			strcpy(pass, srv->pass);
+			port = srv->port;
+			if (srv->type==TYPE_NEWCAMD) strcpy(proto,"newcamd");
+			else if (srv->type==TYPE_CCCAM) strcpy(proto,"cccam");
+			else if (srv->type==TYPE_CS378X) strcpy(proto,"cs378x");
+			else if (srv->type==TYPE_CAMD35) strcpy(proto,"camd35");
+			
+			else if (srv->type==TYPE_CACHE) strcpy(proto,"cache");
+			if (srv->type==TYPE_NEWCAMD) {
+				int k=0, i;
+				for (i=0;i<14;i++) k += sprintf(key+k, "%s%02X", i?" ":"", srv->key[i]);
+			}
+			{
+				char *o = opts;
+				if (srv->nocheck) o += sprintf(o, "nocheck=yes; ");
+				if (srv->stealth) o += sprintf(o, "stealth=yes; ");
+				if (srv->arbiter) o += sprintf(o, "arbiter=yes; ");
+				if (srv->providrewrite) o += sprintf(o, "providrewrite=yes; ");
+				if (srv->hop) o += sprintf(o, "hop=%d; ", srv->hop);
+				if (srv->budget_max) o += sprintf(o, "budget_max=%d; ", srv->budget_max);
+				if (srv->budget_group) o += sprintf(o, "budget_group=%d; ", srv->budget_group);
+				if (srv->budget_ask) o += sprintf(o, "budget_ask=%d; ", srv->budget_ask);
+#ifdef CACHEEX
+				if (srv->cacheex_mode) o += sprintf(o, "cacheex_mode=%d; ", srv->cacheex_mode);
+#endif
+				if (srv->csport[0]) {
+					o += sprintf(o, "profiles=%d", srv->csport[0]);
+					int i;
+					for (i=1;i<MAX_CSPORTS;i++) {
+						if (!srv->csport[i]) break;
+						o += sprintf(o, ",%d", srv->csport[i]);
+					}
+					o += sprintf(o, "; ");
+				}
+			}
+			sprintf(oldmatch, "%s %d", host, port);
+		}
+		else if (!strcmp(type,"user")) {
+			struct cs_client_data *cli = getnewcamdclientbyid(id);
+			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			strcpy(user, cli->user); strcpy(pass, cli->pass);
+			sprintf(oldmatch, "USER: %s", cli->user);
+		}
+		else if (!strcmp(type,"f")) {
+			struct cc_client_data *cli = getcccamclientbyid(id);
+			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			strcpy(user, cli->user); strcpy(pass, cli->pass);
+			sprintf(oldmatch, "F: %s", cli->user);
+			strcpy(proto,"f");
+		}
+		else if (!strcmp(type,"mg")) {
+			struct mg_client_data *cli = getmgcamdclientbyid(id);
+			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			strcpy(user, cli->user); strcpy(pass, cli->pass);
+			sprintf(oldmatch, "MG: %s", cli->user);
+		}
+		else if (!strcmp(type,"cs378xc")) {
+			struct camd35_client_data *cli = getcs378xclientbyid(id);
+			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			strcpy(user, cli->user); strcpy(pass, cli->pass);
+			sprintf(oldmatch, "CS378X USER: %s", cli->user);
+		}
+		else if (!strcmp(type,"camd35c")) {
+			struct camd35_client_data *cli = getcamd35clientbyid(id);
+			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			strcpy(user, cli->user); strcpy(pass, cli->pass);
+			sprintf(oldmatch, "CAMD35 USER: %s", cli->user);
+		}
+		else { http_send_text(sock, "<span class='miss'>Tipo desconhecido</span>"); return; }
+
+		// escape p/ atributos
+		char ehost[300], euser[160], epass[160], ekey[160], eopts[1300], eold[520];
+		char *flds[] = { host, user, pass, key, opts, oldmatch };
+		char *outs[] = { ehost, euser, epass, ekey, eopts, eold };
+		int fi;
+		for (fi=0; fi<6; fi++) {
+			char *c; int wi=0;
+			for (c=flds[fi]; *c && wi<1199; c++) {
+				if (*c=='"') { memcpy(outs[fi]+wi,"&quot;",6); wi+=6; }
+				else if (*c=='<') { memcpy(outs[fi]+wi,"&lt;",4); wi+=4; }
+				else if (*c=='>') { memcpy(outs[fi]+wi,"&gt;",4); wi+=4; }
+				else if (*c=='&') { memcpy(outs[fi]+wi,"&amp;",5); wi+=5; }
+				else outs[fi][wi++] = *c;
+			}
+			outs[fi][wi] = 0;
+		}
+
+		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
+		sprintf( http_buf, "<b>Editar linha</b> <span style='float:right;cursor:pointer;color:#c88' onclick=\"leClose()\">[X]</span><br>"
+			"<input type=hidden id='le_type' value='%s'><input type=hidden id='le_id' value='%d'>"
+			"<input type=hidden id='le_old' value=\"%s\">"
+			"<table style='width:100%%;font-size:13px'>", type, id, eold);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+		if (isserver) {
+			sprintf( http_buf, "<tr><td>Protocolo</td><td><select id='le_proto'>"
+				"<option value='cccam'%s>CCcam</option>"
+				"<option value='newcamd'%s>Newcamd</option>"
+				"<option value='cs378x'%s>CS378X</option>"
+				"<option value='camd35'%s>CAMD35 (UDP)</option>"
+				""
+				"<option value='cache'%s>Cache</option>"
+				"</select></td></tr>"
+				"<tr><td>Host</td><td><input id='le_host' style='width:100%%' value=\"%s\"></td></tr>"
+				"<tr><td>Porta</td><td><input id='le_port' style='width:80px' value='%d'></td></tr>"
+				"<tr><td>User</td><td><input id='le_user' style='width:100%%' value=\"%s\"></td></tr>"
+				"<tr><td>Password</td><td><input id='le_pass' style='width:100%%' value=\"%s\"></td></tr>",
+				!strcmp(proto,"cccam")?" selected":"", !strcmp(proto,"newcamd")?" selected":"",
+				!strcmp(proto,"cs378x")?" selected":"", !strcmp(proto,"camd35")?" selected":"",
+				!strcmp(proto,"cache")?" selected":"",
+				ehost, port, euser, epass);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		else {
+			sprintf( http_buf, "<input type=hidden id='le_proto' value='%s'>"
+				"<tr><td>User</td><td><input id='le_user' style='width:100%%' value=\"%s\"></td></tr>"
+				"<tr><td>Password</td><td><input id='le_pass' style='width:100%%' value=\"%s\"></td></tr>",
+				proto, euser, epass);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+
+		sprintf( http_buf, "<tr id='lerow_key'%s><td>DesKey (14 pares)</td><td><input id='le_key' style='width:100%%' value=\"%s\"></td></tr>",
+			(!isserver || !strcmp(proto,"newcamd"))?"":" style='display:none'", ekey);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+
+		sprintf( http_buf, "<tr><td>Options</td><td><input id='le_opts' style='width:100%%' value=\"%s\" placeholder='ex: nocheck=yes; hop=3; profiles=15003; name=\"\"X\"\"; budget_max=60'></td></tr>"
+			"<tr><td></td><td style='text-align:right'><button class='sbutton' onclick=\"leSave()\">SAVE</button> <button class='sbutton' onclick=\"leClose()\">CANCELAR</button></td></tr>"
+			"</table>"
+			"<script>"
+			"var lep=document.getElementById('le_proto');"
+			"function leProtoChange(){var k=document.getElementById('lerow_key');var p=document.getElementById('le_proto').value;if(k)k.style.display=(p=='newcamd')?'':'none';}"
+			"if(lep){lep.onchange=leProtoChange;}"
+			"</script>", eopts);
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_flush(&tcpbuf, sock);
+		return;
+	}
+
+	if (!strcmp(str_action, "save")) {
+		char *g = isset_get(req, "old");
+		char *p_proto = isset_get(req, "proto");
+		char *p_host = isset_get(req, "host");
+		char *p_port = isset_get(req, "port");
+		char *p_user = isset_get(req, "user");
+		char *p_pass = isset_get(req, "pass");
+		char *p_key = isset_get(req, "key");
+		char *p_opts = isset_get(req, "opts");
+		char host[128], user[64], pass[64], key[64], opts[640], old[256];
+		host[0]=user[0]=pass[0]=key[0]=opts[0]=old[0]=0;
+		if (p_host && *p_host) base64_pdecode(p_host, host);
+		if (p_user && *p_user) base64_pdecode(p_user, user);
+		if (p_pass && *p_pass) base64_pdecode(p_pass, pass);
+		if (p_key && *p_key) base64_pdecode(p_key, key);
+		if (p_opts && *p_opts) base64_pdecode(p_opts, opts);
+		if (g && *g) base64_pdecode(g, old);
+		int port = p_port ? atoi(p_port) : 0;
+		const char *proto = p_proto ? p_proto : "cccam";
+		int isserver = !strcmp(type,"server");
+
+		// tail de opcoes
+		char tail[700];
+		tail[0] = 0;
+		{
+			char *t = opts;
+			while (*t==' '||*t=='\t') t++;
+			if (*t) {
+				// remover { } duplicados se o user os puser
+				if (t[0]=='{') t++;
+				int l = strlen(t);
+				if (l && t[l-1]=='}') t[l-1]=0;
+				sprintf(tail, " { %s }", t);
+			}
+		}
+
+		char newline[1024];
+		newline[0] = 0;
+		if (isserver) {
+			if (!strcmp(proto,"newcamd")) sprintf(newline, "N: %s %d %s %s %s%s", host, port, user, pass, key, tail);
+			else if (!strcmp(proto,"cccam")) sprintf(newline, "C: %s %d %s %s%s", host, port, user, pass, tail);
+			else if (!strcmp(proto,"cs378x")) sprintf(newline, "CS378X SERVER: %s %d %s %s%s", host, port, user, pass, tail);
+			else if (!strcmp(proto,"camd35")) sprintf(newline, "CAMD35 SERVER: %s %d %s %s%s", host, port, user, pass, tail);
+			
+			else if (!strcmp(proto,"cache")) sprintf(newline, "CACHE: %s %d %s %s", host, port, user, pass);
+			else sprintf(newline, "C: %s %d %s %s%s", host, port, user, pass, tail);
+			if (old[0] && host[0]) config_line_replace("Servers.cfg", old, newline);
+		}
+		else {
+			if (!strcmp(proto,"user")) sprintf(newline, "USER: %s %s%s", user, pass, tail);
+			else if (!strcmp(proto,"f")) sprintf(newline, "F: %s %s%s", user, pass, tail);
+			else if (!strcmp(proto,"mg")) sprintf(newline, "MG: %s %s", user, pass);
+			else if (!strcmp(proto,"cs378xc")) sprintf(newline, "CS378X USER: %s %s%s", user, pass, tail);
+			else sprintf(newline, "CAMD35 USER: %s %s%s", user, pass, tail);
+			if (old[0]) config_line_replace("Clients.cfg", old, newline);
+		}
+		if (!newline[0]) { http_send_text(sock, "<span class='miss'>ERRO</span>"); return; }
+
+		// reload
+		free_filenames( &cfg );
+		reread_config( &cfg );
+		check_config( &cfg );
+		cfg_set_id_counters( &cfg );
+		lite_load();
+		ipblock_load();
+		http_send_text(sock, "<span class='success'>OK</span>");
+		return;
+	}
+
+	http_send_text(sock, "?");
+}
+
 // v1.51: tabela de Packages (definida junto do http_send_packages; usada na pagina de Profiles)
 void http_send_packages_table(struct tcp_buffer_data *tcpbuf, int sock);
 
@@ -5200,7 +5568,7 @@ void http_send_profiles(int sock, http_request *req)
 {
 	char http_buf[2048];
 	struct tcp_buffer_data tcpbuf;
-	char cell[11][8192];
+	char cell[13][8192];
 
 	//  Get Params
 	char *str_action = isset_get( req, "action");
@@ -5313,8 +5681,7 @@ void http_send_profiles(int sock, http_request *req)
 		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
 	}
 
-	sprintf( http_buf, "Total Profiles: %d", total_profiles() ); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "<br>\n<table class=maintable width=100%%><tr><th width=150px>Profile name</th><th width=50px>Port</th><th width=60px>EcmTime</th><th width=60px>TotalECM</th><th width=90px>AcceptedECM</th><th width=80px>Ecm OK</th><th width=85px>Cache/Ex Hits</th><th width=80px>Instant Hits</th><th width=80px>Clients</th><th>Caid:Providers</th></tr>");
+	tcp_writestr(&tcpbuf, sock, "<br>\n<table class=maintable width=100%%><tr><th width=150px>Profile name</th><th width=50px>Port</th><th width=60px>EcmTime</th><th width=60px>TotalECM</th><th width=90px>AcceptedECM</th><th width=80px>Ecm OK</th><th width=85px>Cache/Ex Hits</th><th width=80px>Instant Hits</th><th width=80px>Clients</th><th width=56px>Caid</th><th>Ident Provider</th><th width=90px>Actions</th></tr>");
 
 	int alt=0;
 	int rendered[128];
@@ -5373,7 +5740,7 @@ void http_send_profiles(int sock, http_request *req)
 								if (fcs) {
 									if (alt==1) alt=2; else alt=1;
 									getprofilecells( fcs, cell );
-									snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td class=%s>%s</td><td align=center>%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",fcs->id,alt,fcs->id,cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9]);
+									snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td class=%s>%s</td><td align=center>%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",fcs->id,alt,fcs->id,cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9],cell[11],cell[12]);
 									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 									if (nrendered<128) rendered[nrendered++] = fcs->id;
 								}
@@ -5387,7 +5754,7 @@ void http_send_profiles(int sock, http_request *req)
 									}
 									encname[a] = 0;
 									if (alt==1) alt=2; else alt=1;
-									snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span></span></td></tr>", alt, secname, encname);
+									snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span></span></td></tr>", alt, secname, encname);
 									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 								}
 								} // fim do else (skip DEFAULT/BISS Emu)
@@ -5407,14 +5774,13 @@ void http_send_profiles(int sock, http_request *req)
 		if ( strcmp(cs->name,"DEFAULT") && strcmp(cs->name,"BISS Emu") && !profile_is_rendered(rendered, nrendered, cs->id)) {
 			if (alt==1) alt=2; else alt=1;
 			getprofilecells( cs, cell );
-			snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td class=%s>%s</td><td align=center>%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",cs->id,alt,cs->id,cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9]);
+			snprintf( http_buf, sizeof(http_buf),"\n<tr id=\"Row%d\" class=alt%d onMouseOver='setupdateRow(%d)' onMouseOut='setupdateRow(0)'><td>%s</td><td class=%s>%s</td><td align=center>%s</td><td align=center>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",cs->id,alt,cs->id,cell[0],cell[10],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9],cell[11],cell[12]);
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
 		cs = cs->next;
 	}
 	// Total
 	if (alt==1) alt=2; else alt=1;
-	snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt3><td align=right>Total</td><td align=center>%d</td><td align=center>--</td>",total_profiles()); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	int totecm = 0;
 	int totecmaccepted = 0;
 	int totecmok = 0;
@@ -5435,12 +5801,13 @@ void http_send_profiles(int sock, http_request *req)
 #endif
 		cs = cs->next;
 	}
+	snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt3><td align=right>Total (%d)</td><td align=center>-</td><td align=center>-</td>",total_profiles()); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<td align=center>%d</td>",totecm); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writeecmdata(&tcpbuf, sock, totecmaccepted, totecm);
 	tcp_writeecmdata(&tcpbuf, sock, totecmok, totecmaccepted);
 	tcp_writeecmdata(&tcpbuf, sock, totcachehits, totecmok);
 	tcp_writeecmdata(&tcpbuf, sock, totcacheihits, totcachehits);
-	sprintf( http_buf, "<td colspan=2> </td></tr>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf, "<td align=center>-</td><td align=center>-</td><td align=center>-</td><td></td></tr>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	// Speed
 	uint32_t ticks = GetTickCount()/1000;
 	snprintf( http_buf, sizeof(http_buf),"<tr class=alt2><td align=right>Average speed</td><td colspan=2 align=center>(per minute)</td>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -5449,7 +5816,7 @@ void http_send_profiles(int sock, http_request *req)
 	sprintf( http_buf,"<td>%d</td>", totecmok*60/ticks); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<td>%d</td>", totcachehits*60/ticks); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	sprintf( http_buf,"<td>%d</td>", totcacheihits*60/ticks); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<td colspan=2> </td></tr>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	sprintf( http_buf, "<td align=center>-</td><td align=center>-</td><td align=center>-</td><td></td></tr>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
 	sprintf( http_buf, "\n</table>"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
@@ -5645,6 +6012,8 @@ void getnewcamdclientcells(struct cs_client_data *cli, char cell[13][2048])
 		}
 	}
 	sprintf( temp," <span class='icobtn del' title='DELETE (remove do ficheiro de config)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('/newcamdclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
+	strcat( cell[11], temp );
+	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup)' onclick=\"leOpen('user',%d)\">Edit</span>",cli->id);
 	strcat( cell[11], temp );
 	strcat( cell[11], "</span>");
 
@@ -6688,6 +7057,8 @@ void getcccamcells(struct cc_client_data *cli, char cell[13][2048])
 		}
 	}
 	sprintf( temp," <span class='icobtn del' title='DELETE (remove do Clients.cfg)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('/cccamclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
+	strcat( cell[11], temp );
+	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup)' onclick=\"leOpen('f',%d)\">Edit</span>",cli->id);
 	strcat( cell[11], temp );
 	strcat( cell[11], "</span>");
 }
@@ -7977,6 +8348,8 @@ void getmgcamdcells(struct mg_client_data *cli, char cell[13][2048])
 	}
 	sprintf( temp," <span class='icobtn del' title='DELETE (remove do Clients.cfg)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('/mgcamdclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
 	strcat( cell[11], temp );
+	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup)' onclick=\"leOpen('mg',%d)\">Edit</span>",cli->id);
+	strcat( cell[11], temp );
 	strcat( cell[11], "</span>");
 
 }
@@ -8674,9 +9047,10 @@ struct pkg_data {
 static const struct pkg_data pkg_table[] = {
 	{ "Hispasat 30W", "Abertis TDT (BISS)", 0x2600, 0x000000, "" },
 	{ "Hispasat 30W", "MEO", 0x1814, 0x005211, "ident real" },
-	{ "Hispasat 30W", "MEO", 0x1814, 0x005221, "" },
 	{ "Hispasat 30W", "MEO", 0x1814, 0x000007, "ID_SAT" },
 	{ "Hispasat 30W", "NOS", 0x1802, 0x000000, "wildcard (o unico em uso)" },
+	{ "Hispasat 30W", "NOS", 0x1802, 0x004901, "ID Cabo - Old" },
+	{ "Hispasat 30W", "NOS", 0x1802, 0x004801, "ID Cabo - Nagra" },
 	{ "Hotbird 13E", "Canal+ Polska", 0x1813, 0x000068, "tunel Seca/Nagra" },
 	{ "Hotbird 13E", "Canal+ Polska", 0x1884, 0x000000, "Cayman" },
 	{ "Hotbird 13E", "Polsat Box", 0x1803, 0x000000, "" },
@@ -8768,7 +9142,7 @@ static int pkg_count_readers(uint16_t caid, uint32_t ident, char *out, int outsz
 void http_send_packages_table(struct tcp_buffer_data *tcpbuf, int sock)
 {
 	char http_buf[4096];
-	tcp_writestr(tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Packages (satelite / pacote)</h3>");
+	tcp_writestr(tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Packages Info</h3>");
 	int np = (int)(sizeof(pkg_table)/sizeof(pkg_table[0]));
 	const char *lastsat = "";
 	int i, alt = 0;
@@ -8778,31 +9152,60 @@ void http_send_packages_table(struct tcp_buffer_data *tcpbuf, int sock)
 			lastsat = pkg_table[i].sat;
 			sprintf( http_buf, "<h4 class='ssub'>%s</h4>", lastsat);
 			tcp_writestr(tcpbuf, sock, http_buf);
-			tcp_writestr(tcpbuf, sock, "<table class=maintable width=100%><tr><th width=160px>Package</th><th width=120px>CAID:Ident</th><th>Nota</th><th width=110px>Perfil</th><th width=90px>Ecm OK</th><th width=170px>Filtros</th><th>Readers</th></tr>");
+			tcp_writestr(tcpbuf, sock, "<table class=maintable width=100%><tr>"
+				"<th width=120px>Package</th><th width=56px>Caid</th><th width=76px>Ident</th><th>Description</th>"
+				"<th width=110px>Profile</th><th width=100px>Total ECM OK</th><th width=170px>Options/Filters</th><th width=150px>Total Readers/Servers</th></tr>");
 		}
 		if (alt==1) alt=2; else alt=1;
 
 		struct cardserver_data *cs = pkg_findcs(pkg_table[i].caid, pkg_table[i].ident);
 		char profcell[160];
-		char okcell[80];
-		char filtcell[320];
+		char okcell[120];
+		char filtcell[520];
 		if (cs) {
 			sprintf( profcell, "<a href='/profile?id=%d'>%s</a> (%d)", cs->id, cs->name, cs->newcamd.port);
-			if (cs->ecmaccepted) sprintf( okcell, "%d%%", (cs->ecmok*100)/cs->ecmaccepted);
-			else sprintf( okcell, "--");
-			char b[256] = "";
-			if (cs->option.dcw.cak7) strcat(b, " <span class='badge-blue'>CAK7</span>");
-			if (cs->option.dcw.cycleengine) strcat(b, " <span class='badge-green'>CYCLE ENGINE</span>");
-			if (cs->option.ecmfilter.enable) strcat(b, cs->option.ecmfilter.mode?" <span class='badge-green'>ECM DROP</span>":" <span class='badge-gray'>ECM LOGONLY</span>");
-			sprintf( filtcell, "%s", b[0]?b:" <span class='badge-gray'>sem filtros</span>");
+			if (cs->ecmaccepted) sprintf( okcell, "%d <span style='color:#8899aa'>(%d%%)</span>", cs->ecmok, (cs->ecmok*100)/cs->ecmaccepted);
+			else sprintf( okcell, "%d", cs->ecmok);
+			char b[480] = "";
+			if (cs->option.dcw.cak7) strcat(b, "<br><span class='badge-blue'>CAK7</span>");
+#ifdef DCWSWAP
+			if (cs->option.dcw.swap) strcat(b, "<br><span class='badge-blue'>SWAP</span>");
+#endif
+			if (cs->option.dcw.cycleengine) strcat(b, "<br><span class='badge-green'>CYCLE</span>");
+			if (cs->option.dcw.halfrotate) strcat(b, "<br><span class='badge-green'>HALFROTATE</span>");
+			if (cs->option.dcw.arbiter) strcat(b, "<br><span class='badge-yellow'>ARBITER</span>");
+			if (cs->option.dcw.agree>1) strcat(b, "<br><span class='badge-yellow'>AGREE</span>");
+			if (cs->option.dcw.pacing) strcat(b, "<br><span class='badge-gray'>PACING</span>");
+			if (cs->option.dcw.rawlog) strcat(b, "<br><span class='badge-gray'>RAWLOG</span>");
+			if (cs->option.dcw.dcwlog) strcat(b, "<br><span class='badge-gray'>DCWLOG</span>");
+			if (cs->option.dcw.lastcwon_nok) strcat(b, "<br><span class='badge-gray'>LASTCWONNOK</span>");
+			if (cs->option.dcw.silentnok) strcat(b, "<br><span class='badge-gray'>SILENT_NOK</span>");
+			if (cs->option.fallowcacheex) strcat(b, "<br><span class='badge-green'>CACHEEX</span>");
+			if (cs->option.ecmfilter.enable) strcat(b, cs->option.ecmfilter.mode?"<br><span class='badge-green'>ECM DROP</span>":"<br><span class='badge-gray'>ECM LOGONLY</span>");
+			if (cs->ecmlen[0]) strcat(b, "<br><span class='badge-gray'>ECM LEN</span>");
+			sprintf( filtcell, "%s", b[0]? (b+4) : " <span class='badge-gray'>sem filtros</span>");
 		}
 		else { sprintf( profcell, "<span style='color:#8899aa'>sem perfil</span>"); sprintf( okcell, "--"); sprintf( filtcell, " <span class='badge-gray'>--</span>"); }
 
 		char rdcell[512];
-		pkg_count_readers(pkg_table[i].caid, pkg_table[i].ident, rdcell, sizeof(rdcell));
+		int nreaders = pkg_count_readers(pkg_table[i].caid, pkg_table[i].ident, rdcell, sizeof(rdcell));
+		char rdc[32];
+		sprintf( rdc, "<b>%d</b>", nreaders );
 
-		sprintf( http_buf, "<tr class=alt%d><td>%s</td><td><b>%04X:</b> %06X</td><td style='font-size:11px;color:#8899aa'>%s</td><td style='font-size:12px;'>%s</td><td>%s</td><td style='font-size:11px;'>%s</td><td style='font-size:12px;'>%s</td></tr>",
-			alt, pkg_table[i].name, pkg_table[i].caid, pkg_table[i].ident, pkg_table[i].note, profcell, okcell, filtcell, rdcell);
+		// Description: info do ident no CCcam.providers + nota
+		char desc[512];
+		char *pid = providerID( pkg_table[i].caid, pkg_table[i].ident );
+		if (pid) {
+			if (pkg_table[i].note[0]) sprintf( desc, "%s (%s)", pid, pkg_table[i].note);
+			else strcpy( desc, pid );
+		}
+		else {
+			if (pkg_table[i].note[0]) sprintf( desc, "%s [%s]", pkg_table[i].note, pkg_table[i].sat);
+			else sprintf( desc, "[%s]", pkg_table[i].sat);
+		}
+
+		sprintf( http_buf, "<tr class=alt%d><td>%s</td><td>%04X</td><td>%06X</td><td style='font-size:11px;color:#8899aa'>%s</td><td style='font-size:12px;'>%s</td><td style='font-size:12px;'>%s</td><td style='font-size:11px;'>%s</td><td style='font-size:12px;'>%s</td></tr>",
+			alt, pkg_table[i].name, pkg_table[i].caid, pkg_table[i].ident, desc, profcell, okcell, filtcell, rdc);
 		tcp_writestr(tcpbuf, sock, http_buf);
 	}
 	tcp_writestr(tcpbuf, sock, "</table></div>");
@@ -9966,6 +10369,9 @@ void *gererClient(struct connect_data *param)
 #endif
 				else if (strcmp(req.path,"/configurations")==0) {
 					http_send_configurations(sock,&req);
+				}
+				else if (strcmp(req.path,"/editline")==0) {
+					if (!cfg.http.show.noeditor) http_send_lineedit(sock,&req);
 				}
 				else if (strcmp(req.path,"/iptables")==0) {
 					http_send_iptables(sock,&req);

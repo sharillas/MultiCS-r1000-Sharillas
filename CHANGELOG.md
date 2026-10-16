@@ -1,4 +1,15 @@
-## v1.60 (2026-10-13)
+## v1.62 (2026-10-16)
+- **Dashboard**: tiles de Uptime moderno, saude por perfil (MEO/NOS com cor do OK%), Referee (ask/match/disagree sem host); widgets Fair-Share (validacoes do arbitro por cliente no ultimo minuto) e Protecções (CW Infected, Rejected, Disagree/Discard by Referee, Verdict OK/BLACK); contadores globais de arbitro/filtros/verdict.
+- **Coluna Truth na pagina Servers**: % de CWs validas por fonte (ecmok vs ecmok+cwbad), contadores RAW/WRAP (veneno de periodo), nodeid e Resp. media - a agulha do veneno no palheiro.
+- **VERDICT end-to-end**: anel de CWs servidas + endpoint /verdict (caid/prov/sid/cw/ok) - a box reporta o resultado real (abriu/preto) e a fonte que serviu a CW ma e marcada (dcw_badmark + log multics-verdict.log). Agente externo na box (grab luminancia + .cwl).
+- Perfil [DEFAULT] deixa de contar como perfil; Packages Info com Caid|Ident Provider|Actions e Options/Filters em pilha; fix parser de query (9 params -> MAXHEADERS-1).
+
+## v1.61 (2026-10-14)
+- **Editor popup /editline** (form com protocolo/host/porta/user/pass/deskey/options; SAVE reconstrói a linha em Servers.cfg/Clients.cfg). Botões "Edit" nas paginas de servers e clients.
+- **Fair-share do arbitro**: DCW ARBITER MAX por perfil (teto de validacoes por cliente na janela) - evita que um cliente monopole o arbitro.
+- Deadlines 5500/5500 + retry de validacao quando o arbitro esta ocupado (fix da contenção multi-cliente).
+
+
 - **Editor linha-a-linha** (pagina Editor): para `Servers.cfg` e `Clients.cfg` - cada linha ativa aparece como linha editavel com botoes ON/OFF (toggle do comentario - respeito total pelo mecanismo disabled da v1.54), SAVE (edicao inline via base64), DEL e ADD. Tudo com reload de config imediato (sem restart).
 - Versao GUI/relatorio alinhada (VERSION_STR 1.60).
 

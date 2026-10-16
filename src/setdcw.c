@@ -394,6 +394,7 @@ int verdict_report(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, in
 			srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0);
 		fclose(fp);
 	}
+	if (ok) g_verdict_ok++; else g_verdict_black++;
 	if (!ok && (srctype==DCW_SOURCE_SERVER)) {
 		dcw_badmark( srcid, caid, sid );
 		prot_event_add("VERDICT: box reporta CW MA ch %04x:%06x:%04x - fonte %d marcada", caid, provid, sid, srcid&0xffff);
@@ -773,6 +774,11 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	// v1.48 RAWLOG: captura pre-transformacao + classificacao raw/wrapped (checksums)
 	if (cs->option.dcw.rawlog) {
 		int rawok = checksumDCW(rawcw);
+		// v1.62 TRUTH: contadores raw/wrap POR FONTE (a coluna Truth na GUI)
+		if (srctype==DCW_SOURCE_SERVER) {
+			struct server_data *rws = getsrvbyid(srcid&0xffff);
+			if (rws) { if (rawok) rws->cws_raw++; else rws->cws_wrap++; }
+		}
 		rawlog_1802_grace( ecm->caid, ecm->provid, ecm->sid, rawok );
 		if (ecm->caid==0x1802 && !rawok) cwpk_ring_add( rawcw ); // CWPK oraculo: guarda as WRAP
 		FILE *fp = fopen("/var/log/multics-raw.log","a");
@@ -941,6 +947,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	int isstashreentry = (ecm->arbiter_pending==2);
 	if (!isstashreentry && cs->option.dcw.halfrotate && (srctype==DCW_SOURCE_SERVER) && !from_arbiter0) {
 		if (!dcw_rotation_ok(ecm->caid, ecm->provid, ecm->sid, srcid&0xffff, dcw, cs->option.dcw.halfrepeat_ttl)) {
+			g_hrot_rej++;
 			if (asrv0) { asrv0->cwbad++; asrv0->cwbad_time = GetTickCount(); srv_bad_record(asrv0, ecm->caid, ecm->sid); }
 			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," hrot: CW fora da rotacao ch %04x:%06x:%04x src %d - a espera de outra fonte\n",
 				ecm->caid, ecm->provid, ecm->sid, srctype);
@@ -969,6 +976,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 			// cai no arbiter/finalizacao
 		}
 		else {
+			g_agree_rej++;
 			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," agree: so %d/%d ch %04x:%06x:%04x - a espera de mais fontes\n",
 				same, agree_need, ecm->caid, ecm->provid, ecm->sid);
 			pthread_mutex_unlock(&prg.lockecm);
@@ -983,6 +991,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		if (from_arbiter) {
 			if (ecm->arbiter_pending==1) {
 				if (memcmp(ecm->cwstash, dcw, 16)) {
+					g_arbiter_discorda++;
 					ecm->arbiter_pending = 0;
 					if (cs->option.dcw.arbiter_serve) {
 						mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," arb: DISCORDA ch %04x:%06x:%04x - entregar a CW do arbitro\n",
@@ -999,6 +1008,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 					}
 				}
 				else {
+					g_arbiter_match++;
 					ecm->arbiter_pending = 0;
 					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," arb: CW validada (match) ch %04x:%06x:%04x\n",
 						ecm->caid, ecm->provid, ecm->sid);
@@ -1007,7 +1017,22 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 			}
 		}
 		else if (((ecm->hash % 100) < cs->option.dcw.arbiter_rate)) {
-			if (ecm->arbiter_pending==0) {
+			// v1.61.2 FAIR-SHARE: cliente no tecto -> sem validacao (a CW
+			// ja passou o hrot - cai no fluxo normal de entrega)
+			int fair_ok = 1;
+			uint16_t faircap = ecm->arbiter_max ? ecm->arbiter_max : cs->option.dcw.arbiter_defmax;
+			if (faircap) {
+				if (!ecm->arbiter_counted) {
+					ecm->arbiter_counted = 1;
+					fair_ok = arbiter_fairshare_allow(ecm->iplist[0], faircap);
+					mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," fairdbg: cap=%d ip=%08x allow=%d ch %04x:%06x:%04x\n",
+						faircap, ecm->iplist[0], fair_ok, ecm->caid, ecm->provid, ecm->sid);
+					if (!fair_ok)
+						mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," fair: tecto do arbitro atingido (%d/min) - sem validacao ch %04x:%06x:%04x\n",
+							faircap, ecm->caid, ecm->provid, ecm->sid);
+				}
+			}
+			if (fair_ok && ecm->arbiter_pending==0) {
 				memcpy(ecm->cwstash, dcw, 16);
 				ecm->stashsrctype = srctype;
 				ecm->stashsrcid = srcid;
@@ -1020,14 +1045,15 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 				pthread_mutex_unlock(&prg.lockecm);
 				return;
 			}
-			else if (ecm->arbiter_pending==2) {
+			else if (fair_ok && ecm->arbiter_pending==2) {
 				// finalizacao do stash (timeout do arbitro): segue o fluxo normal
 			}
-			else {
+			else if (fair_ok) {
 				// segunda fonte respondeu enquanto o arbitro valida: ignorar
 				pthread_mutex_unlock(&prg.lockecm);
 				return;
 			}
+			// !fair_ok: sem validacao - cair no fluxo normal de entrega
 		}
 	}
 

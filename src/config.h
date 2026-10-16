@@ -306,6 +306,8 @@ struct PACK cs_client_data
 #ifdef CHECK_NEXTDCW
 	int dcwcheck;
 #endif
+	// v1.61.2 FAIR-SHARE: tecto de validacoes do arbitro (validacoes/min, 0=ilimitado)
+	uint16_t arbiter_max;
 
 	//## Runtime Data (DYNAMIC)
 	uint32_t ip;
@@ -460,6 +462,7 @@ struct cardserver_data
 			uint8_t arbiter_serve; // v1.55 DCW ARBITER SERVE: em discordancia entregar a CW do arbitro
 			uint32_t arbiter_rate; // v1.55 DCW ARBITER RATE: % dos ECMs validados (0=off, 100=todos)
 			uint8_t agree;         // v1.55.1 DCW AGREE: N fontes com a MESMA CW p/ aceitar (0/1=off)
+			uint16_t arbiter_defmax; // v1.61.2 DCW ARBITER MAX: cap de validacoes/min por cliente (0=off)
 		} dcw;
 
 #define SILENT_NOK_DELAY 2500 // ms: NOK adiado e enviado antes do timeout da box
@@ -693,6 +696,9 @@ struct PACK server_data
 	// v1.55: reader arbiter (fonte de confianca) - fora da rotacao normal,
 	// so e perguntado para VALIDAR CWs (ver DCW ARBITER no perfil)
 	uint8_t arbiter;
+	// v1.62 TRUTH: classificacao raw/wrap das CWs desta fonte (CWPK/grace)
+	uint32_t cws_raw;
+	uint32_t cws_wrap;
 	// NOK cache: ultimos NOK por canal (evita martelar o reader em zappings)
 	#define NOK_CACHE_MAX 32
 	uint32_t nok_time[NOK_CACHE_MAX]; // GetTickCount do NOK
@@ -843,6 +849,16 @@ struct PACK server_data
 // NOK cache por reader+canal (loadbalance.c) - prototipos partilhados
 // (loadbalance.c e incluido via th-ecm.c; cli-*.c chamam estas funcoes)
 void srv_nok_record(struct server_data *srv, uint16_t caid, uint16_t sid);
+// v1.62 DASHBOARD: contadores globais dos novos widgets (definidos em th-ecm.c)
+extern uint32_t g_arbiter_asks;
+extern uint32_t g_arbiter_match;
+extern uint32_t g_arbiter_discorda;
+extern uint32_t g_arbiter_discard;
+extern uint32_t g_hrot_rej;
+extern uint32_t g_agree_rej;
+extern uint32_t g_verdict_ok;
+extern uint32_t g_verdict_black;
+int arbiter_fairshare_dump(char *buf, int bufsz); // v1.62 dashboard
 void srv_pace_record(struct server_data *srv, uint16_t caid, uint16_t sid); // v1.48 pacing
 int srv_pace_check(struct server_data *srv, uint16_t caid, uint16_t sid, uint32_t ms); // v1.48 pacing
 void srv_budget_add(struct server_data *srv); // v1.49: CW servida pela fonte (consumo)
@@ -910,6 +926,9 @@ struct PACK cc_client_data { // Connected Client
 #ifdef CHECK_NEXTDCW
 	int dcwcheck;
 #endif
+
+	// v1.61.2 FAIR-SHARE: tecto de validacoes do arbitro (validacoes/min, 0=ilimitado)
+	uint16_t arbiter_max;
 
 	struct {
 		int checknodeid;
