@@ -810,6 +810,8 @@ void cc_store_ecmclient(ECM_DATA *ecm, unsigned int cardid, struct cc_client_dat
 	cli->ecm.cardid = cardid;
     cli->ecm.status = STAT_ECM_SENT;
 	ecm_addip(ecm, cli->ip);
+	// v1.61.2 FAIR-SHARE: o tecto de validacoes do cliente viaja com o ECM
+	ecm->arbiter_max = cli->arbiter_max;
 }
 
 

@@ -234,6 +234,7 @@ void init_cardserver(struct cardserver_data *cs)
 	cs->option.server.max = 0;		// Max cs per ecm ( 0:unlimited )
 	cs->option.server.ask = 0;		// v1.55.1: fan-out por ECM (0 = classico: 1 server por ronda)
 	cs->option.dcw.agree = 0;		// v1.55.1: consenso por ECM (0/1 = off)
+	cs->option.dcw.arbiter_defmax = 0;	// v1.61.2: cap de validacoes do arbitro por cliente (0 = off)
 	cs->option.server.interval = 1000;	// interval between 2 same ecm to diffrent cs
 	cs->option.server.timeout = 2000; // timeout for resending ecm to cs
 	cs->option.server.timeperecm = 0; // min time to do a request
@@ -875,6 +876,13 @@ int read_config(struct config_data *cfg)
 				mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(%d,%d): ']' expected\n",file->nbline,iparser-currentline);
 				continue;
 			} else iparser++;
+
+			// v1.61.3: [DEFAULT] = template de defaults do parse - NAO e um perfil
+			// (as opcoes DEFAULT xxx sao lidas pelos ramos 'DEFAULT' abaixo)
+			if (!strcmp(str, "DEFAULT")) {
+				cardserver = NULL;
+				continue;
+			}
 
 			// v1.51: find-or-create - re-declarar uma seccao noutro ficheiro
 			// (ex: Clients.cfg re-declara [MEO] so para os USERs) reutiliza o
@@ -1930,6 +1938,17 @@ sid accept:
 						defaultcs.option.dcw.arbiter_rate = atoi(str);
 						if (defaultcs.option.dcw.arbiter_rate>100) defaultcs.option.dcw.arbiter_rate=100;
 					}
+					// v1.61.2 DCW ARBITER MAX: cap de validacoes/min por cliente (0=off)
+					else if (!strcmp(str,"MAX")) {
+						parse_spaces();
+						if ((*iparser!=':')&&(*iparser!='=')) {
+							mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+							continue;
+						} else iparser++;
+						parse_int(str);
+						defaultcs.option.dcw.arbiter_defmax = atoi(str);
+						if (defaultcs.option.dcw.arbiter_defmax>500) defaultcs.option.dcw.arbiter_defmax=500;
+					}
 					else {
 						parse_spaces();
 						if ((*iparser!=':')&&(*iparser!='=')) {
@@ -2701,6 +2720,11 @@ link_cccam_client:
 #endif
 						else if (!strcmp(str,"HOST")) {
 							cli->host = add_host(cfg,info->value);
+ 						}
+						// v1.61.2 FAIR-SHARE: tecto de validacoes do arbitro (por minuto)
+						else if (!strcmp(str,"ARBITER_MAX")) {
+							cli->arbiter_max = (uint16_t)atoi(info->value);
+							mlogf(LOGINFO,getdbgflag(DBG_CONFIG,0,0)," config: client arbiter_max=%d\n", cli->arbiter_max);
  						}
 						info = info->next;
 					}
@@ -4073,6 +4097,17 @@ link_mgcamd_user:
 					parse_int(str);
 					cardserver->option.dcw.arbiter_rate = atoi(str);
 					if (cardserver->option.dcw.arbiter_rate>100) cardserver->option.dcw.arbiter_rate=100;
+				}
+				// v1.61.2 DCW ARBITER MAX: cap de validacoes/min por cliente (0=off)
+				else if (!strcmp(str,"MAX")) {
+					parse_spaces();
+					if ((*iparser!=':')&&(*iparser!='=')) {
+						mlogf(LOGERROR,getdbgflag(DBG_CONFIG,0,0)," config(,%d): ':' expected\n",iparser-currentline);
+						continue;
+					} else iparser++;
+					parse_int(str);
+					cardserver->option.dcw.arbiter_defmax = atoi(str);
+					if (cardserver->option.dcw.arbiter_defmax>500) cardserver->option.dcw.arbiter_defmax=500;
 				}
 				else {
 					parse_spaces();

@@ -90,6 +90,9 @@ struct ecm_request {
 	uint8_t arbiter_pending; // 0=off 1=a espera do arbitro 2=finalizar stash (timeout do arbitro)
 	uint8_t arbiter_asked;   // arbitro ja perguntado para este ECM
 	uint32_t arbiter_time;   // quando a validacao comecou (ms)
+	// v1.61.2 FAIR-SHARE: tecto de validacoes do arbitro deste cliente
+	uint16_t arbiter_max;
+	uint8_t arbiter_counted;
 
 #ifdef CHECK_NEXTDCW
 	// Last Successive ECM/DCW
@@ -150,6 +153,7 @@ void init_ecmdata();
 uint32_t ecm_crc( uint8_t *ecm, int ecmlen);
 unsigned int hashCode( unsigned char *buf, int count);
 inline uint8_t checkECMD5(uint8_t *ecmd5);
+int arbiter_fairshare_allow(uint32_t ip, uint16_t cap); // v1.61.2 fair-share
 
 void ecm_addip( ECM_DATA *ecm, unsigned int ip);
 int ecm_checkip(ECM_DATA *ecm, unsigned int ip);

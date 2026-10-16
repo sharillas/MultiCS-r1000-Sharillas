@@ -70,6 +70,59 @@ int dedup_ch_top(int max, uint16_t *caid, uint16_t *sid, uint32_t *uni, uint32_t
 	return n;
 }
 
+// v1.62 DASHBOARD: contadores globais dos widgets (arbitro, filtros, verdict)
+uint32_t g_arbiter_asks = 0;
+uint32_t g_arbiter_match = 0;
+uint32_t g_arbiter_discorda = 0;
+uint32_t g_arbiter_discard = 0;
+uint32_t g_hrot_rej = 0;
+uint32_t g_agree_rej = 0;
+uint32_t g_verdict_ok = 0;
+uint32_t g_verdict_black = 0;
+
+// v1.61.2 FAIR-SHARE: validacoes do arbitro por cliente (ip) - janela de 60s
+#define FAIR_MAX 64
+static struct { uint32_t ip; uint32_t window; uint16_t count; } fairshare[FAIR_MAX];
+
+// 1 = pode validar (e conta), 0 = tecto atingido (entregar sem validacao)
+int arbiter_fairshare_allow(uint32_t ip, uint16_t cap)
+{
+	uint32_t now = GetTickCount();
+	int i, freei = -1, oldi = 0;
+	for (i=0; i<FAIR_MAX; i++) {
+		if (fairshare[i].ip==ip) {
+			if ((now - fairshare[i].window) > 60000) { fairshare[i].window = now; fairshare[i].count = 0; }
+			if (fairshare[i].count >= cap) return 0;
+			fairshare[i].count++;
+			return 1;
+		}
+		if (!fairshare[i].ip && freei<0) freei = i;
+		if (fairshare[i].window < fairshare[oldi].window) oldi = i;
+	}
+	i = (freei>=0) ? freei : oldi;
+	fairshare[i].ip = ip;
+	fairshare[i].window = now;
+	fairshare[i].count = 1;
+	return 1;
+}
+
+// v1.62 DASHBOARD: dump das validacoes por cliente (ip=count) - para o widget
+int arbiter_fairshare_dump(char *buf, int bufsz)
+{
+	uint32_t now = GetTickCount();
+	int i, n = 0;
+	buf[0] = 0;
+	for (i=0; i<FAIR_MAX; i++) {
+		if (fairshare[i].ip && ((now - fairshare[i].window) < 60000)) {
+			n += snprintf(buf+n, bufsz-n, "%d.%d.%d.%d = %d<br>",
+				(int)((fairshare[i].ip>>24)&0xff), (int)((fairshare[i].ip>>16)&0xff),
+				(int)((fairshare[i].ip>>8)&0xff), (int)(fairshare[i].ip&0xff), fairshare[i].count);
+			if (n >= bufsz-64) break;
+		}
+	}
+	return n;
+}
+
 // v1.48 NANO: nanos (ECM[2]) vistos por canal - deteta streams especiais
 // (ex.: MEO sport usa nano 67 enquanto os basicos usam 66)
 #define NANOCH_MAX 64
@@ -318,8 +371,18 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 		if (cs->option.dcw.arbiter && cs->option.dcw.arbiter_rate>0
 			&& !ecm->arbiter_asked && !ecm->arbiter_pending
 			&& ((ecm->hash % 100) < cs->option.dcw.arbiter_rate)) {
+			// v1.61.2 FAIR-SHARE: cliente no tecto -> saltar a validacao
+			int fair_ok = 1;
+			uint16_t faircap = ecm->arbiter_max ? ecm->arbiter_max : cs->option.dcw.arbiter_defmax;
+			if (faircap) {
+				if (!ecm->arbiter_counted) {
+					ecm->arbiter_counted = 1;
+					fair_ok = arbiter_fairshare_allow(ecm->iplist[0], faircap);
+				}
+			}
 			struct server_data *asrv = cfg.server;
 			int done = 0;
+			if (fair_ok) {
 			while (asrv) {
 				if ( asrv->arbiter && !IS_DISABLED(asrv->flags) && (asrv->handle>0) && !asrv->busy ) {
 					struct cs_card_data *arc = asrv->card;
@@ -342,6 +405,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 						asrv->retry = 0;
 						ecm->arbiter_asked = 1;
 						ecm->arbiter_time = GetTickCount();
+						g_arbiter_asks++;
 						mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,asrv->id,cs->id)," -> ecm to ARBITER (pre-ask) (%s:%d) ch %04x:%06x:%04x:%08x\n",
 							asrv->host->name, asrv->port, ecm->caid, ecm->provid, ecm->sid, ecm->hash);
 						done = 1;
@@ -349,11 +413,12 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				}
 				asrv = asrv->next;
 			}
+			}
 			if (!done) {
 				// v1.60.1: arbitro ocupado (outro ECM em validacao) - NAO desistir:
 				// re-tentar no proximo ciclo (o arbitro liberta em ~300ms; o deadline
 				// aguenta). Desistir aqui = NOK + freeze ciclico com varios clientes.
-				if ((GetTickCount() - ecm->recvtime) < 3000) {
+				if ((GetTickCount() - ecm->recvtime) < 5000) {
 					ecm->checktime = GetTickCount() + 150;
 				}
 				else {
@@ -391,6 +456,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 							asrv->retry = 0;
 							ecm->arbiter_asked = 1;
 							ecm->arbiter_time = GetTickCount();
+							g_arbiter_asks++;
 							mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,asrv->id,cs->id)," -> ecm to ARBITER (%s:%d) ch %04x:%06x:%04x:%08x\n",
 								asrv->host->name, asrv->port, ecm->caid, ecm->provid, ecm->sid, ecm->hash);
 							done = 1;
@@ -400,7 +466,7 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 				}
 				if (!done) {
 					// v1.60.1: arbitro ocupado - re-tentar no proximo ciclo
-					if ((GetTickCount() - ecm->recvtime) < 3000) {
+					if ((GetTickCount() - ecm->recvtime) < 5000) {
 						ecm->checktime = GetTickCount() + 150;
 					}
 					else {
@@ -409,11 +475,12 @@ void check_ecm(ECM_DATA *ecm, uint32_t ticks)
 					}
 				}
 			}
-			else if ((GetTickCount() - ecm->arbiter_time) > 2500) {
+			else if ((GetTickCount() - ecm->arbiter_time) > 4500) {
 				// v1.55.3: SEM validacao nao se entrega o candidato - um par
 				// errado dessincroniza o descrambler da box (freeze ate re-sync).
 				// Marcar a fonte e deixar o ECM seguir (NOK honesto no deadline;
 				// a box recupera limpa no proximo periodo validado).
+				g_arbiter_discard++;
 				ecm->arbiter_pending = 0;
 				struct server_data *ps = getsrvbyid(ecm->stashsrcid&0xffff);
 				if (ps) { srv_bad_record(ps, ecm->caid, ecm->sid); ps->cwbad++; ps->cwbad_time = GetTickCount(); }
