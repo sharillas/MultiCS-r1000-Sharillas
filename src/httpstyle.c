@@ -213,7 +213,7 @@ char style_css[] =
 	"/* ---------- badges ---------- */\n"
 	".badge-count { background:#0ea5e9; color:#fff; border-radius:20px; padding:0 8px; font-size:11px; font-weight:700; }\n"
 	".badge-green { background:rgba(70,220,160,0.15); color:#46dca0; border:1px solid rgba(70,220,160,0.4); border-radius:20px; padding:0 8px; font-size:11px; font-weight:700; }\n"
-	".badge-blue { background:rgba(56,208,240,0.15); color:#38d0f0; border:1px solid rgba(56,208,240,0.4); border-radius:20px; padding:0 8px; font-size:11px; font-weight:700; }\n"
+	".badge-blue { background:rgba(56,208,240,0.15); color:#38d0f0; border:1px solid rgba(56,208,240,0.4); border-radius:20px; padding:0 8px; font-size:11px; font-weight:700; white-space:nowrap; display:inline-block; }\n"
 	".badge-gray { background:#2f3642; color:#9aa4b2; border:1px solid #363d48; border-radius:20px; padding:0 8px; font-size:11px; font-weight:700; }\n"
 	"\n"
 	"/* ---------- cards / stat sections ---------- */\n"
