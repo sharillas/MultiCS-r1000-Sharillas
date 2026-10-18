@@ -1,3 +1,7 @@
+## v1.62.1 (2026-10-18)
+- **Fix pagina Servers**: XML do AJAX com c15 (coluna Truth) e mapeamento correcto no JS (td13<-c15, td14<-c13) - os botoes de accao deixaram de duplicar na coluna Truth durante o refresh; colspan dos separadores 14->15; coluna Hop's com largura fixa (80px) e badge com nowrap.
+- Estudo do veneno 1802 documentado (estudos 1-5): a metade fixa e o zipper sao a estrutura normal da CW Nagra (a MEO tem o mesmo padrao e abre); o veneno das fontes marcadas nao e atraso, cadencia nem desfasamento - sao CWs validas de outro dominio (incorrigivel no rele; o consenso/arbitro protegem).
+
 ## v1.62 (2026-10-16)
 - **Dashboard**: tiles de Uptime moderno, saude por perfil (MEO/NOS com cor do OK%), Referee (ask/match/disagree sem host); widgets Fair-Share (validacoes do arbitro por cliente no ultimo minuto) e Protecções (CW Infected, Rejected, Disagree/Discard by Referee, Verdict OK/BLACK); contadores globais de arbitro/filtros/verdict.
 - **Coluna Truth na pagina Servers**: % de CWs validas por fonte (ecmok vs ecmok+cwbad), contadores RAW/WRAP (veneno de periodo), nodeid e Resp. media - a agulha do veneno no palheiro.

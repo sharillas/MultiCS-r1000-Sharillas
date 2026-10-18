@@ -4005,11 +4005,11 @@ void http_send_servers(int sock, http_request *req)
 				srv->host->checkiptime = 0;
 			}
 		}			
-		// Send XML CELLS (v1.51: 12 celulas)
+		// Send XML CELLS (v1.62: 16 celulas)
 		getservercells(srv,cell);
-		for(i=0; i<15; i++) xmlescape( cell[i] );
+		for(i=0; i<16; i++) xmlescape( cell[i] );
 		char buf[32000] = "";
-		snprintf( buf, sizeof(buf), "<server>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n<c8>%s</c8>\n<c9>%s</c9>\n<c10>%s</c10>\n<c11>%s</c11>\n<c12>%s</c12>\n<c13>%s</c13>\n<c14>%s</c14>\n</server>\n",cell[0],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9],cell[10],cell[11],cell[12],cell[13],cell[14] );
+		snprintf( buf, sizeof(buf), "<server>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n<c8>%s</c8>\n<c9>%s</c9>\n<c10>%s</c10>\n<c11>%s</c11>\n<c12>%s</c12>\n<c13>%s</c13>\n<c14>%s</c14>\n<c15>%s</c15>\n</server>\n",cell[0],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9],cell[10],cell[11],cell[12],cell[13],cell[14],cell[15] );
 		http_send_xml( sock, req, buf, strlen(buf));
 		return;
 	}
@@ -4028,7 +4028,7 @@ void http_send_servers(int sock, http_request *req)
 		// ACTIONS REQUEST
 		tcp_writestr(&tcpbuf, sock, "\nfunction imgrequest( url, el )\n{\n	var httpRequest;\n	try { httpRequest = new XMLHttpRequest(); }\n	catch (trymicrosoft) { try { httpRequest = new ActiveXObject('Msxml2.XMLHTTP'); } catch (oldermicrosoft) { try { httpRequest = new ActiveXObject('Microsoft.XMLHTTP'); } catch(failed) { httpRequest = false; } } }\n	if (!httpRequest) { alert('Your browser does not support Ajax.'); return false; }\n	if ( typeof(el)!='undefined' ) {\n		el.onclick = null;\n		el.style.opacity = '0.7';\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) if (httpRequest.status == 200) el.style.opacity = '0.3';\n		}\n	}\n	httpRequest.open('GET', url, true);\n	httpRequest.send(null);\n}\n");
 		// UPD ROW
-		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id )\n{\n	var row = document.getElementById(id);\n	if (!row) return;\n	var last = row.cells.item(row.cells.length-1);\n	if (last && last.matches && last.matches(':hover')) return;\n	for (var ci=0; ci<14; ci++) {\n		var el = xmlDoc.getElementsByTagName('c'+ci)[0];\n		if (el && el.childNodes[0]) row.cells.item(ci).innerHTML = el.childNodes[0].nodeValue;\n	}\n	var stel = xmlDoc.getElementsByTagName('c14')[0];\n	if (stel && stel.childNodes[0]) { row.className = row.className.replace(/ row-(online|offline|busy)/,'') + ' row-' + stel.childNodes[0].nodeValue; }\n}\n" );
+		tcp_writestr(&tcpbuf, sock, "\nfunction xmlupdateRow( xmlDoc, id )\n{\n	var row = document.getElementById(id);\n	if (!row) return;\n	var last = row.cells.item(row.cells.length-1);\n	if (last && last.matches && last.matches(':hover')) return;\n	for (var ci=0; ci<13; ci++) {\n		var el = xmlDoc.getElementsByTagName('c'+ci)[0];\n		if (el && el.childNodes[0]) row.cells.item(ci).innerHTML = el.childNodes[0].nodeValue;\n	}\n	var el15 = xmlDoc.getElementsByTagName('c15')[0];\n	if (el15 && el15.childNodes[0] && row.cells.length>13) row.cells.item(13).innerHTML = el15.childNodes[0].nodeValue;\n	var el13 = xmlDoc.getElementsByTagName('c13')[0];\n	if (el13 && el13.childNodes[0] && row.cells.length>14) row.cells.item(14).innerHTML = el13.childNodes[0].nodeValue;\n	var stel = xmlDoc.getElementsByTagName('c14')[0];\n	if (stel && stel.childNodes[0]) { row.className = row.className.replace(/ row-(online|offline|busy)/,'') + ' row-' + stel.childNodes[0].nodeValue; }\n}\n" );
 		char url[256];
 		sprintf( url, "'/servers?id='+idx");
 		sprintf( http_buf, HTTP_UPDATE_ROW, url);
@@ -4126,9 +4126,9 @@ void http_send_servers(int sock, http_request *req)
 		}
 		if (!found) continue;
 		// separador do protocolo + cabecalho
-		sprintf( http_buf, "<tr class='proto-sep'><td colspan=14><b>%s</b> <span class='muted'>servers</span></td></tr>\n", groups[g].title);
+		sprintf( http_buf, "<tr class='proto-sep'><td colspan=15><b>%s</b> <span class='muted'>servers</span></td></tr>\n", groups[g].title);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_writestr(&tcpbuf, sock, "<tr class='proto-head'><th>Reader</th><th>IP</th><th>Porta</th><th>Time</th><th>ECM OK</th><th>Total %</th><th>Health</th><th>Hits</th><th>Resp.</th><th>Last Cw</th><th>Qt. Cards</th><th>Cards</th><th>Hop's</th><th>Truth</th><th style='width:110px;min-width:110px;'>Actions</th></tr>\n");
+		tcp_writestr(&tcpbuf, sock, "<tr class='proto-head'><th>Reader</th><th>IP</th><th>Porta</th><th>Time</th><th>ECM OK</th><th>Total %</th><th>Health</th><th>Hits</th><th>Resp.</th><th>Last Cw</th><th>Qt. Cards</th><th>Cards</th><th style='width:80px;min-width:80px;'>Hop's</th><th>Truth</th><th style='width:110px;min-width:110px;'>Actions</th></tr>\n");
 		// as linhas deste protocolo (lista normal + lista cacheex)
 		int listi;
 		for (listi=0; listi<2; listi++) {
