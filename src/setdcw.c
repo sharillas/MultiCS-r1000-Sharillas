@@ -348,6 +348,59 @@ static struct {
 static int verdict_idx = 0;
 static pthread_mutex_t verdict_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// v1.63 SHEEP DETECTOR: mede a divergencia de CW por fonte (vs a maioria).
+// Uma fonte de um saco marcado que sirva a rotacao verdadeira diverge
+// consistentemente das outras -> candidata a arbitro automatico.
+#define SHEEP_MAX 96
+#define SHEEP_WIN_MS 3000
+static struct {
+	uint16_t caid;
+	uint16_t sid;
+	uint32_t t;
+	uint8_t cw[16];
+	int srcid;
+} sheep_tab[SHEEP_MAX];
+static int sheep_idx = 0;
+
+void sheep_serve(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, int srctype, int srcid)
+{
+	if (srctype!=DCW_SOURCE_SERVER) return;
+	struct server_data *s = getsrvbyid(srcid&0xffff);
+	if (!s) return;
+	uint32_t ticks = GetTickCount();
+	int i, n = 0, same = 0, diff = 0;
+	for (i=0; i<SHEEP_MAX; i++) {
+		if (!sheep_tab[i].caid) continue;
+		if ((ticks - sheep_tab[i].t) > SHEEP_WIN_MS) continue;
+		if (sheep_tab[i].caid!=caid || sheep_tab[i].sid!=sid) continue;
+		if (sheep_tab[i].srcid==(srcid&0xffff)) continue; // a propria fonte
+		n++;
+		if (!memcmp(sheep_tab[i].cw, cw, 16)) same++;
+		else diff++;
+	}
+	if (n) {
+		s->sheep_served++;
+		if (diff > same) {
+			s->sheep_diverged++;
+			s->sheep_div_time = ticks;
+			// v1.63: anuncia a candidata quando a divergencia e consistente
+			// (>=80% das comparacoes, com pelo menos 20 amostras)
+			if ( (s->sheep_served>=20) && ((s->sheep_diverged*100)/s->sheep_served >= 80) ) {
+				mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,s->id),
+					" SHEEP: fonte %d (%s:%d) diverge da maioria em %d/%d (%d%%) - CANDIDATA A ARBITRO (rotacao verdadeira?)\n",
+					s->id, s->host?s->host->name:"?", s->port, s->sheep_diverged, s->sheep_served,
+					(s->sheep_diverged*100)/s->sheep_served);
+			}
+		}
+	}
+	sheep_tab[sheep_idx].caid = caid;
+	sheep_tab[sheep_idx].sid = sid;
+	sheep_tab[sheep_idx].t = ticks;
+	memcpy(sheep_tab[sheep_idx].cw, cw, 16);
+	sheep_tab[sheep_idx].srcid = srcid&0xffff;
+	sheep_idx = (sheep_idx + 1) % SHEEP_MAX;
+}
+
 void verdict_serve(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, int srctype, int srcid)
 {
 	pthread_mutex_lock(&verdict_mutex);
@@ -1116,6 +1169,7 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	ecm->checktime = 0;
 	deadchan_answer( ecm->caid, ecm->provid, ecm->sid ); // v1.48: canal respondeu -> vivo
 	verdict_serve( ecm->caid, ecm->provid, ecm->sid, dcw, srctype, srcid ); // v1.48: anel de veredicto
+	sheep_serve( ecm->caid, ecm->provid, ecm->sid, dcw, srctype, srcid ); // v1.63: detector da ovelha
 	if (srctype==DCW_SOURCE_SERVER) { // v1.49: consumo do orcamento da fonte
 		struct server_data *bs = getsrvbyid(srcid&0xffff);
 		if (bs) srv_budget_add(bs);

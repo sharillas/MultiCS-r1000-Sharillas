@@ -3883,6 +3883,14 @@ void getservercells(struct server_data *srv, char cell[16][2048] )
 		char extra[256] = "";
 		if (srv->cws_raw || srv->cws_wrap)
 			snprintf( extra, sizeof(extra), "<br><span class='muted' style='font-size:10px'>RAW %u / WRAP %u</span>", srv->cws_raw, srv->cws_wrap);
+		// v1.63 SHEEP: divergencia da maioria (a ovelha limpa)
+		if (srv->sheep_served >= 5) {
+			int dvs = (srv->sheep_diverged*100)/srv->sheep_served;
+			snprintf( extra+strlen(extra), sizeof(extra)-strlen(extra),
+				"<br><span class='%s' style='font-size:10px'>SHEEP %d/%d (%d%%)%s</span>",
+				dvs>=80?"caidgreen":"muted", srv->sheep_diverged, srv->sheep_served, dvs,
+				dvs>=80?" *":"" );
+		}
 		if (srv->nodeid[0])
 			snprintf( extra+strlen(extra), sizeof(extra)-strlen(extra), "<br><span class='muted' style='font-size:10px;font-family:monospace'>%02x%02x%02x%02x%02x%02x%02x%02x</span>",
 				srv->nodeid[0],srv->nodeid[1],srv->nodeid[2],srv->nodeid[3],srv->nodeid[4],srv->nodeid[5],srv->nodeid[6],srv->nodeid[7]);
