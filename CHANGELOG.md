@@ -1,3 +1,7 @@
+## v1.63 (2026-10-19)
+- **SHEEP DETECTOR (detector da ovelha)**: mede a divergencia de CW por fonte vs a maioria (janela de 3s, mesma chave ECM). A fonte que diverge consistentemente (>=80% em >=20 comparacoes) e anunciada no log como CANDIDATA A ARBITRO - e a maquina universal que detecta a fonte de rotacao verdadeira dentro de um saco marcado, sem intervencao manual. Coluna Truth mostra SHEEP n/n (%) com marcador verde.
+- VERSION_STR 1.63.
+
 ## v1.62.1 (2026-10-18)
 - **Fix pagina Servers**: XML do AJAX com c15 (coluna Truth) e mapeamento correcto no JS (td13<-c15, td14<-c13) - os botoes de accao deixaram de duplicar na coluna Truth durante o refresh; colspan dos separadores 14->15; coluna Hop's com largura fixa (80px) e badge com nowrap.
 - Estudo do veneno 1802 documentado (estudos 1-5): a metade fixa e o zipper sao a estrutura normal da CW Nagra (a MEO tem o mesmo padrao e abre); o veneno das fontes marcadas nao e atraso, cadencia nem desfasamento - sao CWs validas de outro dominio (incorrigivel no rele; o consenso/arbitro protegem).

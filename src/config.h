@@ -699,6 +699,12 @@ struct PACK server_data
 	// v1.62 TRUTH: classificacao raw/wrap das CWs desta fonte (CWPK/grace)
 	uint32_t cws_raw;
 	uint32_t cws_wrap;
+	// v1.63 SHEEP DETECTOR: divergencia de CW vs a maioria das fontes
+	// (a fonte que diverge de forma consistente e a candidata a "ovelha
+	// limpa" - a unica com a rotacao verdadeira num saco marcado)
+	uint32_t sheep_served;   // CWs comparaveis (outras fontes na janela)
+	uint32_t sheep_diverged; // CWs que divergiram da maioria recente
+	uint32_t sheep_div_time; // ultima divergencia (para decay)
 	// NOK cache: ultimos NOK por canal (evita martelar o reader em zappings)
 	#define NOK_CACHE_MAX 32
 	uint32_t nok_time[NOK_CACHE_MAX]; // GetTickCount do NOK
@@ -878,6 +884,7 @@ int deadchan_top(int max, uint16_t *caid, uint32_t *provid, uint16_t *sid, uint3
 int nanoch_top(int max, uint16_t *caid, uint32_t *provid, uint16_t *sid, uint8_t *nn, uint8_t *n1, uint8_t *n2); // v1.48
 void verdict_serve(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, int srctype, int srcid); // v1.48
 int verdict_report(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, int ok); // v1.48
+void sheep_serve(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t *cw, int srctype, int srcid); // v1.63 ovelha
 void cwpk_test_key(uint8_t *key16, char *out, int outlen); // v1.48 CWPKTEST telnet
 void dcw_badmark(int srcid, uint16_t caid, uint16_t sid);
 int cfg_default_badcwrecon(void); // v1.44 DCW BADCW RECONNECT do DEFAULT section
