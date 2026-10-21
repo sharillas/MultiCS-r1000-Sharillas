@@ -352,7 +352,7 @@ static pthread_mutex_t verdict_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Uma fonte de um saco marcado que sirva a rotacao verdadeira diverge
 // consistentemente das outras -> candidata a arbitro automatico.
 #define SHEEP_MAX 96
-#define SHEEP_WIN_MS 3000
+#define SHEEP_WIN_MS 15000
 static struct {
 	uint16_t caid;
 	uint16_t sid;
