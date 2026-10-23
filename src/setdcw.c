@@ -838,12 +838,17 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		if (fp) {
 			time_t t = time(NULL);
 			struct tm *lt = localtime(&t);
-			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x %s cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d srv %d\n",
+			// v1.63 RE: dump do ECM completo (para o estudo dos campos vs CW)
+			char ecmhex[512] = "";
+			int ei;
+			for (ei=0; ei<ecm->ecmlen && ei<150; ei++)
+				sprintf(ecmhex+ei*2, "%02X", ecm->ecm[ei]);
+			fprintf(fp, "%04d/%02d/%02d %02d:%02d:%02d ch %04x:%06x:%04x %s cw %02X%02X%02X%02X%02X%02X%02X%02X %02X%02X%02X%02X%02X%02X%02X%02X src %d srv %d ecm %s\n",
 				lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
 				ecm->caid, ecm->provid, ecm->sid, rawok?"RAW":"WRAP",
 				rawcw[0],rawcw[1],rawcw[2],rawcw[3],rawcw[4],rawcw[5],rawcw[6],rawcw[7],
 				rawcw[8],rawcw[9],rawcw[10],rawcw[11],rawcw[12],rawcw[13],rawcw[14],rawcw[15],
-				srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0);
+				srctype, (srctype==DCW_SOURCE_SERVER) ? (srcid&0xffff) : 0, ecmhex);
 			fclose(fp);
 		}
 	}
