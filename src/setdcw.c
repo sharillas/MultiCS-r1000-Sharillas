@@ -1026,7 +1026,9 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		int same = 0;
 		int ai;
 		for (ai=0; ai<ecm->server_totalsent; ai++) {
-			if ( (ecm->server[ai].flag==ECM_SRV_REPLY_GOOD) && !dcwcmp16(ecm->server[ai].dcw, dcw) ) same++;
+			// v1.63.2 FIX: o dcwcmp16 devolve VERDADEIRO quando IGUAL - o ! inverteu
+			// o consenso (contava as fontes que DISCORDAM). Agora conta as iguais.
+			if ( (ecm->server[ai].flag==ECM_SRV_REPLY_GOOD) && dcwcmp16(ecm->server[ai].dcw, dcw) ) same++;
 		}
 		if (same >= agree_need) {
 			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," agree: %d/%d fontes concordam ch %04x:%06x:%04x\n",
