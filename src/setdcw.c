@@ -132,6 +132,86 @@ static int dcw_rotation_ok( uint16_t caid, uint32_t provid, uint16_t sid, uint32
 }
 
 
+// v1.63.3/v1.63.4 PARITY FILTER (NOS 1802): a metade fresca do par tem de bater
+// com o byte0 do ECM. Regra extraida dos 1785 pares clean do arquivo
+// (linha-clean, 10-13 Out): byte0=80 -> metade1 persiste/metade0 muda (670/670),
+// byte0=81 -> metade0 persiste/metade1 muda (671/671).
+// v1.63.4: DESACTIVADO em producao - as fontes actuais servem a metade errada
+// com frequencia (lag de 1 periodo) e rejeitar esfomeia a box (34% entregas).
+// A regra e valida (o cartao clean nunca falha) - reactivar quando houver
+// uma fonte limpa como referencia.
+#if 0
+#define PARITY_MAX 64
+static struct {
+	uint16_t caid; uint32_t provid; uint16_t sid;
+	uint32_t hash;
+	uint8_t cw[16];
+	uint32_t t;
+} parity_tab[PARITY_MAX];
+
+static int dcw_parity_ok( ECM_DATA *ecm, uint8_t dcw[16] )
+{
+	if (ecm->caid != 0x1802) return 1; // so NOS por agora (MEO tem SWAP proprio)
+	if (!ecm->ecmlen) return 1;
+	uint8_t b0 = ecm->ecm[0];
+	if (b0 != 0x80 && b0 != 0x81) return 1;
+	uint32_t ticks = GetTickCount();
+	int i, freei = -1, oldi = 0;
+	for (i=0; i<PARITY_MAX; i++) {
+		if ( parity_tab[i].caid==ecm->caid && parity_tab[i].provid==ecm->provid && parity_tab[i].sid==ecm->sid ) break;
+		if (!parity_tab[i].caid && freei<0) freei = i;
+		if (parity_tab[i].t < parity_tab[oldi].t) oldi = i;
+	}
+	int isnew = 0;
+	if (i>=PARITY_MAX) {
+		i = (freei>=0) ? freei : oldi;
+		memset(&parity_tab[i], 0, sizeof(parity_tab[i]));
+		parity_tab[i].caid = ecm->caid; parity_tab[i].provid = ecm->provid; parity_tab[i].sid = ecm->sid;
+		isnew = 1;
+	}
+	if (isnew || !parity_tab[i].t || (ticks - parity_tab[i].t) > 40000) return 1; // bootstrap/gap
+	if (parity_tab[i].hash == ecm->hash) return 1; // 2a fonte do mesmo ECM (consenso)
+	if ( dcwcmp16(parity_tab[i].cw, dcw) ) {
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," par: par completo repetido (stale) ch %04x:%06x:%04x - a espera de outra fonte\n",
+			ecm->caid, ecm->provid, ecm->sid);
+		return 0;
+	}
+	uint8_t *prev = parity_tab[i].cw;
+	int ok;
+	if (b0 == 0x80) ok = dcwcmp8(dcw+8, prev+8) && !dcwcmp8(dcw, prev);
+	else            ok = dcwcmp8(dcw, prev) && !dcwcmp8(dcw+8, prev+8);
+	if (!ok) {
+		mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," par: metade fresca errada (ecm %02x) ch %04x:%06x:%04x - a espera de outra fonte\n",
+			b0, ecm->caid, ecm->provid, ecm->sid);
+	}
+	return ok;
+}
+
+static void dcw_parity_note( ECM_DATA *ecm, uint8_t dcw[16] )
+{
+	if (ecm->caid != 0x1802) return;
+	if (!ecm->ecmlen) return;
+	uint8_t b0 = ecm->ecm[0];
+	if (b0 != 0x80 && b0 != 0x81) return;
+	uint32_t ticks = GetTickCount();
+	int i, freei = -1, oldi = 0;
+	for (i=0; i<PARITY_MAX; i++) {
+		if ( parity_tab[i].caid==ecm->caid && parity_tab[i].provid==ecm->provid && parity_tab[i].sid==ecm->sid ) break;
+		if (!parity_tab[i].caid && freei<0) freei = i;
+		if (parity_tab[i].t < parity_tab[oldi].t) oldi = i;
+	}
+	if (i>=PARITY_MAX) {
+		i = (freei>=0) ? freei : oldi;
+		memset(&parity_tab[i], 0, sizeof(parity_tab[i]));
+		parity_tab[i].caid = ecm->caid; parity_tab[i].provid = ecm->provid; parity_tab[i].sid = ecm->sid;
+	}
+	memcpy(parity_tab[i].cw, dcw, 16);
+	parity_tab[i].hash = ecm->hash;
+	parity_tab[i].t = ticks;
+}
+#endif
+
+
 inline int dcwcheck_nds( ECM_DATA *ecm, uint8_t dcw[16], int swap )
 {
 	char nullcw[8] = "\0\0\0\0\0\0\0\0";
@@ -1012,6 +1092,9 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 			pthread_mutex_unlock(&prg.lockecm);
 			return;
 		}
+		// v1.63.4: filtro de paridade DESACTIVADO - o saco serve a metade errada
+		// com frequencia (lag de 1 periodo); rejeitar esfomeia a box (34% entregas).
+		// A regra e valida (cartao clean nunca falha) - reactivar quando houver fonte limpa.
 	}
 
 	// v1.55.1 DCW AGREE: consenso - a mesma CW tem de vir de N fontes
