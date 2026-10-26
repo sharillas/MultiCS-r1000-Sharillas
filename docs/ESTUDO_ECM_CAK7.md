@@ -95,6 +95,6 @@ cabeçalho fixo.
 ## 7. Dados
 
 - Arquivo clean: `/opt/estudo_clean_0097.json` (VPS) — 1785 pares `{date, time, ecm, cw}`.
-- Fonte: `DEBUG - <= cw from CCcam server (IP-do-colega:10300)- 1802:000000:0097/ECM => CW`
+- Fonte: `DEBUG - <= cw from CCcam server (ip:port)- 1802:000000:0097/ECM => CW`
   no `/var/log/multics.log` (sem rotação — guarda a era clean desde 3 Out).
 - Scripts do estudo: `/tmp/dissect1.py`, `/tmp/payload1.py`, `/tmp/parity_map.py` (VPS).
