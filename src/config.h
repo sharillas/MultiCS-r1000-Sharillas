@@ -1761,7 +1761,7 @@ struct host_data *add_host( struct config_data *cfg, char *hostname);
 void cfg_addcachepeer(struct cacheserver_data *srv, struct cachepeer_data *peer);
 void free_filenames( struct config_data *cfg );
 
-//IP-antigo 
+// IP de teste antigo removido (regra 1: sem IPs na repo)
 
 #define IP_ADRESS 0
 //( (1<<24) | (0<<16) | (0<<8) | 127 )

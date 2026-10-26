@@ -134,7 +134,7 @@ static int dcw_rotation_ok( uint16_t caid, uint32_t provid, uint16_t sid, uint32
 
 // v1.63.3/v1.63.4 PARITY FILTER (NOS 1802): a metade fresca do par tem de bater
 // com o byte0 do ECM. Regra extraida dos 1785 pares clean do arquivo
-// (linha-clean, 10-13 Out): byte0=80 -> metade1 persiste/metade0 muda (670/670),
+// (linha clean, 10-13 Out): byte0=80 -> metade1 persiste/metade0 muda (670/670),
 // byte0=81 -> metade0 persiste/metade1 muda (671/671).
 // v1.63.4: DESACTIVADO em producao - as fontes actuais servem a metade errada
 // com frequencia (lag de 1 periodo) e rejeitar esfomeia a box (34% entregas).

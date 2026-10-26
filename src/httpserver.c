@@ -5209,7 +5209,7 @@ int profile_config_toggle(char *name, int on)
 
 // v1.51: edicao generica de linhas de config por substring (persistente)
 // action: 0=comentar (OFF), 1=descomentar (ON), 2=remover (DELETE)
-// match: substring unica que identifica a linha (ex: "USER: vumeo", "IP-do-colega 3000")
+// match: substring unica que identifica a linha (ex: "USER: vumeo", "203.0.113.10 3000")
 int config_line_edit(char *filestr, char *match, int action)
 {
 	char *fname = NULL;

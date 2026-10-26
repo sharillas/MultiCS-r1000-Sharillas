@@ -9,9 +9,9 @@ O webif dele = o digest auth (o curl precisa de `--digest`).
 
 | Peça | Valor real |
 |---|---|
-| Readers | `cccam-virgi` (virgiliosantos, 1814+1802 — o **cartão 000007**), `Marreta` (IP-do-martins, 1814+1802), `virgilio-alemaes` (bento44: 098D/1830/1843), `cccam-vps15000` (lê o multics), `multics-mgcamd` (desligado) |
-| **Cacheex** | reader `cacheexcastptvps` — protocolo **cs378x** → `IP-do-colega,7777` = o **multics1** (não o principal!), user local1/teste1, `ident = 1814:005211,000007`, lb_weight 150 |
-| Contas | dvbapi local + testee3hd, teste12, vps, caspt2026 (a VU+4K dele) |
+| Readers | `reader-A` (userA, 1814+1802 — o **cartão 000007**), `reader-C` (IP-do-martins, 1814+1802), `reader-B` (userB: 098D/1830/1843), `cccam-vps15000` (lê o multics), `multics-mgcamd` (desligado) |
+| **Cacheex** | reader `cacheexcastptvps` — protocolo **cs378x** → `IP-do-colega,7777` = o **multics1** (não o principal!), user userC/passC, `ident = 1814:005211,000007`, lb_weight 150 |
+| Contas | dvbapi local + userE, userF, vps, userD (a VU+4K dele) |
 | Webif | 8888, user/pass `caspt1974*` (o `*` = literal), digest auth |
 
 **Fluxo:** as linhas quase-directas → oscam → cs378x cacheex → **multics1
@@ -22,8 +22,8 @@ entra na malha por aqui.
 ## Benchmark (o log ao vivo, 30/09)
 
 ```
-(ecm) vps (1814@005211/.../13AC): found (56 ms)  by cccam-virgi   ← SIC Notícias
-(ecm) vps (1814@000007/.../0450): found (42 ms)  by cccam-virgi   ← TVI ID_SAT
+(ecm) vps (1814@005211/.../13AC): found (56 ms)  by reader-A   ← SIC Notícias
+(ecm) vps (1814@000007/.../0450): found (42 ms)  by reader-A   ← TVI ID_SAT
 (ecm) vps (1814@000007/.../0450): found (1 ms)   by cacheexcastptvps ← a CW veio do multics1
 ```
 
@@ -39,7 +39,7 @@ entra na malha por aqui.
 
 1. **A5 (o CSP) = fora** — o oscam dele fala cs378x, que nós já temos. O peer
    directo dele→nós = quando o colega quiser (ele recusou por agora).
-2. **O 000007 = o cccam-virgi** (o cartão do colega) — a nossa decisão de o
+2. **O 000007 = o reader-A** (o cartão do colega) — a nossa decisão de o
    filtrar = validada.
 3. As implementações pendentes (o cycletime nos pushes, o CAK7, o CWPK) —
    ver `IMPLEMENTACOES_STANDBY.md`.

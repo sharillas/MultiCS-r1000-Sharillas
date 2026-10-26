@@ -129,8 +129,8 @@ N: host 34000 user pass 01 02 03 04 05 06 07 08 09 10 11 12 13 14 { profiles=150
 salta o reader porque o IP dele esta na lista do ECM). Opcao `nocheck`:
 
 ```cfg
-C: IP-do-colega 15000 user pass { nocheck=yes }
-N: IP-do-colega 3000 user pass 01 02 03 04 05 06 07 08 09 10 11 12 13 14 { nocheck=yes }
+C: 203.0.113.10 15000 user pass { nocheck=yes }
+N: 203.0.113.10 3000 user pass 01 02 03 04 05 06 07 08 09 10 11 12 13 14 { nocheck=yes }
 ```
 
 **Reader CacheEX** — `CacheEX.cfg`:
