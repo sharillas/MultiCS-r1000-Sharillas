@@ -1,8 +1,8 @@
 # Estudo ECM→CW da NOS (CAID 1802) — RTP 1 HD (SID 0097)
 
 Documento de referência do estudo de reverse engineering da troca ECM→CW,
-baseado no arquivo de pares limpos da linha linha-clean (IP-do-colega:10300),
-10-13 Out 2026, guardado na VPS em `/opt/estudo_clean_0097.json` (1785 pares).
+baseado no arquivo de pares limpos da linha CCcam_Clean (ip:porta),
+10-13 Out 2026.
 
 ## 1. O circuito (feed → box → card → descrambler)
 
