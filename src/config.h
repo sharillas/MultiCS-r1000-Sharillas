@@ -890,6 +890,7 @@ void dcw_badmark(int srcid, uint16_t caid, uint16_t sid);
 int cfg_default_badcwrecon(void); // v1.44 DCW BADCW RECONNECT do DEFAULT section
 
 // v1.45: camd35/cs378x cacheex (msg-camd35.c)
+#include "aes.h" // fix CI build-musl: AES_KEY usado abaixo (config.c standalone)
 void camd35_init_data( char *user, char *pass, AES_KEY *encryptkey, AES_KEY *decryptkey, uint32_t *ucrc);
 
 // v1.41 pagina Vigia (GUI): estado do cycle engine por canal
