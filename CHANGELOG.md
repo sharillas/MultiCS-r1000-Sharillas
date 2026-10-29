@@ -1,3 +1,13 @@
+## v1.63.4 (2026-10-24, produção)
+- **Filtro de paridade NOS 1802** (regra dos 1785 pares clean: byte0=80 → metade0 muda / byte0=81 → metade1 muda) implementado mas **desativado** — as fontes atuais servem a metade errada com frequência (lag de 1 período) e rejeitar esfomeia a box (34% entregas). Documentado no estudo ECM→CW.
+- Estado final do consenso corrigido (v1.63.2) em produção.
+
+## v1.63.2 (2026-10-22)
+- **Fix crítico — consenso invertido**: `!dcwcmp16` contava as fontes que DISCORDAM; a NOS ficava permanentemente negra com CWs corretas. Corrigido.
+
+## v1.63.1 (2026-10-21)
+- RE: dump do ECM completo no rawlog (multics-raw.log) para o estudo dos campos vs CW.
+
 ## v1.63 (2026-10-19)
 - **SHEEP DETECTOR (detector da ovelha)**: mede a divergencia de CW por fonte vs a maioria (janela de 3s, mesma chave ECM). A fonte que diverge consistentemente (>=80% em >=20 comparacoes) e anunciada no log como CANDIDATA A ARBITRO - e a maquina universal que detecta a fonte de rotacao verdadeira dentro de um saco marcado, sem intervencao manual. Coluna Truth mostra SHEEP n/n (%) com marcador verde.
 - VERSION_STR 1.63.
