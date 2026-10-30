@@ -1,8 +1,8 @@
-# MultiCS r1000 v1.28 - by Sharillas
+# MultiCS r1000 v1.63.4 - by Sharillas
 
 Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, reconstruído e muito expandido: GUI web moderna, Softcam BISS/CW, proteções contra CWs falsas (SKIPCWC, CWC, NAGRA protection, anti-fake XOR 0xF0, nano e0), Health scoring, Fallback cross-protocol, Timing budget, BUILD LITE, **DEDUP de ECMs**, login guard anti brute-force, NOK cache, validação de uploads sem crash, **SILENT NOK adiado** (v1.24), e o pacote anti-“cartões marcados” (v1.28): **ECM FILTER rule engine**, **DCW FILTER CWPK** com modo AUTO, **FAILBAN**, **ANTICASCADE**, **ECMRATELIMIT** e **DCW CAK7** (Sky DE 098D / MEO / NOS).
 
-> **Versão:** v1.28 | **Licença:** Sharillas@2026
+> **Versão:** v1.63.4 | **Licença:** Sharillas@2026
 
 ---
 

@@ -1,4 +1,4 @@
-MultiCS r1000 v1.28 - by Sharillas@2026
+MultiCS r1000 v1.63.4 - by Sharillas@2026
 ==========================================
 
 Pacote de release (última build estável)
