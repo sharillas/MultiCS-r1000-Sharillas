@@ -8,6 +8,8 @@
 #             $VPSHost = "1.2.3.4"
 #             $VPSUser = "root"
 #             $VPSPass = "a-tua-password"
+#             $GuiUser = "admin"
+#             $GuiPass = "a-tua-password-gui"
 # ============================================================
 $ErrorActionPreference = "Stop"
 
@@ -15,14 +17,16 @@ $ErrorActionPreference = "Stop"
 $VPSHost = ""
 $VPSUser = ""
 $VPSPass = ""
+$GuiUser = ""
+$GuiPass = ""
 $ToolDir = "C:\TMP\opencode"
 $Root    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SecretsFile = Join-Path $Root "deploy.secrets.ps1"
 if (Test-Path $SecretsFile) {
 	. $SecretsFile
 }
-if (!$VPSHost -or !$VPSUser -or !$VPSPass) {
-	Write-Host "ERRO: cria o ficheiro deploy.secrets.ps1 (gitignored) com `$VPSHost/`$VPSUser/`$VPSPass" -ForegroundColor Red
+if (!$VPSHost -or !$VPSUser -or !$VPSPass -or !$GuiUser -or !$GuiPass) {
+	Write-Host "ERRO: cria o ficheiro deploy.secrets.ps1 (gitignored) com `$VPSHost/`$VPSUser/`$VPSPass/`$GuiUser/`$GuiPass" -ForegroundColor Red
 	exit 1
 }
 $VPSBin  = "/opt/multics/multics.x64"
@@ -61,7 +65,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "deploy remoto falhou"; exit 1 }
 Write-Host "== 4. Verifica (GUI + stats) =="
 Start-Sleep -Seconds 10
 $chk = @"
-curl -s -m 8 -c /tmp/ck -b /tmp/ck -d 'user=admin&pass=admin' http://127.0.0.1:5500/login -o /dev/null
+curl -s -m 8 -c /tmp/ck -b /tmp/ck -d "user=$GuiUser&pass=$GuiPass" http://127.0.0.1:5500/login -o /dev/null
 curl -s -m 8 -c /tmp/ck -b /tmp/ck http://127.0.0.1:5500/packages -o /tmp/deploy_check.html -w '%{http_code} %{size_download}\n'
 top -bn1 | grep -m1 multics
 "@
