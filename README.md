@@ -18,14 +18,24 @@ Cardserver proxy (partilha de cards/CWs) baseado no trabalho do evileyes, recons
 
 Os binários são **estáticos musl** ”” correm em Debian, Ubuntu, CentOS, Rocky, Alma, Arch, Alpine”¦ sem dependências.
 
-**Sem git** (download do asset do release):
+**Sem git** (binário + configs da release):
 
 ```bash
-# 1. descarrega o pacote da release (exemplo v1.28)
-wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.28/multics-r1000-v1.28.tar.gz
-# 2. extrai e instala
-tar xzf multics-r1000-v1.28.tar.gz
-cd multics-r1000
+# 1. descarrega o binário e o pack de configs da release (exemplo v1.63.4)
+wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.63.4/multics.x64
+wget https://github.com/sharillas/MultiCS-r1000-Sharillas/releases/download/v1.63.4/multics-r1000-v1.63.4-configs.zip
+# 2. instala o binário e as configs (o serviço systemd está descrito nas notas da release)
+sudo mkdir -p /opt/multics /var/etc
+sudo install -m 755 multics.x64 /opt/multics/multics.x64
+unzip multics-r1000-v1.63.4-configs.zip -d /tmp/mcs-configs
+sudo cp /tmp/mcs-configs/configs/* /var/etc/
+```
+
+**Com git** (usa o instalador):
+
+```bash
+git clone https://github.com/sharillas/MultiCS-r1000-Sharillas.git
+cd MultiCS-r1000-Sharillas
 sudo bash install.sh            # ou: sudo bash install.sh /meu/caminho
 ```
 
@@ -50,7 +60,7 @@ Depois abre `http://SEU_IP:5500` â†’ login (default `admin`/`admin`) â†�
 | MGcamd | 21000 |
 | Newcamd (por perfil) | 15000”“15025 (definido no `PORT` de cada perfil) |
 | camd35 (UDP) | 7502 |
-| cs378x (TCP) | 8600 |
+| cs378x (TCP) | 8600 (exemplo; definido por `CS378X PORT:`) |
 | Cache | 5599 |
 
 ---
@@ -60,7 +70,9 @@ Depois abre `http://SEU_IP:5500` â†’ login (default `admin`/`admin`) â†�
 | Ficheiro | O que faz |
 |---|---|
 | `multics.cfg` | **Mestre**: portas, credenciais, cache, telnet, HTTP, FAILBAN, ANTICASCADE e INCLUDEs. **Pode conter tudo num só ficheiro** (manter tudo no mestre continua a funcionar). |
-| `perfis.cfg` | **Perfis de saída** (portas virtuais): CAID, PROVIDERS, DCW checks, SKIPCWC, CWC, NAGRA, HEALTH, FALLBACK, TIMING, LITE, EMULATOR BISS, ICAM, filtros ECM/DCW… + **users newcamd de cada perfil** (`USER:` dentro da secção; `USER:` antes do 1º perfil = global) |
+| `profiles.cfg` | **Perfis de saída** (portas virtuais): CAID, PROVIDERS, DCW checks, SKIPCWC, CWC, NAGRA, HEALTH, FALLBACK, TIMING, LITE, EMULATOR BISS, ICAM, filtros ECM/DCW… + **users newcamd de cada perfil** (`USER:` dentro da secção; `USER:` antes do 1º perfil = global) |
+| `Servers.cfg` | **Readers/servidores** onde a GUI grava (editor linha-a-linha, v1.51+) |
+| `Clients.cfg` | **Clientes** (F-lines e `USER:`) onde a GUI grava (v1.51+) |
 | `servidores.cfg` | **Readers/servidores** (fonte de cards): linhas `N:` (newcamd), `C:` (cccam), `L:` (radegast), `CACHE:` (peers CSP), `C: ... { cacheex_mode=3 }` |
 | `clientes_cccam.cfg` | **F-lines** (clientes CCcam) |
 | `clientes_mgcamd.cfg` | Utilizadores MGcamd |
@@ -75,6 +87,8 @@ Depois abre `http://SEU_IP:5500` â†’ login (default `admin`/`admin`) â†�
 | `ip2country.csv` | Base IP → país (bandeiras na GUI) |
 | `multics.css` | Tema externo (dark/light) |
 
+**Nota (v1.63.4)**: o código e a GUI gravam em `Servers.cfg` e `Clients.cfg` (é a convenção usada em produção); os ficheiros `servidores.cfg` / `clientes_*.cfg` são alternativas válidas via `INCLUDE`.
+
 **Estrutura v1.28 (PT)**: os antigos `profiles.cfg`, `Nlines.cfg`, `users.cfg`, `Mgcamd.cfg`, `Camd35.cfg`, `Cache.cfg`, `CacheEX.cfg`, `1-Clients.cfg` foram reorganizados nos ficheiros acima. Os nomes antigos continuam aceites no editor/upload da GUI (compatibilidade).**Todos os ficheiros têm exemplos comentados completos** em `configs_exemplos/` (cada opção explicada em PT). Guia de configuração detalhado: **[docs/CONFIGS.md](docs/CONFIGS.md)**
 
 Fluxo mínimo para funcionar:
@@ -87,7 +101,20 @@ Fluxo mínimo para funcionar:
 
 ---
 
-## Features desta build (v1.28)
+## Features desta build (v1.63.4)
+
+### Novo na v1.48 – v1.63 — consenso, árbitro e anti-veneno
+- **DCW ARBITER** (+ PRE-ASK ~300 ms em paralelo): cada CW é validada contra um reader de confiança; `DCW ARBITER SERVE`, `RATE` e `MAX` (fair-share por cliente)
+- **DCW AGREE** (consenso: N fontes com a mesma CW) e **SERVER ASK** (fan-out em paralelo por ECM)
+- **DCW HALFROTATE / HALFREPEAT**, **STUCK RECOVERY**, **SILENT NOK** desligável
+- **SHEEP DETECTOR**: deteção automática da fonte divergente (candidata a árbitro), coluna *Truth* na página Servers
+- **VERDICT** end-to-end: anel de CWs servidas, endpoint `/verdict` e marcação da fonte má
+- **BUDGET ENGINE / BUDGET ASK**: tecto de pedidos por segundo por fonte (anti rate-limit upstream)
+- **Dashboard**: saúde por perfil, referee (ask/match/disagree), fair-share, proteções
+- **Editor linha-a-linha** e popup para `Servers.cfg` / `Clients.cfg`
+- v1.63.2: correção crítica do consenso (estava invertido). v1.63.4: filtro de paridade NOS 1802 guardado mas desativado
+- Opções e intervalos: **[docs/CONFIGS.md](docs/CONFIGS.md)**, secção 13. Histórico: **[CHANGELOG.md](CHANGELOG.md)**
+
 
 ### Novo na v1.28 ”” pacote anti-"cartões marcados" (análise do MultiCS r120)
 - **DCW FILTER (CWPK)**: blacklist de CWs de cartões marcados com 35 valores conhecidos; modos `AUTO` (recomendado: desligado por defeito, **ativa-se sozinho no 1Âº hit** e passa a bloquear ”” sem ninguém ver o log), `LOGONLY` (só log) e `DROP`; regras `EXACT` (até 8 CWs por regra), `MASK` (wildcard) e `ALLEQUAL` (fake CW)
@@ -184,4 +211,4 @@ Build flags (equivalentes ao Makefile original):
 
 ## Créditos
 
-Base: (evileyes). Mod, GUI e fixes: **Sharillas@2026** ”” v1.24
+Base: (evileyes). Mod, GUI e fixes: **Sharillas@2026** ”” v1.63.4
