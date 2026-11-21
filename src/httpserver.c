@@ -54,6 +54,12 @@ const unsigned char *boyermoore_horspool_memmem(const unsigned char* haystack, s
 #define HTTP_GET  0
 #define HTTP_POST 1
 #define MAXHEADERS 20
+// v1.63.5: cabecalhos HTTP do pedido. Atras do nginx entram +4 cabecalhos e o Cookie (enviado no fim pelo browser)
+// caia fora dos 20 -> a sessao nao era lida e a GUI voltava sempre ao login. O array e compacto (nome 48 B)
+// para nao aumentar a stack da thread (http_request vive na stack de gererClient).
+#define MAXREQHEADERS 32
+#define HDR_NAME_MAX  48
+#define HDR_VALUE_MAX 512
 
 struct cs_client_data *getnewcamdclientbyid(uint32_t id);
 struct cccam_server_data *getcccamserverbyid(uint32_t id);
@@ -145,6 +151,12 @@ typedef struct
 	char value[512];
 } http_get;
 
+typedef struct
+{
+	char name[HDR_NAME_MAX];
+	char value[HDR_VALUE_MAX];
+} http_hdr;
+
 typedef struct 
 {
 	int sock;
@@ -160,7 +172,7 @@ typedef struct
 	int getcount;
 	http_get postlist[MAXHEADERS];
 	int postcount;
-	http_get headers[MAXHEADERS];
+	http_hdr headers[MAXREQHEADERS];
 	int hdrcount;
 
 } http_request;
@@ -175,6 +187,15 @@ void buf2str( char *dest, char *start, char *end)
 	dest++;
   }
   *dest='\0';
+}
+
+// copia [start..end] para dest (tamanho destsz), truncando; nunca escreve fora de dest
+static void buf2str_n( char *dest, size_t destsz, char *start, char *end)
+{
+  size_t n = 0;
+  while (*start==' ') start++;
+  while (start<=end && n+1<destsz) dest[n++] = *start++;
+  dest[n] = '\0';
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -303,7 +324,7 @@ int extractreq(http_request *req, char *buffer, int len )
 	while ( (*path_start!='\r')&&(*path_start!='\n') ) path_start++;
 	if (*path_start=='\r') path_start++;
 	if (*path_start=='\n') path_start++;
-	while ( path_start<rnrn && req->hdrcount<MAXHEADERS ) {
+	while ( path_start<rnrn && req->hdrcount<MAXREQHEADERS ) {
 		// start = path_start
 		//get end of line
 		path_end = path_start;
@@ -317,8 +338,8 @@ int extractreq(http_request *req, char *buffer, int len )
 		*path_end = 0;
 		if (slash) {
 			// Extract header name: value
-			buf2str( req->headers[req->hdrcount].name , path_start, slash-1);
-			buf2str( req->headers[req->hdrcount].value, slash+1, path_end-1);
+			buf2str_n( req->headers[req->hdrcount].name , sizeof(req->headers[0].name), path_start, slash-1);
+			buf2str_n( req->headers[req->hdrcount].value, sizeof(req->headers[0].value), slash+1, path_end-1);
 			//printf(">> %s\n", path_start);
 			//printf("[HEADER] Name: '%s'    Value :'%s'\n", req->headers[req->hdrcount].name, req->headers[req->hdrcount].value);
 			//if ( !strcmp(req->headers[req->hdrcount].name,"Authorization") ) 

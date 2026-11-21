@@ -1,3 +1,7 @@
+## v1.63.5 (2026-11-21)
+- **Fix - GUI nao passava do login atras do nginx**: o parser HTTP so guardava os 20 primeiros cabecalhos (MAXHEADERS). Atras de um reverse proxy entram mais cabecalhos (X-Real-IP, X-Forwarded-*, Connection) e, no redirect pos-login, o browser acrescenta Referer/Origin; o Cookie e enviado no fim, ficava fora dos 20, a sessao nao era lida e voltava-se ao login. Os cabecalhos passam a 32 (MAXREQHEADERS) com nome de 48 B e a copia e agora limitada (antes uf2str nao tinha limite). O array e compacto para nao aumentar a stack da thread.
+- Mitigacao imediata em producao: nginx deixou de acrescentar X-Real-IP/X-Forwarded-* e passou a enviar Connection: ".
+
 ## v1.63.4 (2026-10-24, produção)
 - **Filtro de paridade NOS 1802** (regra dos 1785 pares clean: byte0=80 → metade0 muda / byte0=81 → metade1 muda) implementado mas **desativado** — as fontes atuais servem a metade errada com frequência (lag de 1 período) e rejeitar esfomeia a box (34% entregas). Documentado no estudo ECM→CW.
 - Estado final do consenso corrigido (v1.63.2) em produção.
