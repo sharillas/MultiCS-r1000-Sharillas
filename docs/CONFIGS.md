@@ -1,4 +1,4 @@
-# Configuração do Cardserver — guia exato (v1.20)
+# Configuração do Cardserver — guia exato (v1.63.4)
 
 Os ficheiros ficam em `/var/etc/` (depois do `install.sh`). Qualquer alteração pode ser feita pela **GUI (Configs → Edit ou Upload)** — aplica na hora, sem restart — ou editando os ficheiros.
 
@@ -318,3 +318,71 @@ ss -tlnp | grep multics              # portas a escutar
 ```
 
 Na GUI: Dashboard (estado geral) → Servers (readers + dedup) → Newcamd/CCcam (clientes) → Debug (paths e log, Download Log).
+
+---
+
+## 13. Referência das opções v1.40 – v1.63
+
+Esta secção foi escrita a partir do parser (`src/config.c`) da **v1.63.4**. Os intervalos são os que o código aplica (valores fora do intervalo são cortados). «Defeito» só aparece quando o código o fixa explicitamente. As opções de perfil aceitam o prefixo `DEFAULT` (ex.: `DEFAULT DCW AGREE: 2`) ou valem só dentro de `[perfil]`.
+
+### 13.1 `multics.cfg` (globais)
+
+| Opção | Valores | O que faz |
+|---|---|---|
+| `LOGFILE: <caminho>` | caminho | v1.49. Ficheiro de log completo (todas as linhas acima do `LOGLEVEL`). |
+| `FAILBAN ENABLE:` | `YES`/`NO` | Liga o ban automático de IPs com eventos maus (CWs más). |
+| `FAILBAN BANTIME:` | 60–86400 (s) | Duração do ban. |
+| `FAILBAN CCCAM:` / `NEWCAMD:` / `MGCAMD:` / `CACHE:` | número de eventos; `0` = desligado | Eventos maus por IP até ser banido. **Escreve só o número** (`FAILBAN CCCAM: 20`). O parser lê apenas dígitos: `YES 20` é lido como `0`, ou seja, desligado. |
+| `FAILBAN EXCLUDE:` | até 32 IPs, separados por vírgula | IPs que nunca são banidos. |
+| `ANTICASCADE MAXZAP:` | 0–1000 (`0` = desligado) | Nº de zaps por IP, dentro da janela, a partir do qual há suspeita de reshare. |
+| `ANTICASCADE WINDOW:` | 5–3600 (s) | Janela de contagem dos zaps. |
+| `ANTICASCADE BANTIME:` | segundos | Duração do ban do IP (vai para o `ipblock`). |
+| `ANTICASCADE EXCLUDE:` | IPs | IPs isentos. |
+
+> O README e o CHANGELOG referem `CAMD35` e `CS378X` no FAILBAN, mas o código da v1.63.4 só aplica limite a CCCAM, NEWCAMD, MGCAMD e CACHE.
+
+### 13.2 Perfil (`[perfil]` / `DEFAULT`)
+
+| Opção | Valores / defeito | O que faz |
+|---|---|---|
+| `DCW CYCLE_ENGINE:` | `YES`/`NO` | v1.40. Motor único de ciclo por canal; substitui MINTIME / CYCLE_CHECK / CWC / STALE_CHECK / NAGRA CYCLE. **O nome é `CYCLE_ENGINE` (com underscore)**: `CYCLE ENGINE` (com espaço) não é reconhecido pelo parser e é **ignorado sem aviso no log**. |
+| `DCW SILENT_NOK:` | `YES`/`NO` | Adia o NOK até perto do timeout da box (evita reconexões e tempestades de retries). Desligável desde a v1.55. |
+| `DCW LASTCWONNOK:` | `YES`/`NO` | Em NOK, reenvia a última CW válida do canal (não pára o descrambler). Pode mascarar falhas reais da fonte. |
+| `DCW HALFROTATE:` | `YES`/`NO` | v1.55. Filtro de rotação CW0/CW1 (anti-fake de período). |
+| `DCW HALFREPEAT TTL:` | 2–8, defeito 3 | v1.55. Janela de repetições de meia-CW. |
+| `DCW ARBITER:` | `YES`/`NO` | v1.55. Valida cada CW contra o reader de confiança (`arbiter=yes`). Desde a v1.55.5 o árbitro é perguntado em paralelo com a rotação (PRE-ASK). |
+| `DCW ARBITER SERVE:` | `YES`/`NO` | Quando o árbitro **discorda** da CW da fonte, entrega a CW do árbitro. |
+| `DCW ARBITER RATE:` | 0–100, defeito 100 | Percentagem de ECMs validados pelo árbitro. |
+| `DCW ARBITER MAX:` | 0–500, defeito 0 (off) | v1.61.2 (fair-share). Tecto de validações por minuto, por cliente. |
+| `DCW AGREE:` | 0–6, defeito 0 (`0`/`1` = off) | v1.55.1. Consenso: nº de fontes que têm de dar a **mesma** CW para ser aceite. |
+| `SERVER ASK:` | 0–8, defeito 0 | v1.55.1. Quantos servers perguntar em paralelo por ECM (`0` = clássico: 1 server por ronda). |
+| `SERVER ECMTIME:` (alias `TIMEPERECM`) | 0–5000 | Tempo por ECM no pedido ao server. |
+| `ECMRATELIMIT SIDTIME:` | 0–60000 (ms) | Proteção do cartão: intervalo mínimo entre ECMs do mesmo canal. |
+| `ECMRATELIMIT MAXECM:` | 0–10000 | Proteção do cartão: ECMs por segundo. |
+
+### 13.3 Opções de reader (dentro de `{ ... }`, separadas por `;`)
+
+| Opção | Valores | O que faz |
+|---|---|---|
+| `arbiter=` | `yes`/`no` | v1.55. Marca o reader como árbitro: fica fora da rotação normal e só é perguntado para validar CWs (ver `DCW ARBITER`). |
+| `budget_max=` | 0–1000 (`0` = off) | v1.49 BUDGET ENGINE. Tecto manual em CWs por minuto. |
+| `budget_group=` | 1–8 (`0` = só este reader) | Orçamento partilhado entre readers do mesmo cartão. |
+| `budget_ask=` | 0–50 (`0` = sem tecto) | v1.50 BUDGET ASK. Tecto de **pedidos por segundo**: o cartão upstream vê no máximo N pedidos/s do saco inteiro. |
+| `hop=` | número | v1.40. Hop da fonte (1 = direta, N = circuito); preferido no load-balance. |
+| `priority=` | número | Prioridade do reader. |
+| `providrewrite=` | `yes`/`no` | v1.48. Reescreve o provid para 0 nos pedidos a este reader. |
+| `stealth=` | `yes`/`no` | v1.48.2. Server stealth (não anuncia a lista de cards). |
+| `nocheck=` | `yes`/`no` | Desliga a proteção anti-loop (cliente e reader no mesmo IP). |
+| `type=` | `mgcamd`/`newcamd`/`cccam` | v1.51. Grupo de apresentação na GUI (o protocolo real não muda). |
+| `cacheex_mode=` / `cacheex_maxhop=` / `cacheex_forward=` | hex | Opções CacheEX do reader. |
+
+Nas F-lines CCcam existe ainda a opção de cliente `ARBITER_MAX` (v1.61.2): tecto de validações do árbitro por minuto para esse cliente.
+
+### 13.4 Ainda por documentar
+
+O parser aceita também `ADMINUSER`, `ADMINPASS`, `MGUSER`, `TRACE` e `EXPIRED`, sem descrição fiável nos comentários do código. Rever antes de os documentar.
+
+### 13.5 Opções obsoletas
+
+- `CONSTCW FILE:` já não é lido pelo parser (aparece como `unknown option` no log em cada arranque). Não faz mal: sem ele, o emulador usa o `Softcam.cfg` que está na mesma pasta do `multics.cfg`.
+- Sub-opções desconhecidas dentro de `DCW ...` são **ignoradas em silêncio**: um erro de escrita (ex.: `DCW CYCLE ENGINE`) não gera aviso no log.
