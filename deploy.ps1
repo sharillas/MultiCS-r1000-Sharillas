@@ -21,8 +21,13 @@ $GuiUser = ""
 $GuiPass = ""
 $ToolDir = "C:\TMP\opencode"
 $Root    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SecretsFile = Join-Path $Root "deploy.secrets.ps1"
-if (Test-Path $SecretsFile) {
+# credenciais: $env:MULTICS_SECRETS, ou ..\..\_secrets\ (fora do repo), ou junto do script
+$SecretsFile = @(
+	$(if ($env:MULTICS_SECRETS) { $env:MULTICS_SECRETS }),
+	(Join-Path $Root "..\..\_secrets\deploy.secrets.ps1"),
+	(Join-Path $Root "deploy.secrets.ps1")
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if ($SecretsFile) {
 	. $SecretsFile
 }
 if (!$VPSHost -or !$VPSUser -or !$VPSPass -or !$GuiUser -or !$GuiPass) {
