@@ -1,3 +1,16 @@
+## v1.70.5 (2026-11-22)
+- Fix: config.c's line-parsing loop computed `pos = currentline + strlen(currentline) - 1` to trim trailing
+  whitespace/CR/LF. When a config line becomes an empty string after comment-stripping (e.g. a line that is
+  only a "# comment", or an already-blank line), strlen()==0 made this underflow (pointer arithmetic on
+  `currentline - 1`), so `pos` pointed one byte before the line buffer -- an out-of-bounds read, and (if that
+  adjacent byte happened to look like whitespace) a one-byte out-of-bounds write. Found incidentally by UBSan
+  during normal config-reread while running the GUI regression suite; this path is only reachable by Multics's
+  own config-file parser (not a remote attack surface), but is a genuine memory-safety bug.
+- Fixed by skipping straight to the trim loop's safe "empty line" case (pos = currentline, pointing at the
+  line's own NUL terminator) instead of computing strlen()-1 when the line is already empty.
+- Verified: full GUI regression suite 107/107 (which exercises multiple config-reread paths), clean compile and
+  clean run under ASan/UBSan -- the sanitizer report that used to fire during this suite no longer appears.
+
 ## v1.70.4 (2026-11-22)
 - Critical security fix: the camd35/cs378x servers (UDP camd35_recvmsg, TCP cs378x_connect_cli/cs378x_msg_peek/
   cs378x_cli_recvmsg) compute an attacker-influenced message length from bytes that were just AES-decrypted with

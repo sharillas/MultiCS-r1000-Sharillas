@@ -851,10 +851,13 @@ int read_config(struct config_data *cfg)
 				pos++;
 			}
 			// delete from the end '\r' '\n' ' ' '\t'
-			pos = currentline + strlen(currentline) - 1 ;
-			while ( (*pos=='\r')||(*pos=='\n')||(*pos=='\t')||(*pos==' ') ) { 
-				*pos=0; pos--;
-				if (pos<=currentline) break;
+			if (*currentline==0) pos = currentline; // seguranca: linha vazia (ex: so comentario) -- evita strlen()-1 a dar underflow e pos a apontar antes do buffer
+			else {
+				pos = currentline + strlen(currentline) - 1 ;
+				while ( (*pos=='\r')||(*pos=='\n')||(*pos=='\t')||(*pos==' ') ) { 
+					*pos=0; pos--;
+					if (pos<=currentline) break;
+				}
 			}
 			if (*pos=='\\') {
 				if ( !fgets(pos, 10239-(pos-currentline), file->fd) ) {
