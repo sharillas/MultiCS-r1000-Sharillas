@@ -1398,117 +1398,75 @@ void http_send_index(int sock, http_request *req)
 	}
 	tcp_writestr(&tcpbuf, sock, "</div></div>");
 
-	// Servers (v1.62: so totais basicos)
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Servers</h3><div class=stat-value>");
-	sprintf( http_buf, "<span class=stat-label>Total:</span> %d<br>", cfg.totalservers );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+	// Traffic panel (v1.70.0: servers + clients + ECM + referee in one box)
 	{
-		int actv = 0;
+		int actv = 0, ttot = 0, tok = 0;
+		int activeecm = 0;
 		struct server_data *sw = cfg.server;
-		while (sw) { if (!IS_DISABLED(sw->flags)) actv++; sw = sw->next; }
-		sprintf( http_buf, "<span class=stat-label>Active:</span> %d<br>", actv );
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	}
-	tcp_writestr(&tcpbuf, sock, "</div></div>");
-
-	// Clients (v1.62: so totais basicos)
-	int activeecm = 0;
-	{
-		ECM_DATA *ecmwalk = ecmdata;
-		while (ecmwalk) { if (ecmwalk->dcwstatus==STAT_DCW_WAIT) activeecm++; ecmwalk=ecmwalk->next; if (ecmwalk==ecmdata) break; }
-	}
-	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Clients</h3><div class=stat-value>");
-	sprintf( http_buf, "<span class=stat-label>Connected:</span> %d<br>", connected_all_clients() );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>Active ECMs:</span> %d<br>", activeecm );
-	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_writestr(&tcpbuf, sock, "</div></div>");
-
-	// ECM totais (v1.62: total/ok/nok de todo o projecto)
-	{
-		int ttot = 0, tok = 0;
 		struct cardserver_data *cw = cfg.cardserver;
-		while (cw) {
-			ttot += cw->ecmaccepted + cw->ecmdenied;
-			tok += cw->ecmok;
-			cw = cw->next;
-		}
+		ECM_DATA *ecmwalk = ecmdata;
+		struct server_data *aw = cfg.server;
+		while (sw) { if (!IS_DISABLED(sw->flags)) actv++; sw = sw->next; }
+		while (ecmwalk) { if (ecmwalk->dcwstatus==STAT_DCW_WAIT) activeecm++; ecmwalk=ecmwalk->next; if (ecmwalk==ecmdata) break; }
+		while (cw) { ttot += cw->ecmaccepted + cw->ecmdenied; tok += cw->ecmok; cw = cw->next; }
+		while (aw && !aw->arbiter) aw = aw->next;
 		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
-		tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >ECM</h3><div class=stat-value>");
-		sprintf( http_buf, "<span class=stat-label>Total:</span> %d<br>", ttot );
+		tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Traffic</h3><div class=stat-value>");
+		sprintf( http_buf, "<span class=stat-label>Servers:</span> %d active of %d<br>", actv, cfg.totalservers );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<span class=stat-label>OK:</span> <span style='color:var(--pok)'>%d</span><br>", tok );
+		sprintf( http_buf, "<span class=stat-label>Clients connected:</span> %d<br>", connected_all_clients() );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<span class=stat-label>NOK:</span> <span style='color:var(--pbad)'>%d</span><br>", ttot-tok );
+		sprintf( http_buf, "<span class=stat-label>ECMs in progress:</span> %d<br>", activeecm );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "<span class=stat-label>ECM total:</span> %d &nbsp; <span class=stat-label>OK:</span> <span style='color:var(--pok)'>%d</span> &nbsp; <span class=stat-label>NOK:</span> <span style='color:var(--pbad)'>%d</span><br>", ttot, tok, ttot-tok );
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		if (aw) sprintf( http_buf, "<span class=stat-label>Referee:</span> <span style='color:%s'>%s</span> (%u ask, %u match, %u disagree)", (aw->handle>0)?"var(--pok)":"var(--pbad)", (aw->handle>0)?"online":"offline", g_arbiter_asks, g_arbiter_match, g_arbiter_discorda );
+		else sprintf( http_buf, "<span class=stat-label>Referee:</span> none configured" );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "</div></div></div>");
 	}
 
-	// === tiles (Stats Tiles v1.28) ===
+	// Profiles panel (v1.70.0): only the busiest profiles, the rest is one line
 	{
-		int rampct = 0;
-		if (memtotal) {
-			unsigned long used = (memavail && memavail<memtotal) ? (unsigned long)(memtotal-memavail) : (unsigned long)(memtotal-memfree);
-			rampct = (int)(used*100/memtotal);
-			if (rampct<0) rampct = 0; if (rampct>100) rampct = 100;
+		struct cardserver_data *pw;
+		struct cardserver_data *chosen[8];
+		int nchosen = 0, nprof = 0, nshown, k, j;
+		for (pw = cfg.cardserver; pw; pw = pw->next) {
+			if (!strcmp(pw->name,"DEFAULT") || !strcmp(pw->name,"BISS Emu")) continue;
+			nprof++;
 		}
-		tcp_writestr(&tcpbuf, sock, "<div class='trow'>");
-		{
-			char upbig[64];
-			if (d >= 86400) sprintf(upbig, "%dd %02dh", (int)(d/86400), (int)((d/3600)%24));
-			else if (d >= 3600) sprintf(upbig, "%02dh %02dm", (int)((d/3600)%24), (int)((d/60)%60));
-			else sprintf(upbig, "%02dm %02ds", (int)((d/60)%60), (int)(d%60));
-			sprintf( http_buf, "<div class='tile'><div class='lbl'>Uptime</div><div class='big c-cyan'>%s</div><div class='sub'>uptime</div></div>", upbig);
-		}
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>Servers</div><div class='big c-violet'>%d</div><div class='sub'>%d profiles configured</div></div>", cfg.totalservers, cfg.totalprofiles);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>Clients</div><div class='big c-blue'>%d</div><div class='sub'>connected now</div></div>", connected_all_clients());
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>Total ECMs</div><div class='big c-green'>%d</div><div class='sub'>%d active this cycle</div></div>", totalecm, activeecm);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>RAM</div><div class='big c-amber'>%d%%</div><div class='sub'>%d / %d MB</div></div>", rampct, memtotal?((memtotal-memavail>0&&memavail)?(memtotal-memavail):(memtotal-memfree))/1024:0, memtotal/1024);
-		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-
-		// v1.62: tiles de saude por perfil (MEO/NOS) - a cor do OK%
-		{
-			struct cardserver_data *hw = cfg.cardserver;
-			while (hw) {
-				if (!strcmp(hw->name,"DEFAULT") || !strcmp(hw->name,"BISS Emu")) { hw = hw->next; continue; }
-				int pct = hw->ecmaccepted ? (hw->ecmok*100)/hw->ecmaccepted : 0;
-				const char *cls = pct>=90?"c-green":(pct>=60?"c-amber":"c-red");
-				sprintf( http_buf, "<div class='tile'><div class='lbl'>%s</div><div class='big %s'>%d%%</div><div class='sub'>%d OK / %d ECM</div></div>",
-					hw->name, cls, pct, hw->ecmok, hw->ecmaccepted+hw->ecmdenied);
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				hw = hw->next;
+		for (k=0; k<8; k++) {
+			struct cardserver_data *best = NULL;
+			int bestn = -1;
+			for (pw = cfg.cardserver; pw; pw = pw->next) {
+				int n, dup = 0;
+				if (!strcmp(pw->name,"DEFAULT") || !strcmp(pw->name,"BISS Emu")) continue;
+				n = pw->ecmaccepted + pw->ecmdenied;
+				if (n==0 && nprof>8) continue;
+				for (j=0; j<nchosen; j++) if (chosen[j]==pw) dup = 1;
+				if (dup) continue;
+				if (n > bestn) { best = pw; bestn = n; }
 			}
+			if (!best) break;
+			chosen[nchosen++] = best;
 		}
-
-		// v1.62: tile do REFEREE (estado + validacoes, sem host)
-		{
-			int aon = 0;
-			struct server_data *aw = cfg.server;
-			while (aw) {
-				if (aw->arbiter) {
-					aon = (aw->handle>0) ? 1 : 0;
-					break;
-				}
-				aw = aw->next;
-			}
-			if (aw) {
-				sprintf( http_buf, "<div class='tile'><div class='lbl'>Referee</div><div class='big %s'>%s</div><div class='sub'>%u ask | %u match | %u disagree</div></div>",
-					aon?"c-green":"c-red", aon?"ONLINE":"OFFLINE",
-					g_arbiter_asks, g_arbiter_match, g_arbiter_discorda);
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Profiles</h3>");
+		if (nchosen) {
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable><tr><th>Profile</th><th>Answered</th><th>OK / ECM</th></tr>");
+			for (k=0; k<nchosen; k++) {
+				int pct = chosen[k]->ecmaccepted ? (chosen[k]->ecmok*100)/chosen[k]->ecmaccepted : 0;
+				char cls = pct>=90?'g':(pct>=60?'a':'r');
+				sprintf( http_buf, "<tr><td><a href='/profile?id=%d'><b>%s</b></a></td><td><span class='bar'><span class='barfill %c' style='width:%d%%'></span></span><span class='pct'>%d%%</span></td><td>%d / %d</td></tr>",
+					chosen[k]->id, chosen[k]->name, cls, pct, pct, chosen[k]->ecmok, chosen[k]->ecmaccepted+chosen[k]->ecmdenied);
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
-			else {
-				sprintf( http_buf, "<div class='tile'><div class='lbl'>Referee</div><div class='big c-gray'>--</div><div class='sub'>no trusted source</div></div>");
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-			}
+			tcp_writestr(&tcpbuf, sock, "</table>");
 		}
-		tcp_writestr(&tcpbuf, sock, "</div>");
+		else tcp_writestr(&tcpbuf, sock, "<div class=stat-value><span style='color:var(--pmuted)'>No ECM traffic yet.</span></div>");
+		nshown = nchosen;
+		sprintf( http_buf, "<div class=stat-value style='margin-top:8px'>%d profiles configured%s. <a href='/profiles'>Open all profiles</a></div></div>",
+			nprof, (nprof>nshown)?", the rest have no ECM traffic":"");
+		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 
 	// v1.62: widgets Fair-Share + Protecoes (lado a lado)

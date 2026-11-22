@@ -50,7 +50,7 @@
   --pcaid: #FB923C;
   --shadow: 0 1px 0 rgba(255, 255, 255, .05) inset;
 }
-body.light-mode {
+html.light-mode, body.light-mode {
   --page: #D2CCBF;
   --side: #E3DED3;
   --panel: #EFEBE1;
@@ -82,12 +82,17 @@ body.light-mode {
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html { background: var(--page); color-scheme: dark; }
+html {
+  color-scheme: dark; min-height: 100%;
+  /* the side column is painted on the page itself, so it always spans the full height */
+  background: linear-gradient(90deg, var(--side) 0, var(--side) 247px, var(--line) 247px, var(--line) 248px, var(--page) 248px) no-repeat;
+  background-color: var(--page);
+}
 html.light-mode { color-scheme: light; }
 body {
   font-family: var(--font);
   font-size: 15px; font-weight: 500; line-height: 1.5;
-  background: var(--page); color: var(--text);
+  background: transparent; color: var(--text);
   min-height: 100vh; padding-left: 248px;
 }
 
@@ -477,6 +482,7 @@ tr.dbgrow td { background: var(--field); padding: 10px; border-radius: 12px; }
 @media (max-width: 860px) {
   .menu { position: static; width: 100%; max-height: 360px; border-right: none; border-bottom: 1px solid var(--line); }
   body { padding-left: 0; }
+  html { background: var(--page); }
   .toolbar { padding: 0 14px; }
   #mainDiv { margin: 0 12px; }
   .login-page { position: static; min-height: 100vh; }
