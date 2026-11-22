@@ -1,3 +1,19 @@
+## v1.70.7 (2026-11-22)
+- Defensive fix: closed the 3 lower-priority items left from the earlier source review.
+  1) add_host() in config.c did `strcpy(host->name, hostname)` into a fixed `char name[256]` with no length
+     check; a long enough hostname value in Servers.cfg (or any future caller) would overflow it. Now uses
+     strncpy bounded to sizeof(host->name)-1 plus an explicit NUL.
+  2) 4 sites in httpserver.c built the "Servers.cfg"/"Clients.cfg" comment-toggle match string with
+     `sprintf(match, "%s %d", host->name, port)` into a fixed `char match[160]`, with no bound against
+     host->name's real (256-byte) capacity. Switched to snprintf(match, sizeof(match), ...).
+  3) One XML-row endpoint in httpserver.c (the only one of 9 similar XML-cell endpoints in the file) still
+     used a raw `sprintf(http_buf, ...)` into `char http_buf[4096]` built from 11 cell[2048] strings, instead
+     of the snprintf the other 8 endpoints already use. Brought it in line with the rest of the file.
+  All three require admin-level config/GUI access to reach (hostnames and usernames are admin-entered), not a
+  remote/pre-auth attack surface like the earlier fixes in this series -- but each was a genuine missing bound,
+  so closed for defense in depth. No behavior change for any realistically-sized value.
+- Verified: full GUI regression suite 107/107, clean compile and clean run under ASan/UBSan.
+
 ## v1.70.6 (2026-11-22)
 - Fix: telnet.c's 3 recv() sites (username, password, command loop) checked only `len<=0` before testing
   `buf[len-2]!='\r' || buf[len-1]!='\n'`. A client sending exactly 1 byte (len==1) made `len-2` negative,

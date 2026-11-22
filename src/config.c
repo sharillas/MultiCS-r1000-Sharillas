@@ -92,7 +92,7 @@ struct host_data *add_host( struct config_data *cfg, char *hostname)
 	// Create
 	host = malloc( sizeof(struct host_data) );
 	memset( host, 0, sizeof(struct host_data) );
-	strcpy( host->name, hostname );
+	strncpy( host->name, hostname, sizeof(host->name)-1 ); host->name[sizeof(host->name)-1]=0; // seguranca: garante que nunca excede host->name[256], seja qual for o tamanho de hostname
 	host->ip = 0;
 	host->checkiptime = 0;
 	host->next = cfg->host;

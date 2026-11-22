@@ -1713,7 +1713,7 @@ static void http_send_c35_page(int sock, http_request *req, const char *path, co
 							// Send XML CELLS
 							camd35cells(cli, cell, path);
 							int i; for(i=0; i<11; i++) xmlescape( cell[i] );
-							sprintf( http_buf, "<%s>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n<c8>%s</c8>\n<c9>%s</c9>\n<c10>%s</c10>\n</%s>\n", xmlroot, cell[0],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9],cell[10], xmlroot );
+							snprintf( http_buf, sizeof(http_buf), "<%s>\n<c0>%s</c0>\n<c1>%s</c1>\n<c2>%s</c2>\n<c3>%s</c3>\n<c4>%s</c4>\n<c5>%s</c5>\n<c6>%s</c6>\n<c7>%s</c7>\n<c8>%s</c8>\n<c9>%s</c9>\n<c10>%s</c10>\n</%s>\n", xmlroot, cell[0],cell[1],cell[2],cell[3],cell[4],cell[5],cell[6],cell[7],cell[8],cell[9],cell[10], xmlroot ); // seguranca: alinhado com as outras paginas XML, nunca excede http_buf[4096]
 							http_send_xml( sock, req, http_buf, strlen(http_buf));
 						}
 						cli = cli->next; if (!cli) { cli = cx; cx = NULL; }
@@ -4318,7 +4318,7 @@ void http_send_server(int sock, http_request *req)
 		// v1.51: persistente - comenta a linha no Servers.cfg
 		{
 			char match[160];
-			sprintf( match, "%s %d", srv->host? (char*)srv->host->name : "", srv->port);
+			snprintf( match, sizeof(match), "%s %d", srv->host? (char*)srv->host->name : "", srv->port); // seguranca: nunca excede match[160]
 			config_line_edit("Servers.cfg", match, 0);
 		}
 		http_send_ok(sock);
@@ -4330,7 +4330,7 @@ void http_send_server(int sock, http_request *req)
 		// v1.51: persistente - descomenta a linha no Servers.cfg
 		{
 			char match[160];
-			sprintf( match, "%s %d", srv->host? (char*)srv->host->name : "", srv->port);
+			snprintf( match, sizeof(match), "%s %d", srv->host? (char*)srv->host->name : "", srv->port); // seguranca: nunca excede match[160]
 			config_line_edit("Servers.cfg", match, 1);
 		}
 		http_send_ok(sock);
@@ -4342,7 +4342,7 @@ void http_send_server(int sock, http_request *req)
 		if (srv->connection.status>0) disconnect_srv(srv);
 		{
 			char match[160];
-			sprintf( match, "%s %d", srv->host? (char*)srv->host->name : "", srv->port);
+			snprintf( match, sizeof(match), "%s %d", srv->host? (char*)srv->host->name : "", srv->port); // seguranca: nunca excede match[160]
 			config_line_edit("Servers.cfg", match, 2);
 		}
 		http_send_ok(sock);
@@ -7706,7 +7706,7 @@ void http_send_cacheex(int sock, http_request *req)
 						if (srv->connection.status>0) disconnect_srv(srv);
 						{
 							char match[160];
-							sprintf( match, "%s %d", srv->host? (char*)srv->host->name : "", srv->port);
+							snprintf( match, sizeof(match), "%s %d", srv->host? (char*)srv->host->name : "", srv->port); // seguranca: nunca excede match[160]
 							config_line_edit("Servers.cfg", match, 2);
 						}
 					}
