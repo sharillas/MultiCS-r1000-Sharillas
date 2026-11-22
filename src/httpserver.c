@@ -755,9 +755,9 @@ char html_title[] = "<title>%s - %s</title>\n";
 
 char http_link[] = "<meta http-equiv=\"Content-type\" content=\"text/html; charset=utf-8\"/>\n";
 
-char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1140\" type=\"text/css\" />\n";
+char http_style[] = "<link rel=\"stylesheet\" href=\"style.css?v=1700\" type=\"text/css\" />\n";
 
-char http_javascript[] = "<script src=\"/customjs.js?v=1202\"></script>\n";
+char http_javascript[] = "<script src=\"/customjs.js?v=1700\"></script>\n";
 
 #define PAGE_HOME      1
 #define PAGE_SERVERS   2
@@ -810,7 +810,10 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	char buf[512];
 	char label[128];
 
-	tcp_writestr(tcpbuf, sock, "<div class=menu><ul>" );
+	tcp_writestr(tcpbuf, sock, "<div class=menu>"
+		"<div class='brandtop'><svg width='36' height='36' viewBox='0 0 36 36' aria-hidden='true'><rect width='36' height='36' rx='11' fill='#27282A'/><path d='M9.5 25V11.5l8.5 8.5 8.5-8.5V25' fill='none' stroke='#5EEAD4' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+		"<span><span class='bt-name'>MultiCS</span><span class='bt-ver'>r"REVISION_STR" &middot; v"VERSION_STR"</span></span></div>"
+		"<ul>" );
 	// Dashboard
 	if (selected==PAGE_HOME) class = cSelected; else class = cNormal;
 	sprintf( buf, class, "/dashboard", "Dashboard"); tcp_writestr(tcpbuf, sock, buf);
@@ -830,7 +833,8 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 		char *c = isclient ? "on" : "";
 		tcp_writestr(tcpbuf, sock, "<li class='dropdown' id='clientdrop'><a class='mbtn");
 		tcp_writestr(tcpbuf, sock, c);
-		tcp_writestr(tcpbuf, sock, "' href='#' onclick='toggleClientMenu();return false;'>Clients &#9662;</a><ul class='submenu' id='clientsub'>");
+		tcp_writestr(tcpbuf, sock, "' href='#' onclick='toggleClientMenu();return false;'>Clients &#9662;</a><ul class='submenu' id='clientsub'");
+		tcp_writestr(tcpbuf, sock, isclient ? " style='display:block'>" : ">");
 		// Newcamd
 		if ( !cfg.http.show.nonewcamd ) {
 			char *sc = (selected==PAGE_NEWCAMD) ? " on" : "";
@@ -900,7 +904,7 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 	tcp_writestr(tcpbuf, sock, "<li class='menu-right'>");
 	if (!cfg.http.show.norestart)
 		tcp_writestr(tcpbuf, sock, "<a class='logout-btn' href='/restart'>Restart</a>");
-	tcp_writestr(tcpbuf, sock, "<button id='themeToggle' class='logout-btn' onclick='toggleTheme()'>Dark</button>");
+	tcp_writestr(tcpbuf, sock, "<button id='themeToggle' class='logout-btn' onclick='toggleTheme()'>Theme</button>");
 	tcp_writestr(tcpbuf, sock, "<a class='logout-btn' href='/login?action=logout'>Logout</a>");
 	tcp_writestr(tcpbuf, sock, "</li>");
 	tcp_writestr(tcpbuf, sock, "</ul>");
@@ -947,7 +951,7 @@ static void getstatcell_core(int ecmok, int ecmnb, char *dest, int withcount)
 	}
 	else {
 		if (withcount) sprintf( dest, "0 / 0 <span class='bar'><span class='barfill g' style='width:0%%'></span></span><span class='pct'>0%%</span>" );
-		else sprintf( dest, "<span class='bar' title='sem trafego'><span class='barfill g' style='width:0%%'></span></span><span class='pct'>0%%</span>" );
+		else sprintf( dest, "<span class='bar' title='no traffic'><span class='barfill g' style='width:0%%'></span></span><span class='pct'>0%%</span>" );
 	}
 }
 
@@ -1248,6 +1252,64 @@ void http_send_index(int sock, http_request *req)
 
 	unsigned int d= GetTickCount()/1000;
 
+	// === hero band (v1.70.0 F3) ===
+	{
+		int hs_total = 0, hs_on = 0, hs_clients = connected_all_clients();
+		int hs_tot = 0, hs_ok = 0, hs_okpct = -1, hs_ram = -1;
+		struct server_data *hs = cfg.server;
+		struct cardserver_data *hc = cfg.cardserver;
+		const char *hs_cls = "";
+		char hs_txt[96];
+		char hs_up[64];
+		char hs_buf[2048];
+		while (hs) { if (!IS_DISABLED(hs->flags)) { hs_total++; if (hs->connection.status>0) hs_on++; } hs = hs->next; }
+		while (hc) { hs_tot += hc->ecmaccepted + hc->ecmdenied; hs_ok += hc->ecmok; hc = hc->next; }
+		if (hs_tot>0) hs_okpct = (int)((long long)hs_ok*100/hs_tot);
+		{
+			FILE *hf = fopen("/proc/meminfo","r");
+			if (hf) {
+				char hl[256];
+				long mt = 0, mf = 0, ma = 0;
+				while (fgets(hl,sizeof(hl),hf)) {
+					if (!strncmp(hl,"MemTotal:",9)) mt = atol(hl+9);
+					else if (!strncmp(hl,"MemFree:",8)) mf = atol(hl+8);
+					else if (!strncmp(hl,"MemAvailable:",13)) ma = atol(hl+13);
+				}
+				fclose(hf);
+				if (mt>0) {
+					long used = (ma>0 && ma<mt) ? (mt-ma) : (mt-mf);
+					hs_ram = (int)(used*100/mt);
+					if (hs_ram<0) hs_ram = 0;
+					if (hs_ram>100) hs_ram = 100;
+				}
+			}
+		}
+		if (hs_total==0) { hs_cls = " warn"; strcpy(hs_txt, "No servers configured"); }
+		else if (hs_on==hs_total) { hs_cls = ""; strcpy(hs_txt, "All servers connected"); }
+		else if (hs_on==0) { hs_cls = " bad"; strcpy(hs_txt, "No server connected"); }
+		else { hs_cls = " warn"; sprintf(hs_txt, "%d of %d servers connected", hs_on, hs_total); }
+		if (d >= 86400) sprintf(hs_up, "%dd %02dh %02dm", (int)(d/86400), (int)((d/3600)%24), (int)((d/60)%60));
+		else sprintf(hs_up, "%02dh %02dm %02ds", (int)(d/3600), (int)((d/60)%60), (int)(d%60));
+		sprintf( hs_buf, "<div class='hero'><div class='hero-state%s'><i></i>%s</div>"
+			"<div class='hero-top'><div><h2 class='hero-h'>Dashboard</h2><p class='hero-sub'>MultiCS r"REVISION_STR" v"VERSION_STR", running for %s.</p></div>"
+			"<div class='hero-act'><a class='hbtn hp' href='/servers'>Open servers</a><a class='hbtn' href='/watchdog'>Open monitoring</a></div></div>"
+			"<div class='hero-grid'><div class='hero-big'><div class='hero-num'>%d<small> / %d</small></div><div class='hero-cap'>servers connected</div></div>"
+			"<div class='hero-kpis'>",
+			hs_cls, hs_txt, hs_up, hs_on, hs_total);
+		tcp_write(&tcpbuf, sock, hs_buf, strlen(hs_buf) );
+		sprintf( hs_buf, "<div class='hk'><span class='hk-l'>Clients connected</span><span class='hk-v'>%d</span><span class='hk-s'>across all protocols</span></div>", hs_clients);
+		tcp_write(&tcpbuf, sock, hs_buf, strlen(hs_buf) );
+		sprintf( hs_buf, "<div class='hk'><span class='hk-l'>ECM requests</span><span class='hk-v'>%d</span><span class='hk-s'>since start</span></div>", hs_tot);
+		tcp_write(&tcpbuf, sock, hs_buf, strlen(hs_buf) );
+		if (hs_okpct>=0) sprintf( hs_buf, "<div class='hk'><span class='hk-l'>ECM answered</span><span class='hk-v'>%d<small>%%</small></span><span class='hk-s %s'>%d of %d</span></div>", hs_okpct, hs_okpct>=80?"ok":"warn", hs_ok, hs_tot);
+		else sprintf( hs_buf, "<div class='hk'><span class='hk-l'>ECM answered</span><span class='hk-v'>--</span><span class='hk-s'>no requests yet</span></div>");
+		tcp_write(&tcpbuf, sock, hs_buf, strlen(hs_buf) );
+		if (hs_ram>=0) sprintf( hs_buf, "<div class='hk'><span class='hk-l'>Memory in use</span><span class='hk-v'>%d<small>%%</small></span><span class='hk-s %s'>%s</span></div>", hs_ram, hs_ram<85?"ok":"warn", hs_ram<85?"healthy":"high");
+		else sprintf( hs_buf, "<div class='hk'><span class='hk-l'>Memory in use</span><span class='hk-v'>--</span><span class='hk-s'>not available</span></div>");
+		tcp_write(&tcpbuf, sock, hs_buf, strlen(hs_buf) );
+		tcp_writestr(&tcpbuf, sock, "</div></div></div>");
+	}
+
 	// === stat sections ===
 	tcp_writestr(&tcpbuf, sock, "<div style='display:flex;gap:15px;flex-wrap:wrap;margin:10px 0'>");
 
@@ -1345,7 +1407,7 @@ void http_send_index(int sock, http_request *req)
 		int actv = 0;
 		struct server_data *sw = cfg.server;
 		while (sw) { if (!IS_DISABLED(sw->flags)) actv++; sw = sw->next; }
-		sprintf( http_buf, "<span class=stat-label>Activos:</span> %d<br>", actv );
+		sprintf( http_buf, "<span class=stat-label>Active:</span> %d<br>", actv );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 	tcp_writestr(&tcpbuf, sock, "</div></div>");
@@ -1358,9 +1420,9 @@ void http_send_index(int sock, http_request *req)
 	}
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='flex:1;min-width:280px;'>");
 	tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >Clients</h3><div class=stat-value>");
-	sprintf( http_buf, "<span class=stat-label>Conectados:</span> %d<br>", connected_all_clients() );
+	sprintf( http_buf, "<span class=stat-label>Connected:</span> %d<br>", connected_all_clients() );
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	sprintf( http_buf, "<span class=stat-label>ECM activos:</span> %d<br>", activeecm );
+	sprintf( http_buf, "<span class=stat-label>Active ECMs:</span> %d<br>", activeecm );
 	tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	tcp_writestr(&tcpbuf, sock, "</div></div>");
 
@@ -1377,9 +1439,9 @@ void http_send_index(int sock, http_request *req)
 		tcp_writestr(&tcpbuf, sock, "<h3 class=stitle >ECM</h3><div class=stat-value>");
 		sprintf( http_buf, "<span class=stat-label>Total:</span> %d<br>", ttot );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<span class=stat-label>OK:</span> <span style='color:#2ecc71'>%d</span><br>", tok );
+		sprintf( http_buf, "<span class=stat-label>OK:</span> <span style='color:var(--pok)'>%d</span><br>", tok );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<span class=stat-label>NOK:</span> <span style='color:#e74c3c'>%d</span><br>", ttot-tok );
+		sprintf( http_buf, "<span class=stat-label>NOK:</span> <span style='color:var(--pbad)'>%d</span><br>", ttot-tok );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "</div></div></div>");
 	}
@@ -1401,11 +1463,11 @@ void http_send_index(int sock, http_request *req)
 			sprintf( http_buf, "<div class='tile'><div class='lbl'>Uptime</div><div class='big c-cyan'>%s</div><div class='sub'>uptime</div></div>", upbig);
 		}
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>Servers</div><div class='big c-violet'>%d</div><div class='sub'>%d profiles configurados</div></div>", cfg.totalservers, cfg.totalprofiles);
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Servers</div><div class='big c-violet'>%d</div><div class='sub'>%d profiles configured</div></div>", cfg.totalservers, cfg.totalprofiles);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>Clients</div><div class='big c-blue'>%d</div><div class='sub'>conectados agora</div></div>", connected_all_clients());
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Clients</div><div class='big c-blue'>%d</div><div class='sub'>connected now</div></div>", connected_all_clients());
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='tile'><div class='lbl'>ECM Totais</div><div class='big c-green'>%d</div><div class='sub'>%d activos neste ciclo</div></div>", totalecm, activeecm);
+		sprintf( http_buf, "<div class='tile'><div class='lbl'>Total ECMs</div><div class='big c-green'>%d</div><div class='sub'>%d active this cycle</div></div>", totalecm, activeecm);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		sprintf( http_buf, "<div class='tile'><div class='lbl'>RAM</div><div class='big c-amber'>%d%%</div><div class='sub'>%d / %d MB</div></div>", rampct, memtotal?((memtotal-memavail>0&&memavail)?(memtotal-memavail):(memtotal-memfree))/1024:0, memtotal/1024);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -1442,7 +1504,7 @@ void http_send_index(int sock, http_request *req)
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 			else {
-				sprintf( http_buf, "<div class='tile'><div class='lbl'>Referee</div><div class='big c-gray'>--</div><div class='sub'>sem fonte de confianca</div></div>");
+				sprintf( http_buf, "<div class='tile'><div class='lbl'>Referee</div><div class='big c-gray'>--</div><div class='sub'>no trusted source</div></div>");
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
 		}
@@ -1455,18 +1517,18 @@ void http_send_index(int sock, http_request *req)
 		int fairn = arbiter_fairshare_dump(fairbuf, sizeof(fairbuf));
 		tcp_writestr(&tcpbuf, sock, "<div class='trow'>");
 		if (fairn) {
-			sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Fair-Share (ultimo min)</h3><div class=stat-value>%s</div></div>", fairbuf);
+			sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Fair share (last minute)</h3><div class=stat-value>%s</div></div>", fairbuf);
 		}
 		else {
-			sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Fair-Share (ultimo min)</h3><div class=stat-value><span style='color:#8899aa'>sem validacoes</span></div></div>");
+			sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Fair share (last minute)</h3><div class=stat-value><span style='color:var(--pmuted)'>no validations</span></div></div>");
 		}
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Protecoes (desde boot)</h3><div class=stat-value>"
+		sprintf( http_buf, "<div class='stat-section' style='flex:1;min-width:280px;'><h3 class=stitle>Protections (since boot)</h3><div class=stat-value>"
 			"<span class=stat-label>CW Infected:</span> %u<br>"
 			"<span class=stat-label>Rejected:</span> %u<br>"
 			"<span class=stat-label>Disagree by Referee:</span> %u<br>"
 			"<span class=stat-label>Discard by Referee:</span> %u<br>"
-			"<span class=stat-label>Verdict OK:</span> <span style='color:#2ecc71'>%u</span> &nbsp; <span class=stat-label>BLACK:</span> <span style='color:#e74c3c'>%u</span></div></div>",
+			"<span class=stat-label>Verdict OK:</span> <span style='color:var(--pok)'>%u</span> &nbsp; <span class=stat-label>BLACK:</span> <span style='color:var(--pbad)'>%u</span></div></div>",
 			g_hrot_rej, g_agree_rej, g_arbiter_discorda, g_arbiter_discard, g_verdict_ok, g_verdict_black);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "</div>");
@@ -1556,9 +1618,9 @@ static void camd35cells(struct camd35_client_data *cli, char cell[11][2048], con
 			strcat( cell[9], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn del' title='DELETE (remove do Clients.cfg)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('%s?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,path,cli->id);
+	sprintf( temp," <span class='icobtn del' title='Delete this entry from Clients.cfg' onclick=\"if(confirm('Delete user %s from the config file?')) imgrequest('%s?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,path,cli->id);
 	strcat( cell[9], temp );
-	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup)' onclick=\"leOpen('%s',%d)\">Edit</span>", (!strcmp(path,"/cs378xclient"))?"cs378xc":"camd35c", cli->id);
+	sprintf( temp," <span class='icobtn ed' title='Edit line (popup)' onclick=\"leOpen('%s',%d)\">Edit</span>", (!strcmp(path,"/cs378xclient"))?"cs378xc":"camd35c", cli->id);
 	strcat( cell[9], temp );
 	strcat( cell[9], "</span>");
 }
@@ -1966,7 +2028,7 @@ void http_send_cs378x_client(int sock, http_request *req)
 	}
 	else if (get_action==ACTION_DBGINFO) {
 		char dbg[1024];
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d requests, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
@@ -2256,7 +2318,7 @@ void http_service_open(struct tcp_buffer_data *tcpbuf, int sock, const char *tit
 	tcp_writestr(tcpbuf, sock, "<div style='margin:12px 12px 0 12px'><div class=stat-section style='margin:0'>");
 	sprintf( http_buf, "<h3 class=stitle>%s</h3>", title);
 	tcp_writestr(tcpbuf, sock, http_buf);
-	tcp_writestr(tcpbuf, sock, "<table class=maintable><tr><th>Server Name</th><th>Version</th><th>NodeID / DesKey</th><th>Porta</th><th>Status</th><th>Connected</th><th>Total</th></tr>");
+	tcp_writestr(tcpbuf, sock, "<table class=maintable><tr><th>Server Name</th><th>Version</th><th>NodeID / DesKey</th><th>Port</th><th>Status</th><th>Connected</th><th>Total</th></tr>");
 }
 
 void http_service_row(struct tcp_buffer_data *tcpbuf, int sock,
@@ -2345,7 +2407,7 @@ void http_send_camd35_client(int sock, http_request *req)
 	}
 	else if (get_action==ACTION_DBGINFO) {
 		char dbg[1024];
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d requests, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
@@ -2650,8 +2712,8 @@ void http_send_watchdog(int sock, http_request *req)
 	}
 
 	// === 1. Readers: reputacao + bad-cw cache activo ===
-	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Readers (reputacao)</h3>"
-		"<table class='maintable'><tr><th>Reader</th><th>Hop</th><th>Health</th><th>cwbad</th><th>Div</th><th>Canais marcados</th><th>OK/total</th><th>Ultimas 24h (15min/barra)</th></tr>");
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Readers (reputation)</h3>"
+		"<table class='maintable'><tr><th>Reader</th><th>Hop</th><th>Health</th><th>cwbad</th><th>Div</th><th>Flagged channels</th><th>OK/total</th><th>Last 24 h (15 min per bar)</th></tr>");
 	struct server_data *srv = cfg.server;
 	while (srv) {
 		int h = 0, hen = 0;
@@ -2731,7 +2793,7 @@ void http_send_watchdog(int sock, http_request *req)
 			}
 			// legenda minima
 			tcp_writestr(&tcpbuf, sock, "<text x='2' y='50' font-size='7' fill='#9aa4b2'>24h atras</text>");
-			tcp_writestr(&tcpbuf, sock, "<text x='176' y='50' font-size='7' fill='#9aa4b2'>agora</text>");
+			tcp_writestr(&tcpbuf, sock, "<text x='176' y='50' font-size='7' fill='#9aa4b2'>now</text>");
 		}
 		tcp_writestr(&tcpbuf, sock, "</svg></td></tr>");
 		srv = srv->next;
@@ -2739,8 +2801,8 @@ void http_send_watchdog(int sock, http_request *req)
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
 
 	// === 2. Bad-cw cache activo (por reader) ===
-	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Bad-CW cache activo (canais a saltar por reader)</h3>"
-		"<table class='maintable'><tr><th>Reader</th><th>Canal</th><th>Marcado ha</th></tr>");
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Active bad-CW cache (channels skipped per reader)</h3>"
+		"<table class='maintable'><tr><th>Reader</th><th>Channel</th><th>Flagged for</th></tr>");
 	int anybad = 0;
 	srv = cfg.server;
 	while (srv) {
@@ -2757,38 +2819,38 @@ void http_send_watchdog(int sock, http_request *req)
 		}
 		srv = srv->next;
 	}
-	if (!anybad) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='3'>Sem registos activos - nenhuma fonte marcada.</td></tr>");
+	if (!anybad) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='3'>No active entries - no source is flagged.</td></tr>");
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
 
 	// === 2.5 Canais Sem Resposta (deadchan - storm suprimido) ===
 	{
 		uint16_t dca[20]; uint32_t dcp[20]; uint16_t dcs[20]; uint32_t dag[20];
 		int dn = deadchan_top(20, dca, dcp, dcs, dag);
-		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Canais Sem Resposta</h3>"
+		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Channels without an answer</h3>"
 			"<table class='maintable'><tr><th style='text-align:center'>Channel Name</th><th style='text-align:center'>Caid Ident Sid</th><th style='text-align:center'>ECM Request</th><th style='text-align:center'>Bad ECM/CW</th><th style='text-align:center'>ECM Time</th><th style='text-align:center'>Last CW Get</th></tr>");
 		int k;
 		for (k=0; k<dn; k++) {
 			char agebuf[48];
-			if (dag[k]==0xFFFFFFFF) strcpy(agebuf, "nunca respondeu");
+			if (dag[k]==0xFFFFFFFF) strcpy(agebuf, "never answered");
 			else http_age_str(dag[k], agebuf, sizeof(agebuf));
 			sprintf( http_buf, "<tr><td>%s</td><td align=center><span class='muted'>%04x:%06x:%04x</span></td><td align=center class='muted'>--</td><td align=center class='muted'>--</td><td align=center class='muted'>--</td><td align=center>%s</td></tr>",
 				getchname(dca[k], dcp[k], dcs[k]), dca[k], dcp[k], dcs[k], agebuf );
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
-		if (!dn) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='6'>Nenhum canal sem resposta - todos os pedidos estao a ser respondidos.</td></tr>");
+		if (!dn) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='6'>No unanswered channels - every request is being answered.</td></tr>");
 		tcp_writestr(&tcpbuf, sock, "</table></div>");
 	}
 
 	// === 2.6 Budget Engine - Anti-Share Protection ===
 	{
 		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Budget Engine - Anti-Share Protection</h3>"
-			"<table class='maintable'><tr><th style='text-align:center'>Reader Name</th><th style='text-align:center'>IP</th><th style='text-align:center'>Porta</th><th style='text-align:center'>Consumo por Minuto</th><th style='text-align:center'>Limite de Consumo</th><th style='text-align:center'>Percentagem de Uso</th></tr>");
+			"<table class='maintable'><tr><th style='text-align:center'>Reader Name</th><th style='text-align:center'>IP</th><th style='text-align:center'>Port</th><th style='text-align:center'>Usage per minute</th><th style='text-align:center'>Usage limit</th><th style='text-align:center'>Usage percentage</th></tr>");
 		srv = cfg.server;
 		while (srv) {
 			uint32_t cons = 0, ceiling = 0;
 			int pct = 0;
 			srv_budget_values(srv, &cons, &ceiling, &pct);
-			const char *pc = pct>=90 ? "#f87171" : (pct>=60 ? "#fbbf24" : "#34d399");
+			const char *pc = pct>=90 ? "var(--pbad)" : (pct>=60 ? "var(--pwarn)" : "var(--pok)");
 			char consbuf[64];
 			if (srv->budget_on) sprintf( consbuf, "%u/min", cons );
 			else strcpy( consbuf, "off");
@@ -2804,7 +2866,7 @@ void http_send_watchdog(int sock, http_request *req)
 	}
 
 	// === 3. Cycle Engine - Canais com Lixo ===
-	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Cycle Engine - Canais com Lixo</h3>"
+	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Cycle Engine - junk channels</h3>"
 		"<table class='maintable'><tr><th style='text-align:center'>Channel Name</th><th style='text-align:center'>Caid</th><th style='text-align:center'>Ident</th><th style='text-align:center'>SID</th><th style='text-align:center'>Analysed Time (s)</th><th style='text-align:center'>CW/ECM Requests</th><th style='text-align:center'>Bad CW/ECM</th></tr>");
 	{
 		struct dcwchan_info info[128];
@@ -2818,7 +2880,7 @@ void http_send_watchdog(int sock, http_request *req)
 				getchname(info[k].caid, info[k].provid, info[k].sid), info[k].caid, info[k].provid, info[k].sid, secbuf, info[k].samples, info[k].anomalies );
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
-		if (!n) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='7'>O motor ainda nao tem canais aprendidos (o DCW CYCLE ENGINE aprende com o trafego).</td></tr>");
+		if (!n) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='7'>The engine has not learned any channels yet (DCW CYCLE ENGINE learns from traffic).</td></tr>");
 	}
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
 
@@ -2826,8 +2888,8 @@ void http_send_watchdog(int sock, http_request *req)
 	{
 		uint16_t nca[20]; uint32_t ncp[20]; uint16_t ncs[20]; uint8_t nnn[20], nn1[20], nn2[20];
 		int nn = nanoch_top(20, nca, ncp, ncs, nnn, nn1, nn2);
-		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Nanos por canal (streams com mais de 1 nano)</h3>"
-			"<table class='maintable'><tr><th>Canal</th><th>Nanos vistos</th></tr>");
+		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Nanos per channel (streams with more than 1 nano)</h3>"
+			"<table class='maintable'><tr><th>Channel</th><th>Nanos seen</th></tr>");
 		int k;
 		for (k=0; k<nn; k++) {
 			char nanosbuf[64];
@@ -2839,7 +2901,7 @@ void http_send_watchdog(int sock, http_request *req)
 				getchname(nca[k], ncp[k], ncs[k]), nca[k], ncp[k], ncs[k], nanosbuf );
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
-		if (!nn) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='2'>Nenhum canal com mais de 1 nano (tudo streams uniformes).</td></tr>");
+		if (!nn) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='2'>No channel has more than 1 nano (all streams are uniform).</td></tr>");
 		tcp_writestr(&tcpbuf, sock, "</table></div>");
 	}
 
@@ -2911,7 +2973,7 @@ void http_send_watchdog(int sock, http_request *req)
 		http_age_str(up, upbuf, sizeof(upbuf));
 		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >Protection Statistics</h3>"
 			"<table class=maintable><tr><th style='text-align:center'>Description</th><th style='text-align:center'>Value</th><th style='text-align:center'>Total ECM's</th><th style='text-align:center'>ECM OK</th><th style='text-align:center'>ECM NOK</th><th style='text-align:center'>Channel Name</th><th style='text-align:center'>Caid Ident Sid</th><th style='text-align:center'>Request info</th><th style='text-align:center'>Time</th></tr>");
-		sprintf( http_buf, "<tr><td><b>Uptime do processo</b></td><td align=center>%s</td><td align=center>%d</td><td align=center>%d</td><td align=center>%d</td><td align=center class='muted'>--</td><td align=center class='muted'>--</td><td align=center class='muted'>--</td><td align=center class='muted'>--</td></tr>",
+		sprintf( http_buf, "<tr><td><b>Process uptime</b></td><td align=center>%s</td><td align=center>%d</td><td align=center>%d</td><td align=center>%d</td><td align=center class='muted'>--</td><td align=center class='muted'>--</td><td align=center class='muted'>--</td><td align=center class='muted'>--</td></tr>",
 			upbuf, gecm, gok, gnok );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		int evn = 0;
@@ -2941,7 +3003,7 @@ void http_send_watchdog(int sock, http_request *req)
 			evn++;
 			ev = prot_event_get(evn, &age);
 		}
-		if (!evn) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='9'>Sem eventos ainda (filtros em AUTO - ativam sozinhos quando necessario).</td></tr>");
+		if (!evn) tcp_writestr(&tcpbuf, sock, "<tr><td colspan='9'>No events yet (filters are in AUTO mode and switch on by themselves when needed).</td></tr>");
 		tcp_writestr(&tcpbuf, sock, "</table></div>");
 	}
 
@@ -3040,7 +3102,7 @@ void http_send_debug(int sock, http_request *req)
 			i++;
 			if (i>=MAX_DBGLINES) i=0;
 		} while (i!=current);
-		if (!shown) tcp_writestr(&tcpbuf, sock, "(sem entradas para este filtro)\n");
+		if (!shown) tcp_writestr(&tcpbuf, sock, "(no entries for this filter)\n");
 		tcp_writestr(&tcpbuf, sock, "</pre>");
 		tcp_flush(&tcpbuf, sock);
 		return;
@@ -3052,7 +3114,7 @@ void http_send_debug(int sock, http_request *req)
 		sprintf( http_buf, "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Disposition: attachment; filename=\"multics-debug.txt\"\r\nCache-Control: no-cache, no-store, must-revalidate\r\nConnection: close\r\n\r\n");
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "========================================\n");
-		tcp_writestr(&tcpbuf, sock, " MultiCS r1000 debug log (ultimas entradas)\n");
+		tcp_writestr(&tcpbuf, sock, " MultiCS r1000 debug log (latest entries)\n");
 		sprintf( http_buf, " %s\n", cfg.http.title);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_writestr(&tcpbuf, sock, "========================================\n\n");
@@ -3128,7 +3190,7 @@ void http_send_debug(int sock, http_request *req)
 			i++;
 			if (i>=MAX_DBGLINES) i=0;
 		} while (i!=current);
-		sprintf( http_buf, "</pre></div><br><a class='sbutton' href='/debug?action=download'>Download Log (txt)</a>&nbsp;<span style='font-size:11px;'>guarda as ultimas %d entradas do log num ficheiro multics-debug.txt</span></fieldset>", MAX_DBGLINES); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		sprintf( http_buf, "</pre></div><br><a class='sbutton' href='/debug?action=download'>Download Log (txt)</a>&nbsp;<span style='font-size:11px;'>saves the last %d log entries to a file named multics-debug.txt</span></fieldset>", MAX_DBGLINES); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 
 	// Paths (binario + ficheiros de config) - diagnostico
@@ -3423,9 +3485,9 @@ void http_send_login(int sock, http_request *req, int error){
 	tcp_writestr(&tcpbuf, sock, "<span class='brand'>MultiCS r1000</span>");
 	tcp_writestr(&tcpbuf, sock, "<span class='brand-by'>by Sharillas</span>");
 	tcp_writestr(&tcpbuf, sock, "<form method='POST' action='/login'>");
-	tcp_writestr(&tcpbuf, sock, "<input type='text' name='user' placeholder='User' autocomplete='username'>");
-	tcp_writestr(&tcpbuf, sock, "<input type='password' name='pass' placeholder='Password' autocomplete='current-password'>");
-	tcp_writestr(&tcpbuf, sock, "<input type='submit' value='Login'>");
+	tcp_writestr(&tcpbuf, sock, "<input type='text' name='user' placeholder='User' aria-label='User' autocomplete='username' autofocus>");
+	tcp_writestr(&tcpbuf, sock, "<input type='password' name='pass' placeholder='Password' aria-label='Password' autocomplete='current-password'>");
+	tcp_writestr(&tcpbuf, sock, "<input type='submit' value='Sign in'>");
 	tcp_writestr(&tcpbuf, sock, "</form>");
 	if (error==1) tcp_writestr(&tcpbuf, sock, "<div class='login-error'>Invalid user or password</div>");
 	else if (error==2) tcp_writestr(&tcpbuf, sock, "<div class='login-error'>Too many failed attempts. Try again later.</div>");
@@ -3555,7 +3617,7 @@ void http_send_iptables(int sock, http_request *req)
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 	if (!ipblock_count)
-		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=4 style='text-align:center;color:#888'>No blocked IPs</td></tr>");
+		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=4 style='text-align:center;color:var(--pmuted)'>No blocked IPs</td></tr>");
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
 
 	tcp_writestr(&tcpbuf, sock, "</div></body></html>");
@@ -3676,7 +3738,7 @@ static void card_groups_html(struct cs_card_data *card, char *out, int outsz)
 		}
 		if (cnt2) {
 			char line[1024];
-			snprintf(line, sizeof(line), "<font style='font-size:9px;color:#8899aa'>fora dos perfis:</font><br>%s", provs);
+			snprintf(line, sizeof(line), "<font style='font-size:9px;color:var(--pmuted)'>outside profiles:</font><br>%s", provs);
 			if ( (strlen(out)+strlen(line)) < (outsz-24) ) strcat(out, line);
 		}
 		if (!shown && !cnt2) {
@@ -3865,7 +3927,7 @@ void getservercells(struct server_data *srv, char cell[16][2048] )
 		while (card) {
 			char line[2300] = "";
 			char *pkg = caid_pkg_name(card->caid);
-			sprintf( line, "<div style='border-top:1px solid #2c333e;padding-top:3px;margin-top:3px;font-size:12px;'><span class='caidorange'>%04x [%s]</span></div>", card->caid, pkg?pkg:"");
+			sprintf( line, "<div style='border-top:1px solid var(--pline);padding-top:3px;margin-top:3px;font-size:12px;'><span class='caidorange'>%04x [%s]</span></div>", card->caid, pkg?pkg:"");
 			if ( (strlen(cell[11])+strlen(line)) < (sizeof(cell[11])-48) ) strcat( cell[11], line );
 			int pi;
 			for (pi=0; pi<card->nbprov; pi++) {
@@ -3932,9 +3994,9 @@ void getservercells(struct server_data *srv, char cell[16][2048] )
 	}
 	sprintf( temp," <span class='icobtn inf' title='Info completa do server (todos os cards e detalhes)' onclick=\"location.href='/server?id=%d'\">INF</span>",srv->id);
 	strcat( cell[13], temp );
-	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup: protocolo, host, user, pass, options)' onclick=\"leOpen('server',%d)\">Edit</span>",srv->id);
+	sprintf( temp," <span class='icobtn ed' title='Edit line (popup: protocol, host, user, pass, options)' onclick=\"leOpen('server',%d)\">Edit</span>",srv->id);
 	strcat( cell[13], temp );
-	sprintf( temp," <span class='icobtn del' title='DELETE (remove do Servers.cfg)' onclick=\"if(confirm('Apagar o server %s:%d do ficheiro de config?')) imgrequest('/server?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",srv->host?srv->host->name:"?",srv->port,srv->id);
+	sprintf( temp," <span class='icobtn del' title='Delete this entry from Servers.cfg' onclick=\"if(confirm('Delete server %s:%d from the config file?')) imgrequest('/server?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",srv->host?srv->host->name:"?",srv->port,srv->id);
 	strcat( cell[13], temp );
 	strcat( cell[13], "</span>");
 }
@@ -4157,7 +4219,7 @@ void http_send_servers(int sock, http_request *req)
 		// separador do protocolo + cabecalho
 		sprintf( http_buf, "<tr class='proto-sep'><td colspan=15><b>%s</b> <span class='muted'>servers</span></td></tr>\n", groups[g].title);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		tcp_writestr(&tcpbuf, sock, "<tr class='proto-head'><th>Reader</th><th>IP</th><th>Porta</th><th>Time</th><th>ECM OK</th><th>Total %</th><th>Health</th><th>Hits</th><th>Resp.</th><th>Last Cw</th><th>Qt. Cards</th><th>Cards</th><th style='width:80px;min-width:80px;'>Hop's</th><th>Truth</th><th style='width:110px;min-width:110px;'>Actions</th></tr>\n");
+		tcp_writestr(&tcpbuf, sock, "<tr class='proto-head'><th>Reader</th><th>IP</th><th>Port</th><th>Time</th><th>ECM OK</th><th>Total %</th><th>Health</th><th>Hits</th><th>Resp.</th><th>Last Cw</th><th>Qt. Cards</th><th>Cards</th><th style='width:80px;min-width:80px;'>Hop's</th><th>Truth</th><th style='width:110px;min-width:110px;'>Actions</th></tr>\n");
 		// as linhas deste protocolo (lista normal + lista cacheex)
 		int listi;
 		for (listi=0; listi<2; listi++) {
@@ -4179,17 +4241,17 @@ void http_send_servers(int sock, http_request *req)
 	// ===== ECM DEDUP (1 pedido unico por ECM em voo) =====
 	// renderizado no page E no div (autorefresh AJAX) para nao desaparecer
 	if ( (get_action==0)||(get_action==ACTION_DIV) ) {
-		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >ECM Dedup (todos os readers)</h3><div class=stat-value>");
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'><h3 class=stitle >ECM dedup (all readers)</h3><div class=stat-value>");
 		if ((g_ecm_unique+g_ecm_dedup)>0) {
-			sprintf( http_buf, "Pedidos unicos ao reader: <b>%d</b> | Repetidos evitados (dedup): <b>%d</b> (%d%%%%)<br>", g_ecm_unique, g_ecm_dedup, (g_ecm_unique+g_ecm_dedup)?((g_ecm_dedup*100)/(g_ecm_unique+g_ecm_dedup)):0);
+			sprintf( http_buf, "Unique requests to the reader: <b>%d</b> | Repeats avoided (dedup): <b>%d</b> (%d%%%%)<br>", g_ecm_unique, g_ecm_dedup, (g_ecm_unique+g_ecm_dedup)?((g_ecm_dedup*100)/(g_ecm_unique+g_ecm_dedup)):0);
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
-		else tcp_writestr(&tcpbuf, sock, "Sem atividade de ECM ainda.<br>");
+		else tcp_writestr(&tcpbuf, sock, "No ECM activity yet.<br>");
 		// top de canais com mais dedup
 		uint16_t dcaid[8]; uint16_t dsid[8]; uint32_t duni[8]; uint32_t dded[8];
 		int dn = dedup_ch_top(8, dcaid, dsid, duni, dded);
 		if (dn>0) {
-			tcp_writestr(&tcpbuf, sock, "<table class=maintable style='margin-top:6px'><tr><th>Canal</th><th>CAID</th><th>SID</th><th>Unicos</th><th>Evitados</th></tr>");
+			tcp_writestr(&tcpbuf, sock, "<table class=maintable style='margin-top:6px'><tr><th>Channel</th><th>CAID</th><th>SID</th><th>Unique</th><th>Avoided</th></tr>");
 			int di;
 			for (di=0; di<dn; di++) {
 				char *chname = NULL;
@@ -4255,7 +4317,7 @@ void http_send_server(int sock, http_request *req)
 	//
 	if (get_action==8) {
 		char dbg[1024];
-		sprintf( dbg, "<div class='dbginfo'><b>%s:%d</b> | Type: %s | Status: %s | Busy: %s<br>ECM: %d pedidos, %d OK (%d%%) | Hits: %d | %s</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s:%d</b> | Type: %s | Status: %s | Busy: %s<br>ECM: %d requests, %d OK (%d%%) | Hits: %d | %s</div>",
 			srv->host? (char*)srv->host->name : "?", srv->port,
 			(srv->type==TYPE_NEWCAMD)?"Newcamd":(srv->type==TYPE_CCCAM)?"CCcam":"Unknown",
 			srv->connection.status>0?"CONNECTED":(srv->connection.status<0?"CONNECTING...":"OFFLINE"),
@@ -4594,7 +4656,7 @@ void getcachecells(struct cachepeer_data *peer, char cell[14][2048] )
 			strcat( cell[12], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn del' title='DELETE (remove do ficheiro de config)' onclick=\"if(confirm('Apagar o peer %s:%d do ficheiro de config?')) imgrequest('/cachepeer?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",peer->host->name,peer->port,peer->id);
+	sprintf( temp," <span class='icobtn del' title='Delete this entry from the config file' onclick=\"if(confirm('Delete peer %s:%d from the config file?')) imgrequest('/cachepeer?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",peer->host->name,peer->port,peer->id);
 	strcat( cell[12], temp );
 	strcat( cell[12], "</span>");
 }
@@ -5152,10 +5214,10 @@ void getprofilecells(struct cardserver_data *cs, char cell[13][8192])
 	// CELL12 # Actions (ON/OFF do perfil)
 	cell[12][0] = 0;
 	if (cs->flags&FLAG_DISABLE) {
-		sprintf( cell[12], "<span class='icobtn on' title='Ativar' onclick=\"imgrequest('/profile?id=%d&action=enable',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span>",cs->id);
+		sprintf( cell[12], "<span class='icobtn on' title='Enable' onclick=\"imgrequest('/profile?id=%d&action=enable',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span>",cs->id);
 	}
 	else {
-		sprintf( cell[12], "<span class='icobtn off' title='Desativar (comenta o perfil no profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">OFF</span>",cs->id);
+		sprintf( cell[12], "<span class='icobtn off' title='Disable (comments the profile out in profiles.cfg)' onclick=\"imgrequest('/profile?id=%d&action=off',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">OFF</span>",cs->id);
 	}
 }
 
@@ -5351,7 +5413,7 @@ void http_send_lineedit(int sock, http_request *req)
 
 		if (isserver) {
 			struct server_data *srv = getsrvbyid(id);
-			if (!srv) { http_send_text(sock, "<span class='miss'>Server nao encontrado</span>"); return; }
+			if (!srv) { http_send_text(sock, "<span class='miss'>Server not found</span>"); return; }
 			strcpy(host, srv->host ? (char*)srv->host->name : "");
 			strcpy(user, srv->user);
 			strcpy(pass, srv->pass);
@@ -5393,32 +5455,32 @@ void http_send_lineedit(int sock, http_request *req)
 		}
 		else if (!strcmp(type,"user")) {
 			struct cs_client_data *cli = getnewcamdclientbyid(id);
-			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "USER: %s", cli->user);
 		}
 		else if (!strcmp(type,"f")) {
 			struct cc_client_data *cli = getcccamclientbyid(id);
-			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "F: %s", cli->user);
 			strcpy(proto,"f");
 		}
 		else if (!strcmp(type,"mg")) {
 			struct mg_client_data *cli = getmgcamdclientbyid(id);
-			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "MG: %s", cli->user);
 		}
 		else if (!strcmp(type,"cs378xc")) {
 			struct camd35_client_data *cli = getcs378xclientbyid(id);
-			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "CS378X USER: %s", cli->user);
 		}
 		else if (!strcmp(type,"camd35c")) {
 			struct camd35_client_data *cli = getcamd35clientbyid(id);
-			if (!cli) { http_send_text(sock, "<span class='miss'>Cliente nao encontrado</span>"); return; }
+			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "CAMD35 USER: %s", cli->user);
 		}
@@ -5442,14 +5504,14 @@ void http_send_lineedit(int sock, http_request *req)
 		}
 
 		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
-		sprintf( http_buf, "<b>Editar linha</b> <span style='float:right;cursor:pointer;color:#c88' onclick=\"leClose()\">[X]</span><br>"
+		sprintf( http_buf, "<b>Edit line</b> <span class='le-x' role='button' tabindex='0' title='Close' onclick=\"leClose()\" onkeydown=\"if(event.key==='Enter'||event.key===' ')leClose()\">Close</span><br>"
 			"<input type=hidden id='le_type' value='%s'><input type=hidden id='le_id' value='%d'>"
 			"<input type=hidden id='le_old' value=\"%s\">"
 			"<table style='width:100%%;font-size:13px'>", type, id, eold);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
 		if (isserver) {
-			sprintf( http_buf, "<tr><td>Protocolo</td><td><select id='le_proto'>"
+			sprintf( http_buf, "<tr><td>Protocol</td><td><select id='le_proto'>"
 				"<option value='cccam'%s>CCcam</option>"
 				"<option value='newcamd'%s>Newcamd</option>"
 				"<option value='cs378x'%s>CS378X</option>"
@@ -5458,7 +5520,7 @@ void http_send_lineedit(int sock, http_request *req)
 				"<option value='cache'%s>Cache</option>"
 				"</select></td></tr>"
 				"<tr><td>Host</td><td><input id='le_host' style='width:100%%' value=\"%s\"></td></tr>"
-				"<tr><td>Porta</td><td><input id='le_port' style='width:80px' value='%d'></td></tr>"
+				"<tr><td>Port</td><td><input id='le_port' style='width:80px' value='%d'></td></tr>"
 				"<tr><td>User</td><td><input id='le_user' style='width:100%%' value=\"%s\"></td></tr>"
 				"<tr><td>Password</td><td><input id='le_pass' style='width:100%%' value=\"%s\"></td></tr>",
 				!strcmp(proto,"cccam")?" selected":"", !strcmp(proto,"newcamd")?" selected":"",
@@ -5475,12 +5537,12 @@ void http_send_lineedit(int sock, http_request *req)
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
 
-		sprintf( http_buf, "<tr id='lerow_key'%s><td>DesKey (14 pares)</td><td><input id='le_key' style='width:100%%' value=\"%s\"></td></tr>",
+		sprintf( http_buf, "<tr id='lerow_key'%s><td>DesKey (14 pairs)</td><td><input id='le_key' style='width:100%%' value=\"%s\"></td></tr>",
 			(!isserver || !strcmp(proto,"newcamd"))?"":" style='display:none'", ekey);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
-		sprintf( http_buf, "<tr><td>Options</td><td><input id='le_opts' style='width:100%%' value=\"%s\" placeholder='ex: nocheck=yes; hop=3; profiles=15003; name=\"\"X\"\"; budget_max=60'></td></tr>"
-			"<tr><td></td><td style='text-align:right'><button class='sbutton' onclick=\"leSave()\">SAVE</button> <button class='sbutton' onclick=\"leClose()\">CANCELAR</button></td></tr>"
+		sprintf( http_buf, "<tr><td>Options</td><td><input id='le_opts' style='width:100%%' value=\"%s\" placeholder='e.g. nocheck=yes; hop=3; profiles=15003; name=\"\"X\"\"; budget_max=60'></td></tr>"
+			"<tr><td></td><td style='text-align:right'><button class='sbutton' onclick=\"leSave()\">Save line</button> <button class='sbutton' onclick=\"leClose()\">Cancel</button></td></tr>"
 			"</table>"
 			"<script>"
 			"var lep=document.getElementById('le_proto');"
@@ -5548,7 +5610,7 @@ void http_send_lineedit(int sock, http_request *req)
 			else sprintf(newline, "CAMD35 USER: %s %s%s", user, pass, tail);
 			if (old[0]) config_line_replace("Clients.cfg", old, newline);
 		}
-		if (!newline[0]) { http_send_text(sock, "<span class='miss'>ERRO</span>"); return; }
+		if (!newline[0]) { http_send_text(sock, "<span class='miss'>ERROR</span>"); return; }
 
 		// reload
 		free_filenames( &cfg );
@@ -5783,7 +5845,7 @@ void http_send_profiles(int sock, http_request *req)
 									}
 									encname[a] = 0;
 									if (alt==1) alt=2; else alt=1;
-									snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt%d><td>%s (comentado)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td>-</td><td><span style='float:right;'><span class='icobtn on' title='Ativar (remove o # no profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span></span></td></tr>", alt, secname, encname);
+									snprintf( http_buf, sizeof(http_buf),"\n<tr class=alt%d><td>%s (commented out)</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td align=center>-</td><td>-</td><td><span style='float:right;'><span class='icobtn on' title='Enable (removes the # in profiles.cfg)' onclick=\"imgrequest('/profiles?action=onprof&name=%s',this);setTimeout('updateDiv()',3000);setTimeout('updateDiv()',6000);setTimeout('updateDiv()',9000)\">ON</span></span></td></tr>", alt, secname, encname);
 									tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 								}
 								} // fim do else (skip DEFAULT/BISS Emu)
@@ -6040,9 +6102,9 @@ void getnewcamdclientcells(struct cs_client_data *cli, char cell[13][2048])
 			strcat( cell[11], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn del' title='DELETE (remove do ficheiro de config)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('/newcamdclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
+	sprintf( temp," <span class='icobtn del' title='Delete this entry from the config file' onclick=\"if(confirm('Delete user %s from the config file?')) imgrequest('/newcamdclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
 	strcat( cell[11], temp );
-	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup)' onclick=\"leOpen('user',%d)\">Edit</span>",cli->id);
+	sprintf( temp," <span class='icobtn ed' title='Edit line (popup)' onclick=\"leOpen('user',%d)\">Edit</span>",cli->id);
 	strcat( cell[11], temp );
 	strcat( cell[11], "</span>");
 
@@ -6175,7 +6237,7 @@ void http_send_newcamd(int sock, http_request *req) // page, div, row
 		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
 		// Info do servico local (v1.51): um servico por perfil
 		{
-			http_service_open(&tcpbuf, sock, "Newcamd Server (perfis / servicos locais)");
+			http_service_open(&tcpbuf, sock, "Newcamd server (profiles / local services)");
 			struct cardserver_data *pcs = cfg.cardserver;
 			while (pcs) {
 				int pt, pc, pa;
@@ -6354,7 +6416,7 @@ void http_send_newcamd_client(int sock, http_request *req)
 	//
 	if (get_action==8) {
 		char dbg[1536];
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s | Logins: %d (err %d, dif IP %d)<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago<br>Last channel: %04x:%06x:%04x (%dms)%s | Type: %d | Flags: 0x%08x | Profile: %s</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s | Logins: %d (err %d, dif IP %d)<br>ECM: %d requests, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago<br>Last channel: %04x:%06x:%04x (%dms)%s | Type: %d | Flags: 0x%08x | Profile: %s</div>",
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->nblogin, cli->nbloginerror, cli->nbdiffip,
@@ -6682,7 +6744,7 @@ void http_send_profile(int sock, http_request *req)
 		char dbg[1536];
 		int btotal, bconnected, bactive;
 		cs_clients( cs, &btotal, &bconnected, &bactive );
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> (id %d) | CAID: %04x | Port: %d | Clients: %d (%d ligados)<br>ECM checks: DCW=%s | DCW timeout: %dms | Max servers: %d | Cache: %s%s%s%s%s%s</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> (id %d) | CAID: %04x | Port: %d | Clients: %d (%d connected)<br>ECM checks: DCW=%s | DCW timeout: %dms | Max servers: %d | Cache: %s%s%s%s%s%s</div>",
 			cs->name, cs->id, cs->card.caid, cs->newcamd.port, btotal, bconnected,
 			cs->option.dcw.check?"YES":"NO", cs->option.dcw.timeout, cs->option.server.max,
 			cs->option.fallowcache?"ON":"OFF",
@@ -7085,9 +7147,9 @@ void getcccamcells(struct cc_client_data *cli, char cell[13][2048])
 			strcat( cell[11], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn del' title='DELETE (remove do Clients.cfg)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('/cccamclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
+	sprintf( temp," <span class='icobtn del' title='Delete this entry from Clients.cfg' onclick=\"if(confirm('Delete user %s from the config file?')) imgrequest('/cccamclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
 	strcat( cell[11], temp );
-	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup)' onclick=\"leOpen('f',%d)\">Edit</span>",cli->id);
+	sprintf( temp," <span class='icobtn ed' title='Edit line (popup)' onclick=\"leOpen('f',%d)\">Edit</span>",cli->id);
 	strcat( cell[11], temp );
 	strcat( cell[11], "</span>");
 }
@@ -7544,7 +7606,7 @@ void cacheex_server_cells(struct server_data *srv, char cell[17][2048], int off 
 		sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/cacheex?action=disable&id=%d',this);setTimeout('updateDiv()',600)\">OFF</span>",srv->id+off);
 	}
 	strcat( cell[15], temp );
-	sprintf( temp," <span class='icobtn del' title='DELETE (remove do ficheiro de config)' onclick=\"if(confirm('Apagar o reader %s do ficheiro de config?')) imgrequest('/cacheex?action=delete&id=%d',this);setTimeout('updateDiv()',900)\">DEL</span>",srv->name[0]?srv->name:"?",srv->id+off);
+	sprintf( temp," <span class='icobtn del' title='Delete this entry from the config file' onclick=\"if(confirm('Delete reader %s from the config file?')) imgrequest('/cacheex?action=delete&id=%d',this);setTimeout('updateDiv()',900)\">DEL</span>",srv->name[0]?srv->name:"?",srv->id+off);
 	strcat( cell[15], temp );
 	strcat( cell[15], "</span>");
 }
@@ -7609,7 +7671,7 @@ void cacheex_cccamclient_cells(struct cc_client_data *cli, char cell[17][2048], 
 		sprintf( temp," <span class='icobtn off' title='Disable' onclick=\"imgrequest('/cacheex?action=disable&id=%d',this);setTimeout('updateDiv()',600)\">OFF</span>",cli->id+off);
 	}
 	strcat( cell[15], temp );
-	sprintf( temp," <span class='icobtn del' title='DELETE (remove do ficheiro de config)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('/cacheex?action=delete&id=%d',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id+off);
+	sprintf( temp," <span class='icobtn del' title='Delete this entry from the config file' onclick=\"if(confirm('Delete user %s from the config file?')) imgrequest('/cacheex?action=delete&id=%d',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id+off);
 	strcat( cell[15], temp );
 	strcat( cell[15], "</span>");
 }
@@ -7775,7 +7837,7 @@ void http_send_cacheex(int sock, http_request *req)
 		tcp_writestr(&tcpbuf, sock, "\n<div id='mainDiv'>");
 		// Info do servico local (v1.51)
 		{
-			http_service_open(&tcpbuf, sock, "CacheEX (servicos locais com cacheex)");
+			http_service_open(&tcpbuf, sock, "CacheEX (local services with cacheex)");
 #ifdef CCCAM_SRV
 			{
 				struct cccam_server_data *box = cfg.cccam.server;
@@ -8013,7 +8075,7 @@ void http_send_cccam_client(int sock, http_request *req)
 	}
 	else if (get_action==ACTION_DBGINFO) {
 		char dbg[1024];
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d requests, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
@@ -8375,9 +8437,9 @@ void getmgcamdcells(struct mg_client_data *cli, char cell[13][2048])
 			strcat( cell[11], temp );
 		}
 	}
-	sprintf( temp," <span class='icobtn del' title='DELETE (remove do Clients.cfg)' onclick=\"if(confirm('Apagar o user %s do ficheiro de config?')) imgrequest('/mgcamdclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
+	sprintf( temp," <span class='icobtn del' title='Delete this entry from Clients.cfg' onclick=\"if(confirm('Delete user %s from the config file?')) imgrequest('/mgcamdclient?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,cli->id);
 	strcat( cell[11], temp );
-	sprintf( temp," <span class='icobtn ed' title='EDITAR linha (popup)' onclick=\"leOpen('mg',%d)\">Edit</span>",cli->id);
+	sprintf( temp," <span class='icobtn ed' title='Edit line (popup)' onclick=\"leOpen('mg',%d)\">Edit</span>",cli->id);
 	strcat( cell[11], temp );
 	strcat( cell[11], "</span>");
 
@@ -8810,7 +8872,7 @@ void http_send_mgcamd_client(int sock, http_request *req)
 	}
 	else if (get_action==ACTION_DBGINFO) {
 		char dbg[1024];
-		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d pedidos, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
+		sprintf( dbg, "<div class='dbginfo'><b>%s</b> | IP: %s | Status: %s<br>ECM: %d requests, %d denied, %d OK | Last ECM: %us ago | Last DCW: %us ago</div>",
 			cli->user, (char*)ip2string(cli->ip),
 			cli->connection.status>0?"CONNECTED":(cli->connection.status<0?"CONNECTING...":"OFFLINE"),
 			cli->ecmnb, cli->ecmdenied, cli->ecmok,
@@ -9193,7 +9255,7 @@ void http_send_packages_table(struct tcp_buffer_data *tcpbuf, int sock)
 		char filtcell[520];
 		if (cs) {
 			sprintf( profcell, "<a href='/profile?id=%d'>%s</a> (%d)", cs->id, cs->name, cs->newcamd.port);
-			if (cs->ecmaccepted) sprintf( okcell, "%d <span style='color:#8899aa'>(%d%%)</span>", cs->ecmok, (cs->ecmok*100)/cs->ecmaccepted);
+			if (cs->ecmaccepted) sprintf( okcell, "%d <span style='color:var(--pmuted)'>(%d%%)</span>", cs->ecmok, (cs->ecmok*100)/cs->ecmaccepted);
 			else sprintf( okcell, "%d", cs->ecmok);
 			char b[480] = "";
 			if (cs->option.dcw.cak7) strcat(b, "<br><span class='badge-blue'>CAK7</span>");
@@ -9212,9 +9274,9 @@ void http_send_packages_table(struct tcp_buffer_data *tcpbuf, int sock)
 			if (cs->option.fallowcacheex) strcat(b, "<br><span class='badge-green'>CACHEEX</span>");
 			if (cs->option.ecmfilter.enable) strcat(b, cs->option.ecmfilter.mode?"<br><span class='badge-green'>ECM DROP</span>":"<br><span class='badge-gray'>ECM LOGONLY</span>");
 			if (cs->ecmlen[0]) strcat(b, "<br><span class='badge-gray'>ECM LEN</span>");
-			sprintf( filtcell, "%s", b[0]? (b+4) : " <span class='badge-gray'>sem filtros</span>");
+			sprintf( filtcell, "%s", b[0]? (b+4) : " <span class='badge-gray'>no filters</span>");
 		}
-		else { sprintf( profcell, "<span style='color:#8899aa'>sem perfil</span>"); sprintf( okcell, "--"); sprintf( filtcell, " <span class='badge-gray'>--</span>"); }
+		else { sprintf( profcell, "<span style='color:var(--pmuted)'>no profile</span>"); sprintf( okcell, "--"); sprintf( filtcell, " <span class='badge-gray'>--</span>"); }
 
 		char rdcell[512];
 		int nreaders = pkg_count_readers(pkg_table[i].caid, pkg_table[i].ident, rdcell, sizeof(rdcell));
@@ -9233,7 +9295,7 @@ void http_send_packages_table(struct tcp_buffer_data *tcpbuf, int sock)
 			else sprintf( desc, "[%s]", pkg_table[i].sat);
 		}
 
-		sprintf( http_buf, "<tr class=alt%d><td>%s</td><td>%04X</td><td>%06X</td><td style='font-size:11px;color:#8899aa'>%s</td><td style='font-size:12px;'>%s</td><td style='font-size:12px;'>%s</td><td style='font-size:11px;'>%s</td><td style='font-size:12px;'>%s</td></tr>",
+		sprintf( http_buf, "<tr class=alt%d><td>%s</td><td>%04X</td><td>%06X</td><td style='font-size:11px;color:var(--pmuted)'>%s</td><td style='font-size:12px;'>%s</td><td style='font-size:12px;'>%s</td><td style='font-size:11px;'>%s</td><td style='font-size:12px;'>%s</td></tr>",
 			alt, pkg_table[i].name, pkg_table[i].caid, pkg_table[i].ident, desc, profcell, okcell, filtcell, rdc);
 		tcp_writestr(tcpbuf, sock, http_buf);
 	}
@@ -9394,7 +9456,7 @@ void http_send_editor(int sock, http_request *req, int index)
 			ipblock_load();
 			http_send_text(sock, "<span class='success'>OK</span>");
 		}
-		else http_send_text(sock, "<span class='miss'>ERRO</span>");
+		else http_send_text(sock, "<span class='miss'>ERROR</span>");
 		return;
 	}
 
@@ -9402,7 +9464,7 @@ void http_send_editor(int sock, http_request *req, int index)
 		static uint32_t lastupdatechinfo = 0;
 		uint32_t now = GetTickCount();
 		if (lastupdatechinfo && ((now-lastupdatechinfo)<300000)) {
-			http_send_text(sock, "<span class='miss'>Aguarda 5 minutos entre atualizacoes</span>");
+			http_send_text(sock, "<span class='miss'>Wait 5 minutes between updates</span>");
 			return;
 		}
 		lastupdatechinfo = now;
@@ -9415,7 +9477,7 @@ void http_send_editor(int sock, http_request *req, int index)
 			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat) -> %s\n", chinfo);
 			http_send_text(sock, "<span class='success'>OK</span>");
 		}
-		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (tools_update_channelinfo.py)</span>");
+		else http_send_text(sock, "<span class='miss'>Tool not found (tools_update_channelinfo.py)</span>");
 		return;
 	}
 
@@ -9538,7 +9600,7 @@ void http_send_editor(int sock, http_request *req, int index)
 	}
 	else {
 
-		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'> <input type=button class='sbutton' value='Load Channel Info' title='Rele o /var/etc/CCcam.channelinfo do disco (o teu ficheiro proprio)' onclick=\"imgrequest('/editor?action=reloadchinfo',this)\">&nbsp;<span style='font-size:11px;'>parse do teu CCcam.channelinfo sem restart</span><br><input type=button class='sbutton' value='Update Channel Info' title='Atualiza o CCcam.channelinfo do KingOfSat (so feeds ativos)' onclick=\"imgrequest('/editor?action=updatechinfo',this)\">&nbsp;<span style='font-size:11px;'>reconstroi CCcam.channelinfo do KingOfSat + reload automatico</span></div>");
+		tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'> <input type=button class='sbutton' value='Load Channel Info' title='Reloads /var/etc/CCcam.channelinfo from disk (your own file)' onclick=\"imgrequest('/editor?action=reloadchinfo',this)\">&nbsp;<span style='font-size:11px;'>parses your CCcam.channelinfo without a restart</span><br><input type=button class='sbutton' value='Update Channel Info' title='Updates CCcam.channelinfo from KingOfSat (active feeds only)' onclick=\"imgrequest('/editor?action=updatechinfo',this)\">&nbsp;<span style='font-size:11px;'>rebuilds CCcam.channelinfo from KingOfSat and reloads it automatically</span></div>");
 
 		tcp_writestr(&tcpbuf, sock, "<form enctype=\"multipart/form-data\" method=\"post\">");
 
@@ -9566,7 +9628,7 @@ void http_send_editor(int sock, http_request *req, int index)
 			if (!strcmp(bbase,"Servers.cfg") || !strcmp(bbase,"Clients.cfg")) {
 				FILE *fd = fopen(fname, "r");
 				if (fd) {
-					tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><b>Linha-a-linha</b> (ON/OFF, editar, apagar)<table width='100%'>");
+					tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><b>Line by line</b> (ON/OFF, edit, delete)<table width='100%'>");
 					char lbuf[2048];
 					int ln = 0;
 					static const char *pref[] = { "N:","C:","L:","F:","USER:","CACHE:","CACHEEX","CS378X","CAMD35","MG:",
@@ -9598,12 +9660,12 @@ void http_send_editor(int sock, http_request *req, int index)
 							"<td style='width:100%%'><input id='ledit%d' style='width:100%%' value=\"%s\"></td>"
 							"<td><button class='sbutton' onclick=\"imgrequest('/editor?action=lineedit&file=%d&line=%d&b64='+btoa(document.getElementById('ledit%d').value),this)\">SAVE</button></td>"
 							"<td><button class='sbutton' onclick=\"imgrequest('/editor?action=linedel&file=%d&line=%d',this)\">DEL</button></td></tr>",
-							on?"background:#2e7d32":"background:#c62828", index, ln, on?"ON":"OFF",
+							on?"background:#2e7d32;color:#fff;border-color:#2e7d32":"background:#c62828;color:#fff;border-color:#c62828", index, ln, on?"ON":"OFF",
 							ln, esc, index, ln, ln, index, ln);
 						tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 					}
 					fclose(fd);
-					sprintf( http_buf, "<tr><td></td><td><input id='ladd' style='width:100%%' placeholder='nova linha: C: host porta user pass { ... }'></td>"
+					sprintf( http_buf, "<tr><td></td><td><input id='ladd' style='width:100%%' placeholder='new line: C: host port user pass { ... }'></td>"
 						"<td colspan='2'><button class='sbutton' onclick=\"imgrequest('/editor?action=lineadd&file=%d&b64='+btoa(document.getElementById('ladd').value),this)\">ADD</button></td></tr>",
 						index);
 					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -9635,7 +9697,7 @@ void http_send_editor(int sock, http_request *req, int index)
 			time_t nowt = time(NULL);
 			struct tm *lt = localtime(&nowt);
 			char fbuf[256];
-			snprintf(fbuf, sizeof(fbuf), "<div class='home-footer'><span class='hf-ver'>MultiCS r1000 v"VERSION_STR" - All Rights Reserved - Sharillas@2026</span> <span class='hf-ver' style='font-size:10px;color:#8899aa'>| servidor: %02d:%02d:%02d</span></div>", lt->tm_hour, lt->tm_min, lt->tm_sec);
+			snprintf(fbuf, sizeof(fbuf), "<div class='home-footer'><span class='hf-ver'>MultiCS r1000 v"VERSION_STR" - All Rights Reserved - Sharillas@2026</span> <span class='hf-ver' style='font-size:10px;color:var(--pmuted)'>| server time: %02d:%02d:%02d</span></div>", lt->tm_hour, lt->tm_min, lt->tm_sec);
 			tcp_writestr(&tcpbuf, sock, fbuf);
 		}
 		tcp_writestr(&tcpbuf, sock, "</body></html>");
@@ -9790,7 +9852,7 @@ void http_send_editdiv(struct dyn_buffer *db, int index)
 	int noeditor = noeditor_ed;
 
 	sprintf( http_buf, "<div class=stat-section style='margin:10px 0'><div class='cfgbtns'>"
-		"<div class='cfgitem'><a class='sbutton' href='/configurations?action=clearsessions' title='Invalida todas as cookies de sessao (tu incluido) - todos voltam ao login' onclick=\"return confirm('Terminar TODAS as sessoes? Teras de voltar a fazer login.')\">Terminar Sessoes</a></div>"
+		"<div class='cfgitem'><a class='sbutton' href='/configurations?action=clearsessions' title='Invalidates every session cookie (yours included) - everyone returns to the login page' onclick=\"return confirm('End ALL sessions? You will have to sign in again.')\">End all sessions</a></div>"
 		"</div></div>");
 	dynbuf_write( db, (unsigned char*)http_buf, strlen(http_buf) );
 
@@ -9905,7 +9967,7 @@ void http_send_configurations(int sock, http_request *req)
 		static uint32_t lastupdatechinfo = 0;
 		uint32_t now = GetTickCount();
 		if (lastupdatechinfo && ((now-lastupdatechinfo)<300000)) {
-			http_send_text(sock, "<span class='miss'>Aguarda 5 minutos entre atualizacoes</span>");
+			http_send_text(sock, "<span class='miss'>Wait 5 minutes between updates</span>");
 			return;
 		}
 		lastupdatechinfo = now;
@@ -9918,7 +9980,7 @@ void http_send_configurations(int sock, http_request *req)
 			mlogf(LOGINFO, DBG_HTTP, " http: channelinfo update iniciado (KingOfSat) -> %s\n", chinfo);
 			http_send_text(sock, "<span class='success'>OK</span>");
 		}
-		else http_send_text(sock, "<span class='miss'>Ferramenta nao encontrada (tools_update_channelinfo.py)</span>");
+		else http_send_text(sock, "<span class='miss'>Tool not found (tools_update_channelinfo.py)</span>");
 		return;
 	}
 	if (str_action && !strcmp(str_action,"editdiv")) {
@@ -9949,7 +10011,7 @@ void http_send_configurations(int sock, http_request *req)
 			}
 		}
 		if (!okname) {
-			http_send_text(sock, "<span class='miss'>Ficheiro nao permitido</span>");
+			http_send_text(sock, "<span class='miss'>File not allowed</span>");
 			return;
 		}
 		if (req->type==HTTP_POST) {
@@ -9992,8 +10054,8 @@ void http_send_configurations(int sock, http_request *req)
 											fclose(fd);
 											char backup[600];
 											sprintf( backup, "%s.bak-%ld", fname, (long)time(NULL) );
-											if (rename( fname, backup )) { unlink(tmpsave); sprintf( http_buf, "<center><h3><span class='failed'>ERRO: sem permissoes em '%s'</span></h3><p>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</p></center>", fname, fname); http_send_text(sock, http_buf); return; }
-											if (rename( tmpsave, fname )) { rename( backup, fname ); sprintf( http_buf, "<center><h3><span class='failed'>ERRO: nao consegui gravar '%s'</span></h3><p>O ficheiro anterior foi reposto.</p></center>", fname); http_send_text(sock, http_buf); return; }
+											if (rename( fname, backup )) { unlink(tmpsave); sprintf( http_buf, "<center><h3><span class='failed'>ERROR: no permission on '%s'</span></h3><p>Run the build as root or grant permissions:<br>chmod 666 \"%s\"</p></center>", fname, fname); http_send_text(sock, http_buf); return; }
+											if (rename( tmpsave, fname )) { rename( backup, fname ); sprintf( http_buf, "<center><h3><span class='failed'>ERROR: could not save '%s'</span></h3><p>The previous file was restored.</p></center>", fname); http_send_text(sock, http_buf); return; }
 										mlogf(LOGINFO, DBG_HTTP, " http: upload '%s' (%d bytes, backup %s)\n", fname, (int)(end-pdata), backup);
 										// reler e apanhar erros de parse deste ficheiro
 										char oldpass[64];
@@ -10059,15 +10121,15 @@ void http_send_configurations(int sock, http_request *req)
 												ipblock_load();
 											}
 											// resposta
-											if (rollback) sprintf( http_buf, "<center><h3>Upload REJEITADO</h3><p>O ficheiro tem erros de config que nao foi possivel corrigir.<br>O anterior foi reposto e a build continua a correr.<br>O ficheiro enviado ficou guardado em '%s.invalid-*' para corrigires.</p><p><a href='/configurations'>Voltar a Configs</a></p></center>", fname);
-											else if (nbad>0) sprintf( http_buf, "<center><h3>Upload aceite</h3><p>%d linha(s) com erro foram comentadas automaticamente.<br>As opcoes default ficam ativas para essas linhas.</p><p><a href='/configurations'>Voltar a Configs</a></p></center>", nbad);
-											else if (errs>0) sprintf( http_buf, "<center><h3>Upload aceite (com avisos)</h3><p>%d erro(s) de config noutros ficheiros - as linhas foram ignoradas<br>e as opcoes default ficam ativas (sem crash).</p><p><a href='/configurations'>Voltar a Configs</a></p></center>", errs);
-											else sprintf( http_buf, "<center><h3>Upload aceite</h3><p>Config recarregada sem erros.</p><p><a href='/configurations'>Voltar a Configs</a></p></center>");
+											if (rollback) sprintf( http_buf, "<center><h3>Upload rejected</h3><p>The file has config errors that could not be fixed.<br>The previous file was restored and the build keeps running.<br>The uploaded file was kept as '%s.invalid-*' so you can fix it.</p><p><a href='/configurations'>Back to Settings</a></p></center>", fname);
+											else if (nbad>0) sprintf( http_buf, "<center><h3>Upload accepted</h3><p>%d line(s) with errors were commented out automatically.<br>The default options stay active for those lines.</p><p><a href='/configurations'>Back to Settings</a></p></center>", nbad);
+											else if (errs>0) sprintf( http_buf, "<center><h3>Upload accepted (with warnings)</h3><p>%d config error(s) in other files - those lines were ignored<br>and the default options stay active (no crash).</p><p><a href='/configurations'>Back to Settings</a></p></center>", errs);
+											else sprintf( http_buf, "<center><h3>Upload accepted</h3><p>Config reloaded without errors.</p><p><a href='/configurations'>Back to Settings</a></p></center>");
 											http_send_text(sock, http_buf);
 											return;
 										}
 										else {
-											sprintf( http_buf, "<center><h3><span class='failed'>ERRO: sem permissoes de escrita para '%s'</span></h3><p>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</p><p><a href='/configurations'>Voltar a Configs</a></p></center>", fname, fname);
+											sprintf( http_buf, "<center><h3><span class='failed'>ERROR: no write permission for '%s'</span></h3><p>Run the build as root or grant permissions:<br>chmod 666 \"%s\"</p><p><a href='/configurations'>Back to Settings</a></p></center>", fname, fname);
 											http_send_text(sock, http_buf);
 											return;
 										}
@@ -10142,12 +10204,12 @@ void http_send_configurations(int sock, http_request *req)
 										}
 										else {
 											unlink(tmpsave);
-											sprintf( http_buf, "<h3><center><span class='failed'>ERRO: nao consegui gravar '%s' (rename falhou - permissoes?)</span><br><br>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</center></h3>", fname, fname);
+											sprintf( http_buf, "<h3><center><span class='failed'>ERROR: could not save '%s' (rename failed - permissions?)</span><br><br>Run the build as root or grant permissions:<br>chmod 666 \"%s\"</center></h3>", fname, fname);
 											tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 										}
 									}
 									else {
-										sprintf( http_buf, "<h3><center><span class='failed'>ERRO: sem permissoes de escrita para '%s'</span><br><br>Executa a build como root ou da permissoes:<br>chmod 666 \"%s\"</center></h3>", fname, fname);
+										sprintf( http_buf, "<h3><center><span class='failed'>ERROR: no write permission for '%s'</span><br><br>Run the build as root or grant permissions:<br>chmod 666 \"%s\"</center></h3>", fname, fname);
 										tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 									}
 								}
@@ -10184,7 +10246,7 @@ void http_send_configurations(int sock, http_request *req)
 	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
 	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
 	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 document.getElementById('submitbutton').disabled=false;\n}");
-	tcp_writestr(&tcpbuf, sock, "\nfunction saveEditor()\n{\n	var f=document.getElementById('editform');\n	if(!f)return;\n	var s=document.getElementById('savestatus');\n	if(s)s.innerHTML='<span class=busy>A guardar...</span>';\n	var x=new XMLHttpRequest();\n	x.open('POST',f.action,true);\n	x.onreadystatechange=function()\n	{\n		if(x.readyState==4){\n			var m='';\n			if(x.status==200){\n				var t=x.responseText;\n				if(t.indexOf('Successfully Saved')>=0)m='<span class=success>Guardado com sucesso!</span>';\n				else if(t.indexOf('ERRO')>=0){var em=t.match(/ERRO[^<]*/);m='<span class=failed>'+(em?em[0]:'Erro ao guardar')+'</span>';}\n				else m='<span class=failed>Resposta inesperada do servidor</span>';\n			}else m='<span class=failed>Erro HTTP '+x.status+'</span>';\n			if(s)s.innerHTML=m;\n			setTimeout(function(){\n				var idx=document.getElementById('edfileidx');\n				var d=document.getElementById('editsection');\n				if(d&&idx){\n					var x2=new XMLHttpRequest();\n					x2.open('GET','/configurations?action=editdiv&file='+idx.value+'&t='+new Date().getTime(),true);\n					x2.onreadystatechange=function(){if(x2.readyState==4&&x2.status==200)d.innerHTML=x2.responseText;};\n					x2.send(null);\n				}\n			},1500);\n		}\n	};\n	x.send(new FormData(f));\n}");
+	tcp_writestr(&tcpbuf, sock, "\nfunction saveEditor()\n{\n	var f=document.getElementById('editform');\n	if(!f)return;\n	var s=document.getElementById('savestatus');\n	if(s)s.innerHTML='<span class=busy>Saving...</span>';\n	var x=new XMLHttpRequest();\n	x.open('POST',f.action,true);\n	x.onreadystatechange=function()\n	{\n		if(x.readyState==4){\n			var m='';\n			if(x.status==200){\n				var t=x.responseText;\n				if(t.indexOf('Successfully Saved')>=0)m='<span class=success>Saved successfully.</span>';\n				else if(t.indexOf('ERRO')>=0){var em=t.match(/ERRO[^<]*/);m='<span class=failed>'+(em?em[0]:'Could not save')+'</span>';}\n				else m='<span class=failed>Unexpected response from the server</span>';\n			}else m='<span class=failed>HTTP error '+x.status+'</span>';\n			if(s)s.innerHTML=m;\n			setTimeout(function(){\n				var idx=document.getElementById('edfileidx');\n				var d=document.getElementById('editsection');\n				if(d&&idx){\n					var x2=new XMLHttpRequest();\n					x2.open('GET','/configurations?action=editdiv&file='+idx.value+'&t='+new Date().getTime(),true);\n					x2.onreadystatechange=function(){if(x2.readyState==4&&x2.status==200)d.innerHTML=x2.responseText;};\n					x2.send(null);\n				}\n			},1500);\n		}\n	};\n	x.send(new FormData(f));\n}");
 	tcp_writestr(&tcpbuf, sock, "\nfunction loadEditor(url)\n{\n	var f = url.split('file=')[1];\n	var x = new XMLHttpRequest();\n	x.open('GET','/configurations?action=editdiv&file='+f+'&t='+new Date().getTime(),true);\n	x.onreadystatechange=function()\n	{\n		if (x.readyState==4 && x.status==200) {\n			var d=document.getElementById('editsection');\n			if (d) d.innerHTML = x.responseText;\n			var b=document.getElementById('submitbutton');\n			if (b) b.disabled = false;\n		}\n	};\n	x.send(null);\n}");
 	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
 	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
@@ -10218,7 +10280,7 @@ void http_send_configurations(int sock, http_request *req)
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 	}
 	if (!ipblock_count)
-		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=4 style='text-align:center;color:#888'>No blocked IPs</td></tr>");
+		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=4 style='text-align:center;color:var(--pmuted)'>No blocked IPs</td></tr>");
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
 
 	// ---- DIV 2: Edit Config (div com id para refresh ajax) ----
