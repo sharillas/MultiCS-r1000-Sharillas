@@ -1,3 +1,14 @@
+## v1.70.3 (2026-11-22)
+- Security fix: the newcamd/mgcamd login handler read the username with strlen((char*)buf+3), but buf is a
+  never-zeroed stack buffer and the receive function only writes as few as 3 bytes for the shortest possible
+  login message. strlen() could then run past the written data into uninitialized stack memory. Reachable
+  pre-auth by any client that completes the (standard, unauthenticated) newcamd handshake, on the newcamd,
+  mgcamd and the mgcamd-status-connector code paths (3 call sites, same root cause).
+- Fixed at the source: cs_message_receive()/cs_msg_peek() in msg-newcamd.c now NUL-terminate the buffer right
+  after the bytes they actually received, so every caller always gets a valid, bounded C string.
+- Verified: full GUI regression suite 107/107, clean start under ASan/UBSan. No live newcamd/mgcamd exploit was
+  built or run against the service; the mechanism was confirmed with an isolated, offline reproduction of the
+  exact buffer-size/write pattern.
 ## v1.70.2 (2026-11-22)
 - Security fix: parse_http_request() read up to sizeof(buffer) bytes into a 2048-byte stack buffer and then wrote
   buffer[size]=0; an exact 2048-byte request (or growing to exactly 2048 across reads) wrote one byte past the

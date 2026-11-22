@@ -133,6 +133,7 @@ int cs_message_receive(int sock,struct cs_custom_data *cd, unsigned char *buffer
 		cd->provid = (netbuf[8] << 16) | (netbuf[9] << 8) | netbuf[10];
 	}
   memcpy(buffer, netbuf+12, returnLen);
+  buffer[returnLen] = 0; // garante string terminada: callers (login newcamd/mgcamd) fazem strlen(buffer+3) sem isto
   return returnLen;
 }
 
@@ -208,6 +209,7 @@ int cs_msg_peek(int handle,struct cs_custom_data *cd, unsigned char *buffer, uns
 		cd->provid = (netbuf[8] << 16) | (netbuf[9] << 8) | netbuf[10];
 	}
 	memcpy(buffer, netbuf+12, returnLen);
+	buffer[returnLen] = 0; // garante string terminada: callers (login newcamd/mgcamd) fazem strlen(buffer+3) sem isto
 	return returnLen;
 }
 
