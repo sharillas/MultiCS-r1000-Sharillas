@@ -114,16 +114,16 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .menu {
   position: fixed; top: 0; left: 0; bottom: 0; width: 248px; z-index: 900;
   background: var(--side); border-right: 1px solid var(--line);
-  padding: 0; display: flex; flex-direction: column; overflow-y: auto;
+  padding: 0; display: flex; flex-direction: column; overflow: hidden;
 }
 .menu .brandtop { display: flex; align-items: center; gap: 12px; padding: 26px 22px 6px 22px; }
 .menu .brandtop svg { flex: none; }
 .menu .brandtop .bt-name { display: block; font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.1; color: var(--text); }
 .menu .brandtop .bt-ver { display: block; font: 12px var(--mono); color: var(--muted); }
-.menu ul { list-style: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 16px 10px 16px; flex: 1; }
+.menu ul { list-style: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 16px 0 16px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .menu li { list-style: none; display: block; position: relative; }
 .menu li.gl { padding: 16px 14px 4px 14px; font: 500 13px var(--mono); color: var(--muted); letter-spacing: .02em; }
-.menu li.menu-right { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.menu li.menu-right { margin-top: auto; position: sticky; bottom: 0; z-index: 1; background: var(--side); padding: 14px 0 12px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; align-items: stretch; flex: none; }
 a.mbtn, a.mbtn:link, a.mbtn:visited {
   display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 0 14px; border-radius: 10px;
   font: 500 15px var(--font); color: var(--muted) !important;
@@ -155,7 +155,7 @@ a.mbtn[href="/configurations"]::before { display: block; --ico: url("data:image/
 .menu .submenu li { display: block; }
 .menu .submenu a.mbtn { min-height: 38px; font-size: 14px; }
 .menu .submenu a.mbtn::before { display: none; }
-.brand-line { padding: 14px 22px 18px 22px; border-top: 1px solid var(--line); }
+.brand-line { flex: none; padding: 14px 22px 18px 22px; border-top: 1px solid var(--line); }
 .brand { color: var(--text); font-weight: 600; font-size: 14px; letter-spacing: 0; }
 .brand-by { color: var(--muted); font-size: 12.5px; }
 
@@ -480,7 +480,9 @@ tr.dbgrow td { background: var(--field); padding: 10px; border-radius: 12px; }
   .hero-num { font-size: 96px; }
 }
 @media (max-width: 860px) {
-  .menu { position: static; width: 100%; max-height: 360px; border-right: none; border-bottom: 1px solid var(--line); }
+  .menu { position: static; width: 100%; max-height: 360px; border-right: none; border-bottom: 1px solid var(--line); overflow-y: auto; }
+  .menu ul { overflow: visible; flex: none; min-height: auto; }
+  .menu li.menu-right { position: static; }
   body { padding-left: 0; }
   html { background: var(--page); }
   .toolbar { padding: 0 14px; }
