@@ -53,7 +53,7 @@ void *telnetprocess(int *param )
 	writes(fd, "Welcome to Telnet Server\r\n\r\nLogin: ");
 
 	len = recv( fd, buf, sizeof(buf), MSG_NOSIGNAL);
-	if (len<=0) { close(fd); return NULL; }
+	if (len<2) { close(fd); return NULL; } // seguranca: evita buf[len-2] com indice negativo quando len==1
 	//printf(" Received(%d): '%s'\r\n", len, buf);
 	if ( (buf[len-2]!='\r')||(buf[len-1]!='\n') )  { close(fd); return NULL; }
 	buf[len-2] = 0;
@@ -65,7 +65,7 @@ void *telnetprocess(int *param )
 	//
 	writes(fd, "Password: ");
 	len = recv( fd, buf, sizeof(buf), MSG_NOSIGNAL);
-	if (len<=0) { close(fd); return NULL; }
+	if (len<2) { close(fd); return NULL; } // seguranca: evita buf[len-2] com indice negativo quando len==1
 	//printf(" Received(%d): '%s'\r\n", len, buf);
 	if ( (buf[len-2]!='\r')||(buf[len-1]!='\n') )  { close(fd); return NULL; }
 	buf[len-2] = 0;
@@ -79,7 +79,7 @@ void *telnetprocess(int *param )
 	while ( 1 ) {
 		writes(fd, "\r\n[command]: ");
 		len = recv( fd, buf, sizeof(buf), MSG_NOSIGNAL);
-		if (len<=0) { close(fd); return NULL; }
+		if (len<2) { close(fd); return NULL; } // seguranca: evita buf[len-2] com indice negativo quando len==1
 		//printf(" Received(%d): %s", len, buf);
 		if ( (buf[len-2]!='\r')||(buf[len-1]!='\n') )  { close(fd); return NULL; }
 		buf[len-2] = 0;

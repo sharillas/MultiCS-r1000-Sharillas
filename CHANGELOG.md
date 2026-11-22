@@ -1,3 +1,15 @@
+## v1.70.6 (2026-11-22)
+- Fix: telnet.c's 3 recv() sites (username, password, command loop) checked only `len<=0` before testing
+  `buf[len-2]!='\r' || buf[len-1]!='\n'`. A client sending exactly 1 byte (len==1) made `len-2` negative,
+  so `buf[len-2]` read one byte before the 4096-byte stack buffer -- an out-of-bounds read, reachable pre-auth
+  (the very first recv, before any login) by simply opening a TCP connection to the telnet port and sending a
+  single byte.
+- Fixed by requiring `len>=2` at all 3 sites (a valid line must end in "\r\n", so anything shorter is already
+  invalid input) instead of just `len>0`.
+- Verified: full GUI regression suite 107/107, clean compile and clean start under ASan/UBSan. Telnet is not
+  enabled in the test config, so this was verified by regression suite + build, not by a live telnet PoC; the
+  fix itself is a straightforward bounds check (len>=2 before any buf[len-2] access).
+
 ## v1.70.5 (2026-11-22)
 - Fix: config.c's line-parsing loop computed `pos = currentline + strlen(currentline) - 1` to trim trailing
   whitespace/CR/LF. When a config line becomes an empty string after comment-stripping (e.g. a line that is
