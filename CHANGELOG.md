@@ -1,3 +1,20 @@
+## v1.70.0 (2026-11-22)
+- GUI redesigned (F3 "Atlas" graphite theme): side menu with brand header, dashboard status band
+  (servers connected, clients, ECM answered, memory), pill buttons, darker data panels, light/dark themes.
+- Whole GUI is now English only (labels, tooltips, confirmations, editor and upload messages).
+- Line editor popup: styled by CSS, closes with Esc, focus moves into the popup and returns on close,
+  DesKey row now toggles when the protocol changes.
+- Clients menu opens by itself on a client page; footer shows the real version.
+- Embedded CSS/JS are regenerated from gui_embedded_style.css / gui_embedded_customjs.js with
+  tools_generate_httpstyle.py. Configs/multics.css now matches the embedded stylesheet and
+  FILE STYLESHEET is commented out in Configs/multics.cfg (an old external multics.css hides the new theme).
+- Dashboard compacted: the per-profile tiles are replaced by one Profiles panel (top 8 by ECM traffic, bar + OK/ECM,
+  link to /profiles) and a single Traffic panel. Side menu column now spans the full page height.
+- Configs/profiles.cfg trimmed to the MEO and NOS profiles only.
+## v1.63.5 (2026-11-21)
+- **Fix - GUI nao passava do login atras do nginx**: o parser HTTP so guardava os 20 primeiros cabecalhos (MAXHEADERS). Atras de um reverse proxy entram mais cabecalhos (X-Real-IP, X-Forwarded-*, Connection) e, no redirect pos-login, o browser acrescenta Referer/Origin; o Cookie e enviado no fim, ficava fora dos 20, a sessao nao era lida e voltava-se ao login. Os cabecalhos passam a 32 (MAXREQHEADERS) com nome de 48 B e a copia e agora limitada (antes uf2str nao tinha limite). O array e compacto para nao aumentar a stack da thread.
+- Mitigacao imediata em producao: nginx deixou de acrescentar X-Real-IP/X-Forwarded-* e passou a enviar Connection: ".
+
 ## v1.63.4 (2026-10-24, produção)
 - **Filtro de paridade NOS 1802** (regra dos 1785 pares clean: byte0=80 → metade0 muda / byte0=81 → metade1 muda) implementado mas **desativado** — as fontes atuais servem a metade errada com frequência (lag de 1 período) e rejeitar esfomeia a box (34% entregas). Documentado no estudo ECM→CW.
 - Estado final do consenso corrigido (v1.63.2) em produção.

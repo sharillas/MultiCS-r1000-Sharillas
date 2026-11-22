@@ -64,15 +64,23 @@ systemctl start multics
 sleep 5
 systemctl is-active multics
 "@
+# os scripts remotos vao para o bash da VPS: com core.autocrlf (checkout CRLF no Windows) o \r ficaria colado
+# aos nomes de ficheiro/comandos, por isso e sempre removido antes de enviar
+$remote = $remote -replace "`r",""
 & "$ToolDir\plink.exe" -ssh "$VPSUser@$VPSHost" -pw $VPSPass -batch $remote
 if ($LASTEXITCODE -ne 0) { Write-Host "deploy remoto falhou"; exit 1 }
 
 Write-Host "== 4. Verifica (GUI + stats) =="
 Start-Sleep -Seconds 10
+# password via ficheiro (base64): caracteres especiais na password partiam o curl -d inline
+$loginB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("user=$GuiUser&pass=$GuiPass"))
 $chk = @"
-curl -s -m 8 -c /tmp/ck -b /tmp/ck -d "user=$GuiUser&pass=$GuiPass" http://127.0.0.1:5500/login -o /dev/null
+echo $loginB64 | base64 -d > /tmp/lg.txt; chmod 600 /tmp/lg.txt
+curl -s -m 8 -c /tmp/ck -b /tmp/ck --data @/tmp/lg.txt http://127.0.0.1:5500/login -o /dev/null -w "login %{http_code}\n"
+rm -f /tmp/lg.txt
 curl -s -m 8 -c /tmp/ck -b /tmp/ck http://127.0.0.1:5500/packages -o /tmp/deploy_check.html -w '%{http_code} %{size_download}\n'
 top -bn1 | grep -m1 multics
 "@
+$chk = $chk -replace "`r",""
 & "$ToolDir\plink.exe" -ssh "$VPSUser@$VPSHost" -pw $VPSPass -batch $chk
 Write-Host "== DEPLOY COMPLETO ==" -ForegroundColor Green
