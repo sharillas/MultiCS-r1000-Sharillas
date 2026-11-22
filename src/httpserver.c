@@ -383,7 +383,7 @@ int parse_http_request(int sock, http_request *req )
 	int totalsize = 0;
 	memset(buffer,0,sizeof(buffer));
 	memset(req,0, sizeof(http_request));
-	size = recv( sock, buffer, sizeof(buffer), MSG_NOSIGNAL);
+	size = recv( sock, buffer, sizeof(buffer)-1, MSG_NOSIGNAL); // -1: deixa espaco para o buffer[size]='\0' abaixo
 	if (size<10) return 0;
 	totalsize += size;
 	//printf("** Receiving %d bytes\n%s\n",size,buffer );
@@ -399,7 +399,7 @@ int parse_http_request(int sock, http_request *req )
 			if ( retval>0 )	{
 				if ( pfd.revents & (POLLHUP|POLLNVAL) ) return 0; // Disconnect
 				else if ( pfd.revents & (POLLIN|POLLPRI) ) {
-					int len = recv(sock, (buffer+size), sizeof(buffer)-size, MSG_NOSIGNAL);
+					int len = recv(sock, (buffer+size), sizeof(buffer)-1-size, MSG_NOSIGNAL); // -1: deixa espaco para o buffer[size]=0 abaixo
 					//printf("** Receiving %d bytes\n",len );
 					if (len<=0) return 0;
 					size+=len;

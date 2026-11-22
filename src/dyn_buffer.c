@@ -29,7 +29,10 @@ void *dynbuf_realloc( struct dyn_buffer *dbf, int newsize )
 	newsize *= 1024; // en kilos
 	char *newdata = malloc( newsize );
 	if (!newdata) return NULL;
-	if (newsize>dbf->allocsize) memcpy( newdata, dbf->data, dbf->allocsize ); else memcpy( newdata, dbf->data, newsize );
+	// dbf->data pode ser NULL num dyn_buffer ainda nao inicializado (allocsize==0); nesse caso nao ha nada a copiar
+	if (dbf->allocsize>0) {
+		if (newsize>dbf->allocsize) memcpy( newdata, dbf->data, dbf->allocsize ); else memcpy( newdata, dbf->data, newsize );
+	}
 	free( dbf->data );
 	dbf->data = newdata;
 	dbf->allocsize = newsize;

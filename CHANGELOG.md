@@ -1,3 +1,11 @@
+## v1.70.2 (2026-11-22)
+- Security fix: parse_http_request() read up to sizeof(buffer) bytes into a 2048-byte stack buffer and then wrote
+  buffer[size]=0; an exact 2048-byte request (or growing to exactly 2048 across reads) wrote one byte past the
+  buffer. Reachable pre-auth on the HTTP port. Found with a source build under AddressSanitizer + targeted fuzzing;
+  fixed by reading at most sizeof(buffer)-1 bytes. Confirmed with ASan (0 reports after the fix) and the full GUI
+  regression suite (107/107).
+- Fix: dynbuf_realloc() could call memcpy() with a NULL source pointer (0 bytes) on a never-initialized dyn_buffer,
+  undefined behaviour per the C standard even though harmless in practice. Found with UBSan; now guarded.
 ## v1.70.1 (2026-11-22)
 - Fix: /iptables page threw "setautorefresh is not defined" (the auto-refresh script was never emitted); the page now
   supports ?action=div like the other pages, so the partial refresh works.
