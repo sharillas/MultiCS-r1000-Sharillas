@@ -92,6 +92,7 @@ void *cs378x_connect_cli(struct connect_cli_data *param)
 	if (buf[4] == 0) datalen = (((buf[25] & 0x0f) << 8) | buf[26]) + 3;
 	else if (buf[4] == CAMD_CEX_IDREQUEST || buf[4] == CAMD_CEX_IDREPLY || buf[4] == CAMD_CEX_PUSH) datalen = buf[5] | (buf[6] << 8);
 	int newlen = 4+camd35_padding(20+datalen);
+	if (newlen > (int)sizeof(buf)) newlen = sizeof(buf); // seguranca: nao escrever a frente do buf[1024]
 	if (len<newlen) {
 		int n = recv_nonb( sock, buf+len, newlen-len, 1000);
 		if (n<=0) {
@@ -457,6 +458,7 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 			//Check for card availability
 			int ecmlen = (((buf[25] & 0x0f) << 8) | buf[26]) + 3;
 			uint8_t ecmdata[512];
+			if (ecmlen > (int)sizeof(ecmdata)) ecmlen = sizeof(ecmdata); // seguranca: limite do ecmdata[512]
 			memcpy( ecmdata, buf+24, ecmlen );
 			uint16_t pin = buf[4+16]<<8 | buf[4+17];
 			uint16_t sid = buf[4+8]<<8 | buf[4+9];
@@ -593,6 +595,7 @@ void cs378x_cli_recvmsg( struct camd35_client_data *cli )
 			cli->cacheex.got[0]++;
 			//Check for card availability
 			ecmlen = (((buf[25] & 0x0f) << 8) | buf[26]) + 3;
+			if (ecmlen > (int)sizeof(ecmdata)) ecmlen = sizeof(ecmdata); // seguranca: limite do ecmdata[512]
 			memcpy( ecmdata, buf+24, ecmlen );
 			sid = buf[4+8]<<8 | buf[4+9];
 			caid = buf[4+10]<<8 | buf[4+11];

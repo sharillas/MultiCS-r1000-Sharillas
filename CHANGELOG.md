@@ -1,3 +1,27 @@
+## v1.70.4 (2026-11-22)
+- Critical security fix: the camd35/cs378x servers (UDP camd35_recvmsg, TCP cs378x_connect_cli/cs378x_msg_peek/
+  cs378x_cli_recvmsg) compute an attacker-influenced message length from bytes that were just AES-decrypted with
+  the matched client's own key (buf[25]/buf[26] for ECM/0-type messages, or buf[5]/buf[6] for cacheex/0x80-0x81
+  messages, up to 65535). That length was used unchecked in two ways: (a) in cs378x_msg_peek() and
+  cs378x_connect_cli(), to size a *second* recv() call that writes straight into a 1024/2048-byte stack buffer
+  (recv(handle, buf+len, newlen-len, ...)) -- a remote stack buffer WRITE overflow of up to ~63KB past a 1-2KB
+  stack array; (b) in the CAMD_ECM_REQUEST / 0x80 / 0x81 handlers (srv-camd35.c, srv-cs378x.c), as the size of a
+  memcpy() into a fixed 512-byte ecmdata[] stack buffer (memcpy(ecmdata, buf+24, ecmlen)) -- a WRITE overflow of
+  up to ~3.5KB past that buffer; and in srv-camd35.c's CRC check, as the size of a crc32() read starting at
+  buf+24 -- an OOB READ past the 1024-byte buffer. All four are reachable without the client's password: once a
+  connection is matched to a configured client purely by a 4-byte CRC32 of the username (ucrc), any ciphertext
+  the attacker sends "decrypts" to effectively unpredictable bytes under the real per-client AES key, and roughly
+  3 in 4 such attempts (for the 0-type/ECM branch) or any attempt landing on the cacheex/0x80-0x81 branch (full
+  16-bit length, no masking) produce a length that overflows these fixed buffers.
+- Fixed by clamping every one of these lengths, right where each is computed, to the real bound of the buffer it
+  will be read from or written into: cs378x_msg_peek() and cs378x_connect_cli() cap newlen to the caller's actual
+  buffer size (2048 / 1024) before the second recv(); all four ecmlen sites (2x srv-cs378x.c, 1x srv-camd35.c) cap
+  to sizeof(ecmdata)=512; srv-camd35.c's CRC-check length is also capped to what was actually received (received-24).
+  No protocol behavior changes for any legitimately-sized message.
+- Verified: full GUI regression suite 107/107, clean compile and clean start under ASan/UBSan. No live camd35/
+  cs378x exploit was built or sent against the service; found and fixed purely from source review, confirmed by
+  the exact buffer-size arithmetic (declared buffer sizes vs. the maximum value each length field can take).
+
 ## v1.70.3 (2026-11-22)
 - Security fix: the newcamd/mgcamd login handler read the username with strlen((char*)buf+3), but buf is a
   never-zeroed stack buffer and the receive function only writes as few as 3 bytes for the shortest possible

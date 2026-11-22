@@ -243,6 +243,7 @@ void camd35_recvmsg( struct camd35_server_data *camd35 )
 	if (buf[4] == 0) len = (((buf[25] & 0x0f) << 8) | buf[26]) + 3; //Fix for ECM request size > 255 (use ecm length field)
 	else if ( (buf[4]&0xFC)==0x3C ) len = buf[5] | (buf[6] << 8);
 	else len = buf[5];
+	{ int maxlen = received-24; if (maxlen<0) maxlen=0; if (len<0) len=0; if (len>maxlen) len=maxlen; } // seguranca: nao ler alem do que foi mesmo recebido em buf[1024]
 	// Check for data-crc
 	uint32_t datacrc = crc32(0L, buf+24, len);
 	uint32_t x = (buf[8]<<24)|(buf[9]<<16)|(buf[10]<<8)|buf[11];
@@ -340,6 +341,7 @@ void camd35_recvmsg( struct camd35_server_data *camd35 )
 			//Check for card availability
 			int ecmlen = (((buf[25] & 0x0f) << 8) | buf[26]) + 3;
 			uint8_t ecmdata[512];
+			{ int maxlen = received-24; if (maxlen<0) maxlen=0; if (maxlen>(int)sizeof(ecmdata)) maxlen=sizeof(ecmdata); if (ecmlen<0) ecmlen=0; if (ecmlen>maxlen) ecmlen=maxlen; } // seguranca: limite do ecmdata[512] e do que foi recebido
 			memcpy( ecmdata, buf+24, ecmlen );
 			uint16_t pin = buf[4+16]<<8 | buf[4+17];
 			uint16_t sid = buf[4+8]<<8 | buf[4+9];

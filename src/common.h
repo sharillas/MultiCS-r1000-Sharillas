@@ -1,4 +1,4 @@
-﻿#ifndef _COMMON_H_
+#ifndef _COMMON_H_
 #define _COMMON_H_
 
 #ifdef CCCAM_SRV
@@ -13,7 +13,7 @@
 #define REVISION_STR  "1000"
 
 #ifndef VERSION_STR
-#define VERSION_STR "1.70.3"
+#define VERSION_STR "1.70.4"
 #endif
 
 #ifndef GIT_COMMIT

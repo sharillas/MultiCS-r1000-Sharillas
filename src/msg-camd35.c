@@ -169,6 +169,7 @@ int cs378x_msg_peek(int handle, uint32_t ucrc, AES_KEY *decryptkey, unsigned cha
 #endif
 	else datalen = buf[5]; // Normal
 	int newlen = 4+camd35_padding(20+datalen);
+	if (newlen > 2048) newlen = 2048; // seguranca: os dois chamadores (srv-cs378x.c, cli-cs378x.c) usam buf[2048]
 	if (len<newlen) {
 		int n = recv( handle, buf+len, newlen-len, MSG_NOSIGNAL|MSG_DONTWAIT);
 		if ( n != (newlen-len) ) return -3; // receive timeout or wrong packet size
