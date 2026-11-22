@@ -1,3 +1,32 @@
+## v1.70.8 (2026-11-22)
+- Fix: httpserver.c's mgcamd client Enable/Disable/Delete actions (3 sites in http_send_mgcamd_client,
+  ACTION_ENABLE/ACTION_DISABLE/ACTION_DELETE) built the Clients.cfg match string as `sprintf(match, "M: %s",
+  cli->user)`. But config.c's parser only ever writes/accepts mgcamd client lines as "MG:", "MGUSER:" or
+  "MGCAMD USER:" -- never a bare "M:". Since config_line_edit() does a plain substring search, "M: <user>"
+  never matched any real line in Clients.cfg (confirmed: none of the three valid line formats contain that
+  substring). Effect: toggling Enable/Disable/Delete for an mgcamd client from the GUI worked only in memory
+  (the live connection was dropped/flagged correctly) but was never persisted to Clients.cfg -- after a
+  restart or config-reread, a disabled/deleted mgcamd client would come back enabled. This is the same
+  pattern already used correctly elsewhere in the file (the inline edit-popup flow at line ~5458/5593 uses
+  "MG: %s" and works). Not a security bug (admin-only GUI action), but a genuine functional one. Fixed by
+  changing all 3 sites to "MG: %s", matching the parser and the other, already-correct code path.
+- Investigated at the user's request: whether mgcamd (and the newcamd-family protocols generally) are still
+  working correctly after freecccam/softcam were disabled, compared against OSCam's reference implementation.
+  Reviewed srv-mgcamd.c's mg_connect_cli() (login handshake) and mg_cli_recvmsg() (EXT_GET_VERSION,
+  MSG_CARD_DATA_REQ/EXT_ADD_CARD card advertisement, ECM request/response dispatch) end to end against OSCam's
+  module-newcamd.c. Login-ACK magic bytes (sid=0x6E73, provider marker 0x14) and the EXT_GET_VERSION reply
+  ("1.67") match OSCam's mgcamd-specific values exactly. One gap found: EXT_SID_LIST (0xD7), OSCam's optional
+  per-SID deny-list hint, is defined as a constant but never sent by MultiCS -- not a functional break (the
+  server still enforces SID-level access control at ECM-decode time via accept_sid()), just a missing
+  client-side optimization hint. Verified live, not just by reading code: added a throwaway local test client
+  (Mgcamd.cfg) and pointed Multics's own internal newcamd-client code at its own mgcamd server port via a
+  loopback entry in Servers.cfg (both reverted afterwards, no production/VPS config touched). The loopback
+  login, password verification, and card-discovery handshake succeeded end-to-end (5 CAID/provider cards
+  correctly advertised via EXT_ADD_CARD), which is live confirmation -- not just static review -- that the
+  core mgcamd protocol implementation works correctly.
+- Verified: full GUI regression suite 109/109, clean compile. No live exploit or flood traffic was used for
+  this investigation -- the mgcamd live check was a legitimate loopback login against the test build only.
+
 ## v1.70.7 (2026-11-22)
 - Defensive fix: closed the 3 lower-priority items left from the earlier source review.
   1) add_host() in config.c did `strcpy(host->name, hostname)` into a fixed `char name[256]` with no length

@@ -8817,7 +8817,7 @@ void http_send_mgcamd_client(int sock, http_request *req)
 		// v1.51: persistente - comenta a M-line no Clients.cfg
 		{
 			char match[192];
-			sprintf( match, "M: %s", cli->user);
+			sprintf( match, "MG: %s", cli->user); // fix: o parser (config.c) aceita MG:/MGUSER:/MGCAMD USER:, nunca "M:" -- sem isto, enable/disable/delete nunca persistia no Clients.cfg
 			config_line_edit("Clients.cfg", match, 0);
 		}
 		http_send_ok(sock);
@@ -8828,7 +8828,7 @@ void http_send_mgcamd_client(int sock, http_request *req)
 		// v1.51: persistente - descomenta a M-line no Clients.cfg
 		{
 			char match[192];
-			sprintf( match, "M: %s", cli->user);
+			sprintf( match, "MG: %s", cli->user); // fix: o parser (config.c) aceita MG:/MGUSER:/MGCAMD USER:, nunca "M:" -- sem isto, enable/disable/delete nunca persistia no Clients.cfg
 			config_line_edit("Clients.cfg", match, 1);
 		}
 		http_send_ok(sock);
@@ -8840,7 +8840,7 @@ void http_send_mgcamd_client(int sock, http_request *req)
 		if (cli->connection.status>0) mg_disconnect_cli(cli);
 		{
 			char match[192];
-			sprintf( match, "M: %s", cli->user);
+			sprintf( match, "MG: %s", cli->user); // fix: o parser (config.c) aceita MG:/MGUSER:/MGCAMD USER:, nunca "M:" -- sem isto, enable/disable/delete nunca persistia no Clients.cfg
 			config_line_edit("Clients.cfg", match, 2);
 		}
 		http_send_ok(sock);
