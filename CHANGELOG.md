@@ -1,3 +1,9 @@
+## v1.70.1 (2026-11-22)
+- Fix: /iptables page threw "setautorefresh is not defined" (the auto-refresh script was never emitted); the page now
+  supports ?action=div like the other pages, so the partial refresh works.
+- Fix: /favicon.ico (and any unknown URL) closed the connection with no reply (net::ERR_EMPTY_RESPONSE in the browser).
+  /favicon.ico now serves the menu logo as SVG, unknown URLs return a proper 404.
+- README.md and configs_exemplos/profiles.cfg: repaired mojibake (broken dashes, arrows, ellipses and accents).
 ## v1.70.0 (2026-11-22)
 - GUI redesigned (F3 "Atlas" graphite theme): side menu with brand header, dashboard status band
   (servers connected, clients, ECM answered, memory), pill buttons, darker data panels, light/dark themes.

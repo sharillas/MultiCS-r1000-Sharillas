@@ -1029,6 +1029,22 @@ void http_send_image(int sock, http_request *req, unsigned char *buf, int size, 
 	tcp_flush(&tcpbuf, sock);
 }
 
+// v1.70.0: favicon (mesmo logo do menu) e 404 - antes o servidor fechava a ligacao sem responder
+// (browser: net::ERR_EMPTY_RESPONSE em /favicon.ico)
+static const char http_favicon_svg[] = "<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'><rect width='36' height='36' rx='11' fill='#27282A'/><path d='M9.5 25V11.5l8.5 8.5 8.5-8.5V25' fill='none' stroke='#5EEAD4' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/></svg>";
+
+void http_send_notfound(int sock)
+{
+	char hdr[256];
+	char body[] = "404 Not Found";
+	struct tcp_buffer_data tcpbuf;
+	tcp_init(&tcpbuf);
+	sprintf( hdr, "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n", (int)strlen(body));
+	tcp_write(&tcpbuf, sock, hdr, strlen(hdr) );
+	tcp_write(&tcpbuf, sock, body, strlen(body) );
+	tcp_flush(&tcpbuf, sock);
+}
+
 void http_send_xml(int sock, http_request *req, char *buf, int size)
 {
 	char http_buf[2048];
@@ -3508,6 +3524,7 @@ void http_send_iptables(int sock, http_request *req)
 
 	// ===== ACTIONS =====
 	char *str_action = isset_get( req, "action");
+	int get_action = 0;
 	if (str_action) {
 		if (!strcmp(str_action,"block")) {
 			char *ip = isset_get( req, "ip");
@@ -3527,24 +3544,34 @@ void http_send_iptables(int sock, http_request *req)
 			http_send_redirect(sock, "/iptables");
 			return;
 		}
+		else if (!strcmp(str_action,"div")) get_action = 1;
 	}
 
 	// ===== PAGE =====
 	tcp_init(&tcpbuf);
 	tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
-	tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
-	tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
-	sprintf( http_buf, html_title, cfg.http.title, "Iptables"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-	tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
-	tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
-	tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
-	tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
-	tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 setautorefresh(autorefresh);\n}");
-	tcp_writestr(&tcpbuf, sock, "\n</script>\n");
-	tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
-	tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
-	tcp_write_menu(&tcpbuf, sock, PAGE_IPTABLES);
-	tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+	if (get_action==0) {
+		tcp_write(&tcpbuf, sock, http_html, strlen(http_html) );
+		tcp_write(&tcpbuf, sock, http_head, strlen(http_head) );
+		sprintf( http_buf, html_title, cfg.http.title, "Iptables"); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		tcp_write(&tcpbuf, sock, http_link, strlen(http_link) );
+		tcp_write(&tcpbuf, sock, http_style, strlen(http_style) );
+		tcp_write(&tcpbuf, sock, http_javascript, strlen(http_javascript) );
+		tcp_writestr(&tcpbuf, sock, "\n<script type='text/javascript'>");
+		// UPD DIV (v1.70.0: faltava - "/iptables" nao tinha autorefresh funcional, JS error setautorefresh is not defined)
+		{
+			char url[256];
+			sprintf( url, "/iptables?action=div");
+			sprintf( http_buf, HTTP_UPDATE_DIV, cfg.http.autorefresh*1000, url);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+		tcp_writestr(&tcpbuf, sock, "\nfunction start()\n{\n	 setautorefresh(autorefresh);\n}");
+		tcp_writestr(&tcpbuf, sock, "\n</script>\n");
+		tcp_write(&tcpbuf, sock, http_head_, strlen(http_head_) );
+		tcp_writestr(&tcpbuf, sock, "<body onload=\"start();\">");
+		tcp_write_menu(&tcpbuf, sock, PAGE_IPTABLES);
+		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
+	}
 
 	// Form bloquear IP
 	tcp_writestr(&tcpbuf, sock, "<div class=stat-section style='margin:10px 0'>");
@@ -3578,7 +3605,7 @@ void http_send_iptables(int sock, http_request *req)
 		tcp_writestr(&tcpbuf, sock, "<tr><td colspan=4 style='text-align:center;color:var(--pmuted)'>No blocked IPs</td></tr>");
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
 
-	tcp_writestr(&tcpbuf, sock, "</div></body></html>");
+	if (get_action==0) tcp_writestr(&tcpbuf, sock, "</div></body></html>");
 	tcp_flush(&tcpbuf, sock);
 }
 
@@ -10478,12 +10505,18 @@ void *gererClient(struct connect_data *param)
 
 				else {
 					struct http_file_data *file = cfg.http.files;
+					int found = 0;
 					while (file) {
 						if ( !strcmp(req.path,file->url) ) {
 							http_send_file( sock, &req, file->mime, file->path);
+							found = 1;
 							break;
 						}
 						file = file->next;
+					}
+					if (!found) {
+						if (!strcmp(req.path,"/favicon.ico")) http_send_image(sock, &req, (unsigned char*)http_favicon_svg, strlen(http_favicon_svg), "svg+xml");
+						else http_send_notfound(sock);
 					}
 				}
 			}
