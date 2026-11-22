@@ -4,6 +4,8 @@
 - Fix: /favicon.ico (and any unknown URL) closed the connection with no reply (net::ERR_EMPTY_RESPONSE in the browser).
   /favicon.ico now serves the menu logo as SVG, unknown URLs return a proper 404.
 - README.md and configs_exemplos/profiles.cfg: repaired mojibake (broken dashes, arrows, ellipses and accents).
+- deploy.ps1: the final check now tests real pages (/dashboard, /profiles, /iptables, /favicon.ico), prints each HTTP code and fails the deploy if one is not OK. It used the removed /packages page.
+- ops/: VPS scripts versioned without credentials; ip2country daily update documented.
 ## v1.70.0 (2026-11-22)
 - GUI redesigned (F3 "Atlas" graphite theme): side menu with brand header, dashboard status band
   (servers connected, clients, ECM answered, memory), pill buttons, darker data panels, light/dark themes.

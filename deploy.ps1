@@ -74,13 +74,29 @@ Write-Host "== 4. Verifica (GUI + stats) =="
 Start-Sleep -Seconds 10
 # password via ficheiro (base64): caracteres especiais na password partiam o curl -d inline
 $loginB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("user=$GuiUser&pass=$GuiPass"))
-$chk = @"
-echo $loginB64 | base64 -d > /tmp/lg.txt; chmod 600 /tmp/lg.txt
-curl -s -m 8 -c /tmp/ck -b /tmp/ck --data @/tmp/lg.txt http://127.0.0.1:5500/login -o /dev/null -w "login %{http_code}\n"
+$chk = @'
+echo @@LOGIN@@ | base64 -d > /tmp/lg.txt; chmod 600 /tmp/lg.txt
+rm -f /tmp/ck
+c=$(curl -s -m 8 -c /tmp/ck -b /tmp/ck --data @/tmp/lg.txt http://127.0.0.1:5500/login -o /dev/null -w '%{http_code}')
 rm -f /tmp/lg.txt
-curl -s -m 8 -c /tmp/ck -b /tmp/ck http://127.0.0.1:5500/packages -o /tmp/deploy_check.html -w '%{http_code} %{size_download}\n'
+echo "GUI login: HTTP $c (302 = OK)"
+fail=0; [ "$c" = "302" ] || fail=1
+for p in /dashboard /profiles /iptables /favicon.ico; do
+  c=$(curl -s -m 8 -b /tmp/ck http://127.0.0.1:5500$p -o /dev/null -w '%{http_code}')
+  echo "GET $p: HTTP $c"
+  [ "$c" = "200" ] || fail=1
+done
+rm -f /tmp/ck
 top -bn1 | grep -m1 multics
-"@
-$chk = $chk -replace "`r",""
-& "$ToolDir\plink.exe" -ssh "$VPSUser@$VPSHost" -pw $VPSPass -batch $chk
+[ $fail = 0 ] && echo "VERIFICA: OK" || echo "VERIFICA: FALHOU"
+exit $fail
+'@
+$chk = $chk.Replace('@@LOGIN@@', $loginB64) -replace "`r",""
+# o script vai por ficheiro: aspas duplas na linha de comandos do plink perdem-se no Windows
+$chkFile = Join-Path $env:TEMP "multics_verify.sh"
+[IO.File]::WriteAllText($chkFile, $chk, (New-Object Text.UTF8Encoding($false)))
+& "$ToolDir\pscp.exe" -pw $VPSPass -q $chkFile "$VPSUser@${VPSHost}:/tmp/multics_verify.sh"
+& "$ToolDir\plink.exe" -ssh "$VPSUser@$VPSHost" -pw $VPSPass -batch "bash /tmp/multics_verify.sh; r=`$?; rm -f /tmp/multics_verify.sh; exit `$r"
+Remove-Item $chkFile -ErrorAction SilentlyContinue
+if ($LASTEXITCODE -ne 0) { Write-Host "Verificacao falhou - ver acima (o binario antigo esta em /opt/multics/*.bak-*)" -ForegroundColor Red; exit 1 }
 Write-Host "== DEPLOY COMPLETO ==" -ForegroundColor Green
