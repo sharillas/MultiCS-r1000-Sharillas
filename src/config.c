@@ -5698,7 +5698,13 @@ void update_cccam_clients(struct cccam_server_data *srv, struct cccam_server_dat
 #endif
 			cli->host = newcli->host;
 		}
-		else cli->flags |= FLAG_DELETE;
+		// fix v1.70.10: um cliente com FLAG_DISABLE (botao OFF) fica com a linha COMENTADA
+		// no Clients.cfg -- o reload automatico (thread inotify, corre sempre que o ficheiro
+		// e gravado) ao reparsear nao via essa linha (esta comentada) e marcava o cliente como
+		// removido (FLAG_DELETE); depois disso getXclientbyid() deixava de o encontrar -- on/off
+		// ficava sem efeito e o popup de Edit dizia "Client not found". So' remove por nao-match
+		// se o cliente NAO estiver ja desativado (nesse caso o comentario e' o sinal esperado).
+		else if (!(cli->flags&FLAG_DISABLE)) cli->flags |= FLAG_DELETE;
 		cli = cli->next;
 	}
 	// Move all newcli without FLAG_DELETE to cli
@@ -5810,7 +5816,13 @@ void update_cccam_cacheexclients(struct cccam_server_data *srv, struct cccam_ser
 #endif
 			cli->host = newcli->host;
 		}
-		else cli->flags |= FLAG_DELETE;
+		// fix v1.70.10: um cliente com FLAG_DISABLE (botao OFF) fica com a linha COMENTADA
+		// no Clients.cfg -- o reload automatico (thread inotify, corre sempre que o ficheiro
+		// e gravado) ao reparsear nao via essa linha (esta comentada) e marcava o cliente como
+		// removido (FLAG_DELETE); depois disso getXclientbyid() deixava de o encontrar -- on/off
+		// ficava sem efeito e o popup de Edit dizia "Client not found". So' remove por nao-match
+		// se o cliente NAO estiver ja desativado (nesse caso o comentario e' o sinal esperado).
+		else if (!(cli->flags&FLAG_DISABLE)) cli->flags |= FLAG_DELETE;
 		cli = cli->next;
 	}
 	// Move all newcli without FLAG_DELETE to cli
@@ -5943,7 +5955,13 @@ void update_mgcamd_clients(struct mgcamdserver_data *srv, struct mgcamdserver_da
 #endif
 			cli->host = newcli->host;
 		}
-		else cli->flags |= FLAG_DELETE;
+		// fix v1.70.10: um cliente com FLAG_DISABLE (botao OFF) fica com a linha COMENTADA
+		// no Clients.cfg -- o reload automatico (thread inotify, corre sempre que o ficheiro
+		// e gravado) ao reparsear nao via essa linha (esta comentada) e marcava o cliente como
+		// removido (FLAG_DELETE); depois disso getXclientbyid() deixava de o encontrar -- on/off
+		// ficava sem efeito e o popup de Edit dizia "Client not found". So' remove por nao-match
+		// se o cliente NAO estiver ja desativado (nesse caso o comentario e' o sinal esperado).
+		else if (!(cli->flags&FLAG_DISABLE)) cli->flags |= FLAG_DELETE;
 		cli = cli->next;
 	}
 	// Move all newcli without FLAG_DELETE to cli
@@ -6076,7 +6094,13 @@ void update_camd35_clients(struct camd35_server_data *srv, struct camd35_server_
 				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
 			}
 		}
-		else cli->flags |= FLAG_DELETE;
+		// fix v1.70.10: um cliente com FLAG_DISABLE (botao OFF) fica com a linha COMENTADA
+		// no Clients.cfg -- o reload automatico (thread inotify, corre sempre que o ficheiro
+		// e gravado) ao reparsear nao via essa linha (esta comentada) e marcava o cliente como
+		// removido (FLAG_DELETE); depois disso getXclientbyid() deixava de o encontrar -- on/off
+		// ficava sem efeito e o popup de Edit dizia "Client not found". So' remove por nao-match
+		// se o cliente NAO estiver ja desativado (nesse caso o comentario e' o sinal esperado).
+		else if (!(cli->flags&FLAG_DISABLE)) cli->flags |= FLAG_DELETE;
 		cli = cli->next;
 	}
 	struct camd35_client_data *prev = NULL;
@@ -6121,7 +6145,13 @@ void update_camd35_cacheexclients(struct camd35_server_data *srv, struct camd35_
 				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
 			}
 		}
-		else cli->flags |= FLAG_DELETE;
+		// fix v1.70.10: um cliente com FLAG_DISABLE (botao OFF) fica com a linha COMENTADA
+		// no Clients.cfg -- o reload automatico (thread inotify, corre sempre que o ficheiro
+		// e gravado) ao reparsear nao via essa linha (esta comentada) e marcava o cliente como
+		// removido (FLAG_DELETE); depois disso getXclientbyid() deixava de o encontrar -- on/off
+		// ficava sem efeito e o popup de Edit dizia "Client not found". So' remove por nao-match
+		// se o cliente NAO estiver ja desativado (nesse caso o comentario e' o sinal esperado).
+		else if (!(cli->flags&FLAG_DISABLE)) cli->flags |= FLAG_DELETE;
 		cli = cli->next;
 	}
 	struct camd35_client_data *prev = NULL;
@@ -6386,7 +6416,13 @@ void update_cardserver_newcamd_clients(struct cardserver_data *cs, struct cardse
 			newcli->info = info;
 			cli->realname = newcli->realname;
 		}
-		else cli->flags |= FLAG_DELETE;
+		// fix v1.70.10: um cliente com FLAG_DISABLE (botao OFF) fica com a linha COMENTADA
+		// no Clients.cfg -- o reload automatico (thread inotify, corre sempre que o ficheiro
+		// e gravado) ao reparsear nao via essa linha (esta comentada) e marcava o cliente como
+		// removido (FLAG_DELETE); depois disso getXclientbyid() deixava de o encontrar -- on/off
+		// ficava sem efeito e o popup de Edit dizia "Client not found". So' remove por nao-match
+		// se o cliente NAO estiver ja desativado (nesse caso o comentario e' o sinal esperado).
+		else if (!(cli->flags&FLAG_DISABLE)) cli->flags |= FLAG_DELETE;
 		cli = cli->next;
 	}
 	// Move all newcli without FLAG_DELETE to cli

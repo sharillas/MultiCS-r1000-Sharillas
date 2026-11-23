@@ -1,3 +1,30 @@
+## v1.70.10 (2026-11-23)
+- Fix: /newcamd e /cacheex perdiam o bloco "local services" (perfis Newcamd / servidores
+  CacheEX) a cada refresh automatico ou logo apos clicar em qualquer botao on/off/delete.
+  O bloco estava dentro do "if (get_action==ACTION_PAGE)", mas updateDiv()/autorefresh
+  (action=div) substitui TODO o innerHTML de #mainDiv -- como esse pedido nunca incluia o
+  bloco, ele "desaparecia" visualmente. Movido para fora do bloco ACTION_PAGE em ambas as
+  paginas, para ser sempre incluido (http_send_newcamd / http_send_cacheex).
+- Fix: cs378x/camd35 -- botoes on/off pareciam "nao fazer nada" e o popup de Edit dizia
+  "Client not found" depois de desativar um cliente. Causa raiz: um cliente desativado
+  (botao OFF) fica com a linha comentada no Clients.cfg; a thread de reload automatico
+  (inotify, corre sempre que o ficheiro e gravado) ao reparsear nao via essa linha
+  (comentada) e marcava o cliente, incorretamente, como removido (FLAG_DELETE) -- depois
+  disso getcs378xclientbyid()/getcamd35clientbyid() deixavam de o encontrar. Corrigido em
+  config.c: um cliente ja FLAG_DISABLE agora e' preservado no reload em vez de ser marcado
+  para remocao por nao-match (mesmo padrao aplicado a update_cccam_clients,
+  update_cccam_cacheexclients, update_mgcamd_clients, update_camd35_clients,
+  update_camd35_cacheexclients e update_cardserver_newcamd_clients -- o bug era sistemico,
+  presente em todos os protocolos, nao so' cs378x/camd35).
+- Fix: getcs378xclientbyid() em srv-cs378x.c so' percorria o primeiro servidor de
+  cfg.cs378x.server; com mais de um "CS378X PORT:" configurado, clientes dos servidores
+  seguintes nunca eram encontrados por id. Alinhado com getcamd35clientbyid(), que ja
+  percorria todos os servidores corretamente.
+- Fix: http_send_cs378x_client/http_send_camd35_client faziam "return;" sem resposta HTTP
+  quando o cliente nao era encontrado por id, deixando a ligacao AJAX pendurada (o browser
+  nunca recebia status 200, nem nenhum outro). Agora redirecionam para /cs378x ou /camd35,
+  alinhado com o padrao ja usado por newcamd/cccam/mgcamd.
+
 ## v1.70.9 (2026-11-23)
 - Fix: same bug class as v1.70.8, found by auditing every protocol's GUI client handler in httpserver.c for
   the M:/MG: persistence pattern (http_send_cs378x_client at line ~1950 and http_send_camd35_client at line

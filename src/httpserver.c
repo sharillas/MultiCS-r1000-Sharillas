@@ -74,6 +74,13 @@ void mg_disconnect_cli(struct mg_client_data *cli);
 
 extern char *base64_pdecode(const char *in, char *out);
 
+// fix v1.70.10: http_send_redirect() so' e' definido mais abaixo neste ficheiro (~linha 3227);
+// http_send_cs378x_client/http_send_camd35_client (mais acima) passaram a chama-la (fix do
+// "Client not found"). O gcc do sandbox tolera o uso antes da definicao (so' avisa), mas o
+// clang/zig usado no build Windows da' erro de "conflicting types" por a declaracao implicita
+// (int) nao coincidir com a definicao real (void). Prototipo adicionado para compilar em ambos.
+void http_send_redirect(int sock, char *location);
+
 
 #define LIST_ACTIVE       0
 #define LIST_CONNECTED    1
@@ -1978,7 +1985,10 @@ void http_send_cs378x_client(int sock, http_request *req)
 	// GET CLIENT
 	struct camd35_client_data *cli = NULL;
 	if (str_id) cli = getcs378xclientbyid( atoi(str_id) );
-	if (!cli) return;
+	// fix v1.70.10: "return" nu, sem resposta HTTP, deixava a ligacao AJAX pendurada -- o
+	// browser nunca recebia status 200 (nem nenhum), por isso on/off/delete pareciam "nao
+	// fazer nada". Alinhado com o padrao do newcamd/cccam/mgcamd: redireciona para a lista.
+	if (!cli) { http_send_redirect(sock, "/cs378x"); return; }
 	//
 	if (get_action==ACTION_DISABLE) {
 		cli->flags |= FLAG_DISABLE;
@@ -2369,7 +2379,10 @@ void http_send_camd35_client(int sock, http_request *req)
 	// GET CLIENT
 	struct camd35_client_data *cli = NULL;
 	if (str_id) cli = getcamd35clientbyid( atoi(str_id) );
-	if (!cli) return;
+	// fix v1.70.10: "return" nu, sem resposta HTTP, deixava a ligacao AJAX pendurada -- o
+	// browser nunca recebia status 200 (nem nenhum), por isso on/off/delete pareciam "nao
+	// fazer nada". Alinhado com o padrao do newcamd/cccam/mgcamd: redireciona para a lista.
+	if (!cli) { http_send_redirect(sock, "/camd35"); return; }
 	//
 	if (get_action==ACTION_DISABLE) {
 		cli->flags |= FLAG_DISABLE;
@@ -6244,23 +6257,29 @@ void http_send_newcamd(int sock, http_request *req) // page, div, row
 		tcp_write_menu(&tcpbuf, sock,PAGE_NEWCAMD);
 		// DIV
 		tcp_writestr(&tcpbuf, sock, "<div id='mainDiv'>");
-		// Info do servico local (v1.51): um servico por perfil
-		{
-			http_service_open(&tcpbuf, sock, "Newcamd server (profiles / local services)");
-			struct cardserver_data *pcs = cfg.cardserver;
-			while (pcs) {
-				int pt, pc, pa;
-				cs_clients( pcs, &pt, &pc, &pa );
-				char keyinfo[64];
-				http_key14hex( pcs->newcamd.key, keyinfo, sizeof(keyinfo) );
-				char pname[64];
-				sprintf( pname, "[%s]", pcs->name );
-				http_service_row(&tcpbuf, sock, pname, "MultiCS r1000 v"VERSION_STR, keyinfo, pcs->newcamd.port,
-					IS_DISABLED(pcs->flags)?1:0, pcs->newcamd.handle>0, pt);
-				pcs = pcs->next;
-			}
-			http_service_close(&tcpbuf, sock);
+	}
+	// Info do servico local (v1.51): um servico por perfil
+	// fix v1.70.10: estava dentro do "if (get_action==ACTION_PAGE)", por isso so' aparecia no
+	// carregamento inicial da pagina -- o updateDiv()/autorefresh (action=div) substitui TODO o
+	// innerHTML do #mainDiv, e como esse pedido nunca incluia este bloco, o bloco "desaparecia"
+	// a cada refresh automatico ou logo apos clicar em qualquer botao on/off/delete (que chama
+	// setTimeout('updateDiv()', ...)). Movido para fora do bloco ACTION_PAGE para ser sempre
+	// incluido, tanto no full-page load como no div-refresh.
+	{
+		http_service_open(&tcpbuf, sock, "Newcamd server (profiles / local services)");
+		struct cardserver_data *pcs = cfg.cardserver;
+		while (pcs) {
+			int pt, pc, pa;
+			cs_clients( pcs, &pt, &pc, &pa );
+			char keyinfo[64];
+			http_key14hex( pcs->newcamd.key, keyinfo, sizeof(keyinfo) );
+			char pname[64];
+			sprintf( pname, "[%s]", pcs->name );
+			http_service_row(&tcpbuf, sock, pname, "MultiCS r1000 v"VERSION_STR, keyinfo, pcs->newcamd.port,
+				IS_DISABLED(pcs->flags)?1:0, pcs->newcamd.handle>0, pt);
+			pcs = pcs->next;
 		}
+		http_service_close(&tcpbuf, sock);
 	}
 
 	sprintf( http_buf, "<select style=\"width:200px;\" onchange=\"parent.location.href='/newcamd?pid='+this.value\"> ><option value=0>All Profiles(%d)</option>", total_profiles());
@@ -7844,52 +7863,56 @@ void http_send_cacheex(int sock, http_request *req)
 		tcp_write_menu(&tcpbuf, sock,PAGE_CACHEEX);
 		// DIV
 		tcp_writestr(&tcpbuf, sock, "\n<div id='mainDiv'>");
-		// Info do servico local (v1.51)
-		{
-			http_service_open(&tcpbuf, sock, "CacheEX (local services with cacheex)");
+	}
+	// Info do servico local (v1.51)
+	// fix v1.70.10: estava dentro do "if (get_action==ACTION_PAGE)" -- mesmo bug do /newcamd,
+	// o updateDiv()/autorefresh (action=div) substitui TODO o innerHTML do #mainDiv e nunca
+	// incluia este bloco, por isso desaparecia a cada refresh ou logo apos clicar em
+	// on/off/delete. Movido para fora do bloco ACTION_PAGE para ser sempre incluido.
+	{
+		http_service_open(&tcpbuf, sock, "CacheEX (local services with cacheex)");
 #ifdef CCCAM_SRV
-			{
-				struct cccam_server_data *box = cfg.cccam.server;
-				while (box) {
-					int n = 0;
-					struct cc_client_data *cx = box->cacheexclient;
-					while (cx) { if (cx->cacheex_mode) n++; cx = cx->next; }
-					char name[64];
-					sprintf( name, "CCcam CacheEX %d", box->id);
-					http_service_row(&tcpbuf, sock, name, cfg.cccam.version, "--", box->port,
-						IS_DISABLED(box->flags)?1:0, box->handle>0, n);
-					box = box->next;
-				}
+		{
+			struct cccam_server_data *box = cfg.cccam.server;
+			while (box) {
+				int n = 0;
+				struct cc_client_data *cx = box->cacheexclient;
+				while (cx) { if (cx->cacheex_mode) n++; cx = cx->next; }
+				char name[64];
+				sprintf( name, "CCcam CacheEX %d", box->id);
+				http_service_row(&tcpbuf, sock, name, cfg.cccam.version, "--", box->port,
+					IS_DISABLED(box->flags)?1:0, box->handle>0, n);
+				box = box->next;
 			}
+		}
 #endif
 #ifdef CS378X_SRV
-			{
-				struct camd35_server_data *box = cfg.cs378x.server;
-				while (box) {
-					int btotal, bconnected, bactive;
-					cs378x_clients( box, &btotal, &bconnected, &bactive );
-					char name[64];
-					sprintf( name, "Cs378x %d", box->id);
-					http_service_row(&tcpbuf, sock, name, "MultiCS r1000 v"VERSION_STR, "--", box->port,
-						IS_DISABLED(box->flags)?1:0, box->handle>0, btotal);
-					box = box->next;
-				}
+		{
+			struct camd35_server_data *box = cfg.cs378x.server;
+			while (box) {
+				int btotal, bconnected, bactive;
+				cs378x_clients( box, &btotal, &bconnected, &bactive );
+				char name[64];
+				sprintf( name, "Cs378x %d", box->id);
+				http_service_row(&tcpbuf, sock, name, "MultiCS r1000 v"VERSION_STR, "--", box->port,
+					IS_DISABLED(box->flags)?1:0, box->handle>0, btotal);
+				box = box->next;
 			}
-#endif
-			{
-				struct camd35_server_data *box = cfg.camd35.server;
-				while (box) {
-					int btotal, bconnected, bactive;
-					camd35_clients( box, &btotal, &bconnected, &bactive );
-					char name[64];
-					sprintf( name, "Camd35 %d", box->id);
-					http_service_row(&tcpbuf, sock, name, "MultiCS r1000 v"VERSION_STR, "--", box->port,
-						IS_DISABLED(box->flags)?1:0, box->handle>0, btotal);
-					box = box->next;
-				}
-			}
-			http_service_close(&tcpbuf, sock);
 		}
+#endif
+		{
+			struct camd35_server_data *box = cfg.camd35.server;
+			while (box) {
+				int btotal, bconnected, bactive;
+				camd35_clients( box, &btotal, &bconnected, &bactive );
+				char name[64];
+				sprintf( name, "Camd35 %d", box->id);
+				http_service_row(&tcpbuf, sock, name, "MultiCS r1000 v"VERSION_STR, "--", box->port,
+					IS_DISABLED(box->flags)?1:0, box->handle>0, btotal);
+				box = box->next;
+			}
+		}
+		http_service_close(&tcpbuf, sock);
 	}
 
 	sprintf( http_buf,"<tr class=alt3><td colspan=16><b>Total Replies = %d</b> &nbsp;|&nbsp; <b>Total Hits = %d</b></td></tr>",cfg.cacheex.rep, cfg.cacheex.hits); tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );

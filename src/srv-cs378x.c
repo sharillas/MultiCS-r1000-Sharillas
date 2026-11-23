@@ -17,13 +17,19 @@
 
 struct camd35_client_data *getcs378xclientbyid(uint32_t id)
 {
-	if (cfg.cs378x.server) {
-		struct camd35_client_data *cli = cfg.cs378x.server->client;
+	// fix v1.70.10: so' percorria cfg.cs378x.server->client (o 1o servidor da lista) -- com
+	// mais de um "CS378X PORT:"/servidor configurado, clientes dos servidores seguintes nunca
+	// eram encontrados por id (GUI: on/off ficava sem efeito, Edit dizia "Client not found").
+	// getcamd35clientbyid ja percorria todos os servidores; alinhado aqui com o mesmo padrao.
+	struct camd35_server_data *srv = cfg.cs378x.server;
+	while (srv) {
+		struct camd35_client_data *cli = srv->client;
 		while (cli) {
 			if (!(cli->flags&FLAG_DELETE))
 				if (cli->id==id) return cli;
 			cli = cli->next;
 		}
+		srv = srv->next;
 	}
 	return NULL;
 }
