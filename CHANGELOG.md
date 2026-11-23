@@ -1,3 +1,23 @@
+## v1.70.9 (2026-11-23)
+- Fix: same bug class as v1.70.8, found by auditing every protocol's GUI client handler in httpserver.c for
+  the M:/MG: persistence pattern (http_send_cs378x_client at line ~1950 and http_send_camd35_client at line
+  ~2329). Both ACTION_DISABLE/ACTION_ENABLE blocks only toggled cli->flags in memory and called
+  cs378x_disconnect_cli()/camd35_disconnect_cli() -- neither ever called config_line_edit() to persist the
+  change to Clients.cfg, unlike the already-correct newcamd ("USER: %s") and cccam ("F: %s") handlers.
+  Effect: toggling Enable/Disable for a cs378x or camd35 (cacheex) client from the GUI worked only in memory
+  -- after a restart or config-reread, a disabled client would come back enabled. Fixed by adding the same
+  persistence block used for mgcamd in v1.70.8, with match strings "CS378X USER: %s" / "CAMD35 USER: %s",
+  matching production Clients.cfg's real line format exactly (confirmed: /var/etc/Clients.cfg has
+  "CS378X USER: vucex ..." and "CAMD35 USER: vucex35 ..." lines).
+  Verified via a local sandbox build (gcc, same source): full GUI regression suite (func_test.js, all pages
+  including cs378x/camd35) passed with no handler/JS regressions, and a live round-trip test -- added a
+  throwaway test client for each protocol, called /cs378xclient?action=disable|enable and
+  /camd35client?action=disable|enable via the HTTP API, and confirmed the matching line in Clients.cfg got
+  commented/uncommented correctly each time (both reverted afterwards, no production/VPS config touched).
+  No ACTION_DELETE exists for cs378x/camd35 (pre-existing GUI gap, out of scope for this fix -- the DEL
+  button sends action=delete, which neither handler recognizes, so it is a no-op; kept consistent with the
+  minimal, targeted scope of persisting only the existing Enable/Disable actions).
+
 ## v1.70.8 (2026-11-22)
 - Fix: httpserver.c's mgcamd client Enable/Disable/Delete actions (3 sites in http_send_mgcamd_client,
   ACTION_ENABLE/ACTION_DISABLE/ACTION_DELETE) built the Clients.cfg match string as `sprintf(match, "M: %s",

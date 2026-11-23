@@ -1983,11 +1983,23 @@ void http_send_cs378x_client(int sock, http_request *req)
 	if (get_action==ACTION_DISABLE) {
 		cli->flags |= FLAG_DISABLE;
 		if (cli->connection.status>0) cs378x_disconnect_cli(cli);
+		// v1.70.9: persistente - comenta a linha no Clients.cfg
+		{
+			char match[192];
+			sprintf( match, "CS378X USER: %s", cli->user); // fix: faltava persistir o disable/enable (so mexia em memoria, revertia no restart)
+			config_line_edit("Clients.cfg", match, 0);
+		}
 		http_send_ok(sock);
 		return;
 	}
 	else if (get_action==ACTION_ENABLE) {
 		cli->flags &= ~FLAG_DISABLE;
+		// v1.70.9: persistente - descomenta a linha no Clients.cfg
+		{
+			char match[192];
+			sprintf( match, "CS378X USER: %s", cli->user); // fix: faltava persistir o disable/enable (so mexia em memoria, revertia no restart)
+			config_line_edit("Clients.cfg", match, 1);
+		}
 		http_send_ok(sock);
 		return;
 	}
@@ -2362,11 +2374,23 @@ void http_send_camd35_client(int sock, http_request *req)
 	if (get_action==ACTION_DISABLE) {
 		cli->flags |= FLAG_DISABLE;
 		if (cli->connection.status>0) camd35_disconnect_cli(cli);
+		// v1.70.9: persistente - comenta a linha no Clients.cfg
+		{
+			char match[192];
+			sprintf( match, "CAMD35 USER: %s", cli->user); // fix: faltava persistir o disable/enable (so mexia em memoria, revertia no restart)
+			config_line_edit("Clients.cfg", match, 0);
+		}
 		http_send_ok(sock);
 		return;
 	}
 	else if (get_action==ACTION_ENABLE) {
 		cli->flags &= ~FLAG_DISABLE;
+		// v1.70.9: persistente - descomenta a linha no Clients.cfg
+		{
+			char match[192];
+			sprintf( match, "CAMD35 USER: %s", cli->user); // fix: faltava persistir o disable/enable (so mexia em memoria, revertia no restart)
+			config_line_edit("Clients.cfg", match, 1);
+		}
 		http_send_ok(sock);
 		return;
 	}
