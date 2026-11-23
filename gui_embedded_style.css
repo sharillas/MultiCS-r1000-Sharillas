@@ -433,6 +433,8 @@ body.light-mode pre { background: #14213D; color: #B9E6C3; }
 #lemodal .le-x { float: right; cursor: pointer; color: var(--pbad); font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; }
 #lemodal .le-x:hover { border-color: var(--pbad); }
 #lemodal input, #lemodal select { width: 100%; margin: 4px 0 8px; }
+#lemodal input[type=checkbox] { width: auto; margin: 0; flex: 0 0 auto; }
+#lemodal label.le-cb { display: flex; align-items: center; gap: 10px; margin: 4px 0; cursor: pointer; }
 
 /* ---------- login ---------- */
 .login-page { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--page); padding: 0 !important; }

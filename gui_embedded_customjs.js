@@ -70,8 +70,16 @@ function leClose(){var d=document.getElementById('lemodal');if(d)d.parentNode.re
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&document.getElementById('lemodal'))leClose();});
 function leSave(){
  var g=function(n){var e=document.getElementById('le_'+n);return e?e.value:'';};
- var url='/editline?action=save&type='+g('type')+'&id='+g('id')+'&old='+btoa(g('old'))+'&proto='+g('proto')+'&host='+btoa(g('host'))+'&port='+g('port')+'&user='+btoa(g('user'))+'&pass='+btoa(g('pass'))+'&key='+btoa(g('key'))+'&opts='+btoa(g('opts'));
- var x=new XMLHttpRequest();x.open('GET',url,true);
- x.onreadystatechange=function(){if(x.readyState==4&&x.status==200){leClose();if(typeof updateDiv==='function')setTimeout(updateDiv,800);}else if(x.readyState==4){var d=document.getElementById('lemodal');if(d){var s=document.createElement('div');s.innerHTML=x.responseText||'ERROR';d.appendChild(s);}}};
- x.send(null);
+ var b64=function(s){try{return btoa(unescape(encodeURIComponent(s)));}catch(e){return '';}};
+ var bl=[];document.querySelectorAll('#lemodal .le-bool:checked').forEach(function(c){if(c.dataset&&c.dataset.key)bl.push(c.dataset.key);});
+ var fb=document.getElementById('le_fblock0');
+ var en=[];document.querySelectorAll('#lemodal .le-enum').forEach(function(c){if(c.dataset&&c.dataset.key)en.push(c.dataset.key+':'+c.value);});
+ var f=function(k,v){return k+'='+encodeURIComponent(v);};
+ var body=[f('old',b64(g('old'))),f('proto',g('proto')),f('host',b64(g('host'))),f('port',g('port')),f('user',b64(g('user'))),f('pass',b64(g('pass'))),f('key',b64(g('key'))),f('opts',b64(g('opts'))),f('bool',bl.join(',')),f('enum',en.join(','))];
+ if(fb)body.push(f('fblock0',fb.checked?1:0));
+ body.push('end=1');
+ var x=new XMLHttpRequest();x.open('POST','/editline?action=save&type='+encodeURIComponent(g('type'))+'&id='+encodeURIComponent(g('id')),true);
+ x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+ x.onreadystatechange=function(){if(x.readyState!=4)return;var t=x.responseText||'';if(x.status==200&&t.indexOf("class='miss'")<0){leClose();if(typeof updateDiv==='function')setTimeout(updateDiv,800);return;}var d=document.getElementById('lemodal');if(d){var o=document.getElementById('le_err');if(o)o.parentNode.removeChild(o);var s=document.createElement('div');s.id='le_err';s.innerHTML=t||'ERROR';d.appendChild(s);}};
+ x.send(body.join('&'));
 }

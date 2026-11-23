@@ -37,6 +37,15 @@ struct camd35_client_data *getcamd35clientbyid(uint32_t id)
 					if (cli->id==id) return cli;
 				cli = cli->next;
 			}
+			// fix v1.70.14: clientes com cacheex_mode ficam na lista "cacheexclient" (ver
+			// cfg_addcamd35client) -- a pagina de lista mostra as duas listas, mas esta procura
+			// so' via a 1a: Edit/ON/OFF/DEL de um cliente CacheEX davam "Client not found".
+			cli = camd35->cacheexclient;
+			while (cli) {
+				if (!(cli->flags&FLAG_DELETE))
+					if (cli->id==id) return cli;
+				cli = cli->next;
+			}
 		}
 		camd35 = camd35->next;
 	}

@@ -1732,10 +1732,15 @@ static void http_send_c35_page(int sock, http_request *req, const char *path, co
 			struct camd35_server_data *s35 = srvlist;
 			struct camd35_client_data *cli = NULL;
 			while (s35 && !cli) {
+				// fix v1.70.14: tambem percorre ->cacheexclient (clientes com cacheex_mode>0 ficam
+				// nessa lista); antes OFF/ON/DEL em clientes CacheEX nao faziam nada.
 				struct camd35_client_data *c = s35->client;
+				struct camd35_client_data *cxl = s35->cacheexclient;
+				if (!c && cxl) { c = cxl; cxl = NULL; }
 				while (c) {
 					if ( !(c->flags&FLAG_DELETE) && (c->id==cid) ) { cli = c; break; }
 					c = c->next;
+					if (!c) { c = cxl; cxl = NULL; }
 				}
 				s35 = s35->next;
 			}
@@ -5448,6 +5453,48 @@ int profile_config_toggle(char *name, int on)
 // CONTEUDO); so' se nenhum tiver devolve NULL (quem chamar cai no lookup por nome, como
 // fallback, igual ao comportamento antigo -- preciso p/ o caso de ACRESCENTAR uma linha
 // nova que ainda nao existe em lado nenhum).
+// fix v1.70.14: o match das linhas de CLIENTE ("F: x", "MG: x", "USER: x", "CS378X USER: x",
+// "CAMD35 USER: x") passa a ser ANCORADO ao inicio da linha (opcionalmente precedido de um
+// '#' colado = linha desativada pela GUI). Antes era strstr em qualquer sitio da linha, o que
+// fazia "USER: x" apanhar tambem "CS378X USER: x"/"CAMD35 USER: x" e linhas de exemplo
+// comentadas ("#   F: jose ..."), editando/apagando a linha errada. Os restantes matches
+// (ex: "host porta" dos servers/peers) mantem o comportamento antigo (substring).
+static int cfg_match_is_keyed(const char *match)
+{
+	static const char *kw[] = { "CS378X USER: ", "CAMD35 USER: ", "USER: ", "MG: ", "F: ", NULL };
+	int i;
+	for (i=0; kw[i]; i++) if (!strncmp(match, kw[i], strlen(kw[i]))) return 1;
+	return 0;
+}
+
+static int cfg_line_matches(const char *line, const char *match)
+{
+	if (!cfg_match_is_keyed(match)) return strstr(line, match)!=NULL;
+	const char *q = line;
+	while (*q==' '||*q=='\t') q++;
+	if (*q=='#') q++;
+	size_t ml = strlen(match);
+	if (strncmp(q, match, ml)) return 0;
+	char c = q[ml];
+	return (c==0||c==' '||c=='\t'||c=='\r'||c=='{');
+}
+
+// true se ALGUMA linha do buffer 'buf' (modificado: '\n' -> 0) casa com 'match'
+static int cfg_buf_has_match(char *buf, const char *match)
+{
+	char *p = buf;
+	while (*p) {
+		char *start = p;
+		while (*p && *p!='\n') p++;
+		int more = (*p=='\n');
+		*p = 0;
+		if (cfg_line_matches(start, match)) return 1;
+		if (!more) break;
+		p++;
+	}
+	return 0;
+}
+
 static char *config_find_file_with_match(const char *match)
 {
 	if (!match || !*match) return NULL;
@@ -5461,10 +5508,47 @@ static char *config_find_file_with_match(const char *match)
 			fclose(fp);
 			if (size>0 && size<PFILE_MAX) {
 				pfilebuf[size] = 0;
-				if (strstr(pfilebuf, match)) { found = fs->name; break; }
+				if (cfg_buf_has_match(pfilebuf, match)) { found = fs->name; break; }
 			}
 		}
 		fs = fs->next;
+	}
+	pthread_mutex_unlock(&pfile_mutex);
+	return found;
+}
+
+// fix v1.70.14: devolve em 'out' a 1a linha real (do ficheiro) que casa com 'match'.
+static int cfg_read_matching_line(const char *match, char *out, int outsz)
+{
+	out[0] = 0;
+	char *fname = config_find_file_with_match(match);
+	if (!fname) return 0;
+	int found = 0;
+	pthread_mutex_lock(&pfile_mutex);
+	FILE *fp = fopen(fname, "r");
+	if (fp) {
+		int size = (int)fread(pfilebuf, 1, PFILE_MAX, fp);
+		fclose(fp);
+		if (size>0 && size<PFILE_MAX) {
+			pfilebuf[size] = 0;
+			char *p = pfilebuf;
+			while (*p) {
+				char *start = p;
+				while (*p && *p!='\n') p++;
+				int more = (*p=='\n');
+				*p = 0;
+				if (cfg_line_matches(start, match)) {
+					int l = (int)strlen(start);
+					while (l>0 && (start[l-1]=='\r')) l--;
+					if (l>=outsz) l = outsz-1;
+					memcpy(out, start, l); out[l] = 0;
+					found = 1;
+					break;
+				}
+				if (!more) break;
+				p++;
+			}
+		}
 	}
 	pthread_mutex_unlock(&pfile_mutex);
 	return found;
@@ -5500,7 +5584,7 @@ int config_line_edit(char *filestr, char *match, int action)
 		char *eol = p;
 		if (*p) p++;
 		*eol = 0;
-		int ismatch = strstr(start, match)!=NULL;
+		int ismatch = cfg_line_matches(start, match);
 		if (ismatch && action==2) {
 			// remover a linha
 		}
@@ -5554,7 +5638,7 @@ int config_line_replace(char *filestr, char *match, const char *newline)
 		char *eol = p;
 		if (*p) p++;
 		*eol = 0;
-		if (!replaced && strstr(start, match)) {
+		if (!replaced && cfg_line_matches(start, match)) {
 			fwrite(newline,1,strlen(newline),fo);
 			replaced = 1;
 		}
@@ -5568,6 +5652,54 @@ int config_line_replace(char *filestr, char *match, const char *newline)
 	fclose(fo);
 	pthread_mutex_unlock(&pfile_mutex);
 	mlogf(LOGINFO, DBG_HTTP, " http: linha '%s' substituida no %s (reload automatico)\n", match, fname);
+	return 0;
+}
+
+// fix v1.70.14: le um parametro do save do popup. O parser HTTP so' guarda ate' 20 parametros,
+// com value[512] e path[512] -- um URL de GET acima de ~511 chars era CORTADO EM SILENCIO (opcoes
+// gravadas truncadas e as checkboxes/selects, que vao no fim do URL, perdidas, com resposta "OK").
+// O popup passou a enviar o save por POST; os valores vem do corpo (req->dbf, dinamico, sem esses
+// limites) com decode %XX/'+', e em alternativa da query string (GET curto, compat.).
+// Devolve 1 = encontrado (em out), 0 = ausente, -1 = nao cabe em out (nunca trunca).
+#define LE_ISHEX(c) (((c)>='0'&&(c)<='9')||((c)>='a'&&(c)<='f')||((c)>='A'&&(c)<='F'))
+static int le_param(http_request *req, const char *name, char *out, int outsz)
+{
+	out[0] = 0;
+	int nl = (int)strlen(name);
+	if (req->dbf.data && req->dbf.datasize > 1) {
+		const char *p = (const char*)req->dbf.data;
+		while (*p) {
+			const char *e = strchr(p, '&');
+			int len = e ? (int)(e-p) : (int)strlen(p);
+			if (len > nl && p[nl]=='=' && !strncmp(p, name, nl)) {
+				const char *v = p+nl+1, *ve = p+len;
+				int o = 0;
+				while (v < ve) {
+					unsigned char c = (unsigned char)*v;
+					if (c=='%' && v+2 < ve && LE_ISHEX(v[1]) && LE_ISHEX(v[2])) {
+						char h[3] = { v[1], v[2], 0 };
+						c = (unsigned char)strtol(h, NULL, 16);
+						v += 3;
+					} else {
+						if (c=='+') c = ' ';
+						v++;
+					}
+					if (o >= outsz-1) { out[0] = 0; return -1; }
+					out[o++] = (char)c;
+				}
+				out[o] = 0;
+				return 1;
+			}
+			if (!e) break;
+			p = e+1;
+		}
+	}
+	char *g = isset_get(req, (char*)name);
+	if (g) {
+		if ((int)strlen(g) >= outsz) return -1;
+		strcpy(out, g);
+		return 1;
+	}
 	return 0;
 }
 
@@ -5604,8 +5736,11 @@ static int le_freetext_is_valid(const char *type, const char *key)
 {
 	if (!strcmp(type,"server")) {
 		if (!strcmp(key,"hop")||!strcmp(key,"budget_max")||!strcmp(key,"budget_group")||!strcmp(key,"budget_ask")||!strcmp(key,"profiles")) return 1;
+		// fix v1.70.14: faltavam chaves que o parser (config.c parse_server_data) aceita de facto --
+		// sem 'name' o popup apagava o nome do reader ao gravar sem alteracoes.
+		if (!strcmp(key,"name")||!strcmp(key,"sids")||!strcmp(key,"shares")||!strcmp(key,"priority")||!strcmp(key,"type")) return 1;
 #ifdef CACHEEX
-		if (!strcmp(key,"cacheex_mode")) return 1;
+		if (!strcmp(key,"cacheex_mode")||!strcmp(key,"cacheex_maxhop")||!strcmp(key,"cacheex_forward")) return 1;
 #endif
 		return 0;
 	}
@@ -5633,7 +5768,9 @@ static int le_validate_freetext(const char *type, const char *in, char *out, int
 		if (!*p) break;
 		const char *eq = strchr(p,'=');
 		if (!eq) break; // resto nao e' um par key=value -- ignora e termina
-		const char *semi = strchr(p,';');
+		// fix v1.70.14: ';' dentro de aspas (ex: name="A;B") faz parte do valor, nao termina o token
+		const char *semi = NULL;
+		{ int inq = 0; const char *q; for (q=p; *q; q++) { if (*q=='"') inq = !inq; else if (*q==';' && !inq) { semi = q; break; } } }
 		if (semi && eq>semi) break; // ';' antes do '=' -- token mal formado, termina
 		int klen = (int)(eq-p);
 		while (klen>0 && (p[klen-1]==' '||p[klen-1]=='\t')) klen--;
@@ -5657,6 +5794,135 @@ static int le_validate_freetext(const char *type, const char *in, char *out, int
 	return 1;
 }
 
+// fix v1.70.14: separa uma linha real de cliente "KEYWORD: user pass [posicionais] { opcoes }"
+// em 'pos' (texto entre a password e o '{', ex: o numero de reshare das F-lines) e 'blk'
+// (conteudo entre '{' e '}'). Usado para PRE-CARREGAR as opcoes existentes no popup e para as
+// PRESERVAR no save (antes o campo vinha vazio e gravar apagava tudo o que a linha tinha).
+static void le_split_client_line(const char *line, char *pos, int possz, char *blk, int blksz)
+{
+	pos[0] = blk[0] = 0;
+	const char *p = line;
+	while (*p==' '||*p=='\t') p++;
+	if (*p=='#') p++;
+	const char *colon = strchr(p, ':');
+	if (!colon) return;
+	p = colon+1;
+	int tok;
+	for (tok=0; tok<2; tok++) { // user, pass
+		while (*p==' '||*p=='\t') p++;
+		if (*p=='"') { p++; while (*p && *p!='"') p++; if (*p=='"') p++; }
+		else while (*p && *p!=' ' && *p!='\t' && *p!='{') p++;
+	}
+	const char *br = strchr(p, '{');
+	const char *pe = br ? br : p+strlen(p);
+	while (p<pe && (*p==' '||*p=='\t')) p++;
+	while (pe>p && (pe[-1]==' '||pe[-1]=='\t'||pe[-1]=='\r')) pe--;
+	int pl = (int)(pe-p);
+	if (pl>=possz) pl = possz-1;
+	if (pl>0) { memcpy(pos, p, pl); pos[pl] = 0; }
+	if (br) {
+		const char *bs = br+1;
+		const char *be = strrchr(br, '}');
+		if (!be) be = br+strlen(br);
+		while (bs<be && (*bs==' '||*bs=='\t')) bs++;
+		while (be>bs && (be[-1]==' '||be[-1]=='\t'||be[-1]=='\r')) be--;
+		int bl = (int)(be-bs);
+		if (bl>=blksz) bl = blksz-1;
+		if (bl>0) { memcpy(blk, bs, bl); blk[bl] = 0; }
+	}
+}
+
+// fix v1.70.14: percorre os segmentos "chave=valor" (separados por ';' fora de aspas) de um
+// bloco de opcoes; copia para 'rest' todos EXCEPTO k1/k2 (que sao controlados por checkbox/select
+// no popup) e devolve em v1/v2 o valor dessas duas chaves, se existirem. Chaves "{"/"}" soltas
+// nas pontas sao ignoradas.
+static void le_blk_filter(const char *blk, const char *k1, const char *k2, char *rest, int restsz, char *v1, int v1sz, char *v2, int v2sz)
+{
+	rest[0] = 0;
+	if (v1 && v1sz>0) v1[0] = 0;
+	if (v2 && v2sz>0) v2[0] = 0;
+	int rl = 0;
+	const char *p = blk;
+	while (*p) {
+		while (*p==' '||*p=='\t'||*p==';'||*p=='\r'||*p=='\n'||*p=='{'||*p=='}') p++;
+		if (!*p) break;
+		const char *seg = p;
+		int inq = 0;
+		while (*p && (inq || *p!=';')) { if (*p=='"') inq = !inq; p++; }
+		const char *se = p;
+		while (se>seg && (se[-1]==' '||se[-1]=='\t'||se[-1]=='}'||se[-1]=='\r')) se--;
+		if (se<=seg) continue;
+		const char *eq = memchr(seg, '=', se-seg);
+		int klen = eq ? (int)(eq-seg) : 0;
+		while (klen>0 && (seg[klen-1]==' '||seg[klen-1]=='\t')) klen--;
+		int hit = 0;
+		int which;
+		for (which=0; which<2 && eq; which++) {
+			const char *k = which ? k2 : k1;
+			char *v = which ? v2 : v1;
+			int vsz = which ? v2sz : v1sz;
+			if (k && klen==(int)strlen(k) && !strncmp(seg, k, klen)) {
+				if (v && vsz>0) {
+					const char *vs = eq+1;
+					while (vs<se && (*vs==' '||*vs=='\t')) vs++;
+					int vl = (int)(se-vs);
+					if (vl>=vsz) vl = vsz-1;
+					if (vl>0) memcpy(v, vs, vl);
+					v[vl>0?vl:0] = 0;
+				}
+				hit = 1;
+				break;
+			}
+		}
+		if (!hit) {
+			int sl = (int)(se-seg);
+			if (rl + sl + 3 < restsz) {
+				memcpy(rest+rl, seg, sl); rl += sl;
+				rest[rl++] = ';'; rest[rl++] = ' ';
+				rest[rl] = 0;
+			}
+		}
+	}
+	while (rl>0 && rest[rl-1]==' ') rest[--rl] = 0;
+}
+
+// fix v1.70.14: valor por omissao (global) de 'dcwcheck' para cada tipo de cliente -- o parser
+// inicializa cli->dcwcheck com o global do protocolo (F:/MG:/USER:) ou 0 (CS378X/CAMD35).
+// So' se grava "dcwcheck=yes|no" na linha quando a checkbox DIFERE deste valor (nunca texto a mais).
+#ifdef CHECK_NEXTDCW
+static int le_dcwcheck_default(const char *type)
+{
+	if (!strcmp(type,"user")) return cfg.newcamd.dcwcheck?1:0;
+	if (!strcmp(type,"f")) return cfg.cccam.dcwcheck?1:0;
+	if (!strcmp(type,"mg")) return cfg.mgcamd.dcwcheck?1:0;
+	return 0;
+}
+#endif
+
+// fix v1.70.14: tipos de cliente que aceitam cacheex_mode (select 0..3 no popup)
+static int le_type_has_cacheex_select(const char *type)
+{
+#ifdef CACHEEX
+	return !strcmp(type,"f")||!strcmp(type,"cs378xc")||!strcmp(type,"camd35c");
+#else
+	return 0;
+#endif
+}
+
+// fix v1.70.14: valor do select 'key' na string "k1:v1,k2:v2" enviada pelo browser; -1 se ausente
+static int le_enum_get(const char *s, const char *key)
+{
+	char pat[64];
+	if (!s) return -1;
+	snprintf(pat, sizeof(pat), "%s:", key);
+	const char *p = strstr(s, pat);
+	if (!p) return -1;
+	if (p!=s && p[-1]!=',') return -1;
+	p += strlen(pat);
+	if (*p<'0' || *p>'9') return -1;
+	return atoi(p);
+}
+
 // fix v1.70.13 (#56): true se 'key' estiver presente na lista CSV (',k1,k2,...,') de chaves
 // de checkbox marcadas, enviada pelo browser no save.
 static int le_bool_checked(const char *csv, const char *key)
@@ -5669,7 +5935,7 @@ static int le_bool_checked(const char *csv, const char *key)
 
 void http_send_lineedit(int sock, http_request *req)
 {
-	char http_buf[2048];
+	char http_buf[16384]; // fix v1.70.14: era 2048 -- opcoes longas (ex: sids=) eram truncadas
 	struct tcp_buffer_data tcpbuf;
 	char *str_action = isset_get(req, "action");
 	if (!str_action) { http_send_text(sock, "?"); return; }
@@ -5680,7 +5946,7 @@ void http_send_lineedit(int sock, http_request *req)
 	int id = str_id ? atoi(str_id) : 0;
 
 	if (!strcmp(str_action, "form")) {
-		char host[128], user[64], pass[64], key[64], opts[640], oldmatch[256];
+		char host[128], user[64], pass[64], key[64], opts[2048], oldmatch[256]; // fix v1.70.14: opts era 640
 		host[0]=user[0]=pass[0]=key[0]=opts[0]=oldmatch[0]=0;
 		int port = 0;
 		int isserver = !strcmp(type,"server");
@@ -5693,6 +5959,8 @@ void http_send_lineedit(int sock, http_request *req)
 		// diretamente da struct em memoria, nunca do texto do ficheiro).
 		int b_nocheck=0,b_providrewrite=0,b_stealth=0,b_arbiter=0,b_dcwcheck=0;
 		int b_csp=0,b_autoadd=0,b_sendreq=0,b_sendrep=0,b_fwd=0,b_fblock0=0;
+		int cxmode=0; // fix v1.70.14: cacheex_mode atual (clientes F:/CS378X/CAMD35) para o select
+		int toolong=0; // fix v1.70.14: bloco de opcoes real demasiado grande p/ o popup -> recusa abrir
 
 		if (isserver) {
 			struct server_data *srv = getsrvbyid(id);
@@ -5756,12 +6024,16 @@ void http_send_lineedit(int sock, http_request *req)
 #ifdef CHECK_NEXTDCW
 			b_dcwcheck = cli->dcwcheck?1:0;
 #endif
+#ifdef CACHEEX
+			cxmode = cli->cacheex_mode;
+#endif
 		}
 		else if (!strcmp(type,"mg")) {
 			struct mg_client_data *cli = getmgcamdclientbyid(id);
 			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "MG: %s", cli->user);
+			strcpy(proto,"mg"); // fix v1.70.14: antes ficava "user" e o save reescrevia a linha como "USER:"
 #ifdef CHECK_NEXTDCW
 			b_dcwcheck = cli->dcwcheck?1:0;
 #endif
@@ -5771,8 +6043,12 @@ void http_send_lineedit(int sock, http_request *req)
 			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "CS378X USER: %s", cli->user);
+			strcpy(proto,"cs378xc"); // fix v1.70.14: idem MG (virava "USER:")
 #ifdef CHECK_NEXTDCW
 			b_dcwcheck = cli->dcwcheck?1:0;
+#endif
+#ifdef CACHEEX
+			cxmode = cli->cacheex_mode;
 #endif
 		}
 		else if (!strcmp(type,"camd35c")) {
@@ -5780,8 +6056,12 @@ void http_send_lineedit(int sock, http_request *req)
 			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "CAMD35 USER: %s", cli->user);
+			strcpy(proto,"camd35c"); // fix v1.70.14: idem MG (virava "USER:")
 #ifdef CHECK_NEXTDCW
 			b_dcwcheck = cli->dcwcheck?1:0;
+#endif
+#ifdef CACHEEX
+			cxmode = cli->cacheex_mode;
 #endif
 		}
 		else if (ispeer) {
@@ -5799,21 +6079,63 @@ void http_send_lineedit(int sock, http_request *req)
 		}
 		else { http_send_text(sock, "<span class='miss'>Tipo desconhecido</span>"); return; }
 
+		// fix v1.70.14: clientes -- PRE-CARREGAR no campo "Outras opcoes" as opcoes reais que a linha
+		// ja tem no ficheiro (profiles, name, host, expire, shares, ...), menos as que tem controlo
+		// proprio no popup (dcwcheck = checkbox, cacheex_mode = select). Antes o campo vinha vazio e
+		// gravar apagava todas as opcoes existentes da linha.
+		if (!isserver && !ispeer) {
+			char rawline[4096], rpos[200], rblk[2300], rrest[2100];
+			if (cfg_read_matching_line(oldmatch, rawline, sizeof(rawline))) {
+				if (strlen(rawline) > 3900) toolong = 1;
+				le_split_client_line(rawline, rpos, sizeof(rpos), rblk, sizeof(rblk));
+				if (strlen(rblk) > 1900) toolong = 1;
+				le_blk_filter(rblk, "dcwcheck", "cacheex_mode", rrest, sizeof(rrest), NULL, 0, NULL, 0);
+				snprintf(opts, sizeof(opts), "%s", rrest);
+			}
+		}
+		// fix v1.70.14: servidores -- o campo livre era reconstruido a partir da struct (hop/budget/
+		// profiles...), por isso opcoes como name="X", sids, priority, shares... nao apareciam e
+		// eram APAGADAS ao gravar sem alteracoes. Passa a ler o bloco "{ }" real da linha, menos
+		// as 4 chaves que sao checkboxes (nocheck/providrewrite/stealth/arbiter).
+		if (isserver) {
+			char rawline[4096], rblk[2300], rtmp[2300], rrest[2100];
+			if (cfg_read_matching_line(oldmatch, rawline, sizeof(rawline))) {
+				char *lb = strchr(rawline, '{');
+				rblk[0] = 0;
+				if (strlen(rawline) > 3900) toolong = 1;
+				if (lb) snprintf(rblk, sizeof(rblk), "%s", lb+1);
+				if (strlen(rblk) > 1900) toolong = 1;
+				le_blk_filter(rblk, "nocheck", "providrewrite", rtmp, sizeof(rtmp), NULL, 0, NULL, 0);
+				le_blk_filter(rtmp, "stealth", "arbiter", rrest, sizeof(rrest), NULL, 0, NULL, 0);
+				snprintf(opts, sizeof(opts), "%s", rrest);
+			}
+		}
+
 		// escape p/ atributos
-		char ehost[300], euser[160], epass[160], ekey[160], eopts[1300], eold[520];
+		char ehost[300], euser[160], epass[160], ekey[160], eopts[12400], eold[520]; // fix v1.70.14: eopts era 1300
 		char *flds[] = { host, user, pass, key, opts, oldmatch };
 		char *outs[] = { ehost, euser, epass, ekey, eopts, eold };
 		int fi;
+		// fix v1.70.14: limite por campo = tamanho real do buffer de saida (antes: 1199 para todos,
+		// acima do tamanho de ehost/euser/epass/ekey) e, se o escape nao couber, o popup recusa abrir
+		// em vez de mostrar/gravar texto truncado (truncar = corromper a linha ao gravar).
+		static const int elim[6] = { 280, 140, 140, 140, 12300, 500 };
+		int etrunc = 0;
 		for (fi=0; fi<6; fi++) {
 			char *c; int wi=0;
-			for (c=flds[fi]; *c && wi<1199; c++) {
+			for (c=flds[fi]; *c && wi<elim[fi]; c++) {
 				if (*c=='"') { memcpy(outs[fi]+wi,"&quot;",6); wi+=6; }
 				else if (*c=='<') { memcpy(outs[fi]+wi,"&lt;",4); wi+=4; }
 				else if (*c=='>') { memcpy(outs[fi]+wi,"&gt;",4); wi+=4; }
 				else if (*c=='&') { memcpy(outs[fi]+wi,"&amp;",5); wi+=5; }
 				else outs[fi][wi++] = *c;
 			}
+			if (*c) etrunc = 1;
 			outs[fi][wi] = 0;
+		}
+		if (etrunc || toolong) {
+			http_send_text(sock, "<span class='miss'>Esta linha tem op&ccedil;&otilde;es demasiado longas para o editor popup -- edite-a em Settings &gt; Editor Configs (nada foi alterado)</span>");
+			return;
 		}
 
 		tcp_write(&tcpbuf, sock, http_replyok, strlen(http_replyok) );
@@ -5901,6 +6223,20 @@ void http_send_lineedit(int sock, http_request *req)
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
 
+#ifdef CACHEEX
+		// fix v1.70.14: cacheex_mode (0-3) dos clientes F:/CS378X/CAMD35 como select. "Off" (0)
+		// nunca escreve nada na linha; 1/2/3 escrevem "cacheex_mode=N;" (o parser le-o em hex).
+		if (le_type_has_cacheex_select(type)) {
+			sprintf( http_buf,
+				"<tr><td>CacheEX mode</td><td><select class='le-enum' data-key='cacheex_mode'>"
+				"<option value='0'%s>Off</option><option value='1'%s>1</option>"
+				"<option value='2'%s>2 (receive)</option><option value='3'%s>3 (full)</option>"
+				"</select></td></tr>",
+				cxmode==0?" selected":"", cxmode==1?" selected":"", cxmode==2?" selected":"", cxmode==3?" selected":"");
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+#endif
+
 		// fix v1.70.13 (#56): campo livre so' para as restantes opcoes nao-booleanas. Para os
 		// tipos "inseguros" (Servers, clientes CS378X/CAMD35, Cache Peer) o save valida cada
 		// chave aqui escrita contra a whitelist antes de gravar (le_freetext_is_valid).
@@ -5923,18 +6259,34 @@ void http_send_lineedit(int sock, http_request *req)
 	}
 
 	if (!strcmp(str_action, "save")) {
-		char *g = isset_get(req, "old");
-		char *p_proto = isset_get(req, "proto");
-		char *p_host = isset_get(req, "host");
-		char *p_port = isset_get(req, "port");
-		char *p_user = isset_get(req, "user");
-		char *p_pass = isset_get(req, "pass");
-		char *p_key = isset_get(req, "key");
-		char *p_opts = isset_get(req, "opts");
-		char *p_bool = isset_get(req, "bool"); // fix v1.70.13: CSV das checkboxes '.le-bool' marcadas
-		char *p_fblock0 = isset_get(req, "fblock0"); // fix v1.70.13: Cache Peer -- "1"/"0"
-		char host[128], user[64], pass[64], key[64], opts[640], old[256];
+		// fix v1.70.14: parametros lidos por le_param (corpo POST sem os limites do parser de GET).
+		char b_old[400], b_proto[32], b_host[200], b_port[16], b_user[120], b_pass[120], b_key[120];
+		char b_opts[4200], b_bool[420], b_enum[420], b_fb0[8], b_end[8];
+		int lebad = 0, r_;
+#define LEP(var,name,buf) char *var = NULL; r_ = le_param(req, name, buf, (int)sizeof(buf)); if (r_ < 0) lebad = 1; else if (r_ > 0) var = buf;
+		LEP(g, "old", b_old)
+		LEP(p_proto, "proto", b_proto)
+		LEP(p_host, "host", b_host)
+		LEP(p_port, "port", b_port)
+		LEP(p_user, "user", b_user)
+		LEP(p_pass, "pass", b_pass)
+		LEP(p_key, "key", b_key)
+		LEP(p_opts, "opts", b_opts)
+		LEP(p_bool, "bool", b_bool) // CSV das checkboxes '.le-bool' marcadas
+		LEP(p_fblock0, "fblock0", b_fb0) // Cache Peer -- "1"/"0"
+		LEP(p_enum, "enum", b_enum) // selects do popup, "k1:v1,k2:v2" (ex: cacheex_mode:2)
+		LEP(p_end, "end", b_end)
+#undef LEP
+		if (lebad) { http_send_text(sock, "<span class='miss'>Campo demasiado longo -- nada foi gravado</span>"); return; }
+		// marcador final: se faltar, o pedido chegou truncado (ou e' de uma versao antiga da pagina) --
+		// recusa em vez de gravar opcoes/checkboxes incompletas.
+		if (!p_end || strcmp(p_end,"1")) { http_send_text(sock, "<span class='miss'>Pedido incompleto -- nada foi gravado (recarregue a p&aacute;gina com Ctrl+F5)</span>"); return; }
+		char host[128], user[64], pass[64], key[64], opts[2048], old[256]; // fix v1.70.14: opts era 640
 		host[0]=user[0]=pass[0]=key[0]=opts[0]=old[0]=0;
+		// fix v1.70.14: base64_pdecode nao tem limite de destino -- recusa antes de decodificar
+		// (antes um campo > 639 bytes dava overflow de stack).
+		if (p_opts && strlen(p_opts) > 2600) { http_send_text(sock, "<span class='miss'>Campo 'Outras op&ccedil;&otilde;es' demasiado longo -- nada foi gravado</span>"); return; }
+		if ((p_host && strlen(p_host)>170) || (p_user && strlen(p_user)>85) || (p_pass && strlen(p_pass)>85) || (p_key && strlen(p_key)>85) || (g && strlen(g)>340)) { http_send_text(sock, "<span class='miss'>Campo demasiado longo -- nada foi gravado</span>"); return; }
 		if (p_host && *p_host) base64_pdecode(p_host, host);
 		if (p_user && *p_user) base64_pdecode(p_user, user);
 		if (p_pass && *p_pass) base64_pdecode(p_pass, pass);
@@ -5959,7 +6311,15 @@ void http_send_lineedit(int sock, http_request *req)
 		// e' validado por whitelist: se aparecer QUALQUER chave desconhecida, REJEITA TODA a
 		// gravacao (nada e' escrito) para nunca corromper o parse do resto do ficheiro. Para
 		// os restantes tipos (parser com fallback seguro) mantem-se livre, como antes.
-		char freetext[700]; freetext[0] = 0;
+		// fix v1.70.14: nos clientes, dcwcheck (checkbox) e cacheex_mode (select) NUNCA vem do campo
+		// livre -- se la estiverem (ex: texto antigo colado) sao descartados aqui, para nao
+		// duplicar a chave nem contrariar o controlo.
+		if (!isserver && !ispeer) {
+			char tmpo[2100];
+			le_blk_filter(opts, "dcwcheck", "cacheex_mode", tmpo, sizeof(tmpo), NULL, 0, NULL, 0);
+			snprintf(opts, sizeof(opts), "%s", tmpo);
+		}
+		char freetext[2100]; freetext[0] = 0;
 		if (le_type_is_unsafe(type)) {
 			char badkey[64];
 			if (!le_validate_freetext(type, opts, freetext, sizeof(freetext), badkey, sizeof(badkey))) {
@@ -5983,9 +6343,9 @@ void http_send_lineedit(int sock, http_request *req)
 		// fix v1.70.13 (#56): tail = checkboxes marcadas (so' as validas p/ este tipo) +
 		// campo livre (ja' validado acima). Uma checkbox desmarcada NUNCA e' escrita -- nunca
 		// fica "key=no;" nem comentada, simplesmente nao aparece no texto gravado.
-		char tail[800]; tail[0] = 0;
+		char tail[2400]; tail[0] = 0;
 		{
-			char opttxt[760]; int ol = 0;
+			char opttxt[2300]; int ol = 0;
 			opttxt[0] = 0;
 			if (ispeer) {
 				if (le_bool_checked(boolcsv,"csp")) ol += sprintf(opttxt+ol,"csp=yes; ");
@@ -6000,11 +6360,23 @@ void http_send_lineedit(int sock, http_request *req)
 				if (le_bool_checked(boolcsv,"stealth")) ol += sprintf(opttxt+ol,"stealth=yes; ");
 				if (le_bool_checked(boolcsv,"arbiter")) ol += sprintf(opttxt+ol,"arbiter=yes; ");
 			}
+			else {
+				// fix v1.70.14: clientes. cacheex_mode (select): 0/ausente nao escreve nada.
+				// dcwcheck (checkbox): so' se escreve quando DIFERE do valor global por omissao do
+				// protocolo -- "yes" se ligado e o global e' off, "no" se desligado e o global e' on
+				// (F:/MG:/USER: herdam o global, por omissao ON; sem "no" desmarcar nao teria efeito).
+				// Igual ao global = nada escrito (a linha fica sem a chave, como o utilizador pediu).
+				if (le_type_has_cacheex_select(type)) {
+					int cxv = le_enum_get(p_enum, "cacheex_mode");
+					if (cxv>=1 && cxv<=3) ol += sprintf(opttxt+ol,"cacheex_mode=%d; ", cxv);
+				}
 #ifdef CHECK_NEXTDCW
-			else if (le_bool_is_valid(type,"dcwcheck")) {
-				if (le_bool_checked(boolcsv,"dcwcheck")) ol += sprintf(opttxt+ol,"dcwcheck=yes; ");
-			}
+				if (le_bool_is_valid(type,"dcwcheck")) {
+					int want = le_bool_checked(boolcsv,"dcwcheck")?1:0;
+					if (want != le_dcwcheck_default(type)) ol += sprintf(opttxt+ol,"dcwcheck=%s; ", want?"yes":"no");
+				}
 #endif
+			}
 			if (freetext[0]) ol += snprintf(opttxt+ol, sizeof(opttxt)-ol, "%s", freetext);
 			if (ol>0) {
 				while (ol>0 && opttxt[ol-1]==' ') ol--; // apara espaco a mais antes do "}"
@@ -6013,7 +6385,7 @@ void http_send_lineedit(int sock, http_request *req)
 			}
 		}
 
-		char newline[1024];
+		char newline[4096]; // fix v1.70.14: era 1024
 		newline[0] = 0;
 		if (isserver) {
 			if (!strcmp(proto,"newcamd")) sprintf(newline, "N: %s %d %s %s %s%s", host, port, user, pass, key, tail);
@@ -6034,11 +6406,21 @@ void http_send_lineedit(int sock, http_request *req)
 			if (old[0] && host[0]) config_line_replace("Cache.cfg", old, newline);
 		}
 		else {
-			if (!strcmp(proto,"user")) sprintf(newline, "USER: %s %s%s", user, pass, tail);
-			else if (!strcmp(proto,"f")) sprintf(newline, "F: %s %s%s", user, pass, tail);
-			else if (!strcmp(proto,"mg")) sprintf(newline, "MG: %s %s%s", user, pass, tail);
-			else if (!strcmp(proto,"cs378xc")) sprintf(newline, "CS378X USER: %s %s%s", user, pass, tail);
-			else sprintf(newline, "CAMD35 USER: %s %s%s", user, pass, tail);
+			// fix v1.70.14: (1) o tipo de linha vem do 'type' (nunca do 'proto' enviado pelo
+			// browser -- era "user" para MG/CS378X/CAMD35 e a linha virava "USER:"); (2) o texto
+			// posicional da linha original (numero de reshare das F-lines, "F: u p 2 {..}") e'
+			// lido do ficheiro e preservado.
+			char kw[24];
+			if (!strcmp(type,"f")) strcpy(kw,"F:");
+			else if (!strcmp(type,"mg")) strcpy(kw,"MG:");
+			else if (!strcmp(type,"cs378xc")) strcpy(kw,"CS378X USER:");
+			else if (!strcmp(type,"camd35c")) strcpy(kw,"CAMD35 USER:");
+			else strcpy(kw,"USER:");
+			char rawline[4096], rpos[200], rblk[2300];
+			rpos[0] = 0;
+			if (old[0] && cfg_read_matching_line(old, rawline, sizeof(rawline)))
+				le_split_client_line(rawline, rpos, sizeof(rpos), rblk, sizeof(rblk));
+			sprintf(newline, "%s %s %s%s%s%s", kw, user, pass, rpos[0]?" ":"", rpos, tail);
 			if (old[0]) config_line_replace("Clients.cfg", old, newline);
 		}
 		if (!newline[0]) { http_send_text(sock, "<span class='miss'>ERROR</span>"); return; }

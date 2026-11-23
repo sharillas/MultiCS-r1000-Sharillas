@@ -6747,6 +6747,18 @@ void update_servers(struct config_data *cfg, struct config_data *newcfg )
 			}
 			// priority
 			srv->priority = newsrv->priority;
+			// fix v1.70.14: estas opcoes do bloco "{ }" do server nao sobreviviam ao reload -- o
+			// ficheiro mudava (ex: desmarcar "No Check" no popup de Edit) mas a memoria mantinha
+			// o valor antigo ate' ao restart, e o popup continuava a mostrar a checkbox marcada.
+			srv->nocheck = newsrv->nocheck;
+			srv->providrewrite = newsrv->providrewrite;
+			srv->stealth = newsrv->stealth;
+			srv->arbiter = newsrv->arbiter;
+			srv->hop = newsrv->hop;
+			srv->budget_max = newsrv->budget_max;
+			srv->budget_group = newsrv->budget_group;
+			srv->budget_ask = newsrv->budget_ask;
+			memcpy(srv->name, newsrv->name, sizeof(srv->name));
 #ifdef CACHEEX
 			srv->cacheex_mode = newsrv->cacheex_mode;
 			srv->cacheex_maxhop = newsrv->cacheex_maxhop;
