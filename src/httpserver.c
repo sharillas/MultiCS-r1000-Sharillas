@@ -54,7 +54,7 @@ const unsigned char *boyermoore_horspool_memmem(const unsigned char* haystack, s
 #define HTTP_GET  0
 #define HTTP_POST 1
 #define MAXHEADERS 20
-// v1.63.5: cabecalhos HTTP do pedido. Atras do nginx entram +4 cabecalhos e o Cookie (enviado no fim pelo browser)
+// v1.70.13: cabecalhos HTTP do pedido. Atras do nginx entram +4 cabecalhos e o Cookie (enviado no fim pelo browser)
 // caia fora dos 20 -> a sessao nao era lida e a GUI voltava sempre ao login. O array e compacto (nome 48 B)
 // para nao aumentar a stack da thread (http_request vive na stack de gererClient).
 #define MAXREQHEADERS 32
@@ -4775,6 +4775,9 @@ void getcachecells(struct cachepeer_data *peer, char cell[14][2048] )
 	}
 	sprintf( temp," <span class='icobtn del' title='Delete this entry from the config file' onclick=\"if(confirm('Delete peer %s:%d from the config file?')) imgrequest('/cachepeer?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",peer->host->name,peer->port,peer->id);
 	strcat( cell[12], temp );
+	// fix v1.70.13 (#56): popup de Edit tambem para Cache Peer (nao existia nenhum ate agora).
+	sprintf( temp," <span class='icobtn ed' title='Edit line (popup)' onclick=\"leOpen('peer',%d)\">Edit</span>",peer->id);
+	strcat( cell[12], temp );
 	strcat( cell[12], "</span>");
 }
 
@@ -5098,6 +5101,7 @@ void http_send_cache_peer(int sock, http_request *req)
 		else if (!strcmp(str_action,"status")) get_action = 5;
 		else if (!strcmp(str_action,"dbginfo")) get_action = 8;
 		else if (!strcmp(str_action,"sms")) get_action = 10;
+		else if (!strcmp(str_action,"delete")) get_action = 9; // fix v1.70.13: faltava -- o botao DEL caia sempre em "page"
 		else str_action = NULL;
 	}
 	if (!str_action) str_action = "page";
@@ -5116,6 +5120,13 @@ void http_send_cache_peer(int sock, http_request *req)
 	if (get_action==3) {
 		peer->flags |= FLAG_DISABLE;
 		peer->ping = 0;
+		// fix v1.70.13 (#56): persistir no ficheiro -- antes so' alterava FLAG_DISABLE em
+		// memoria, nunca comentava a linha no Cache.cfg (o proximo reload reativava o peer).
+		{
+			char match[160];
+			snprintf( match, sizeof(match), "%s %d", peer->host? (char*)peer->host->name : "", peer->port);
+			config_line_edit("Cache.cfg", match, 0);
+		}
  		http_send_ok(sock);
 		return;
 	}
@@ -5125,6 +5136,24 @@ void http_send_cache_peer(int sock, http_request *req)
 		peer->lastpingsent = 0;
 		peer->program[0] = 0;
 		peer->version[0] = 0;
+		// fix v1.70.13 (#56): idem -- persistir a reativacao no Cache.cfg.
+		{
+			char match[160];
+			snprintf( match, sizeof(match), "%s %d", peer->host? (char*)peer->host->name : "", peer->port);
+			config_line_edit("Cache.cfg", match, 1);
+		}
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==9) {
+		// fix v1.70.13 (#56): DEL do Cache Peer nunca funcionava -- "delete" nao era um
+		// action reconhecido, caia sempre em "page" (devolvia HTML em vez de OK/erro).
+		peer->flags |= (FLAG_DELETE|FLAG_DISABLE);
+		{
+			char match[160];
+			snprintf( match, sizeof(match), "%s %d", peer->host? (char*)peer->host->name : "", peer->port);
+			config_line_edit("Cache.cfg", match, 2);
+		}
 		http_send_ok(sock);
 		return;
 	}
@@ -5410,13 +5439,46 @@ int profile_config_toggle(char *name, int on)
 // v1.51: edicao generica de linhas de config por substring (persistente)
 // action: 0=comentar (OFF), 1=descomentar (ON), 2=remover (DELETE)
 // match: substring unica que identifica a linha (ex: "USER: vumeo", "203.0.113.10 3000")
-int config_line_edit(char *filestr, char *match, int action)
+// fix v1.70.13 (#56): algumas instalacoes guardam cada tipo de linha (F:/MG:/etc) num
+// ficheiro com nome proprio (ex: "clientes_cccam.cfg", "clientes_mgcamd.cfg" nos
+// configs_exemplos mais recentes) em vez do antigo ficheiro unico "...Clients.cfg" --
+// o lookup antigo (so' por NOME de ficheiro) nesse caso nunca encontrava o ficheiro certo
+// e o save/enable/disable/delete ficava silenciosamente sem efeito (devolvia OK na mesma).
+// Procura agora em TODOS os ficheiros incluidos qual contem mesmo a linha 'match' (por
+// CONTEUDO); so' se nenhum tiver devolve NULL (quem chamar cai no lookup por nome, como
+// fallback, igual ao comportamento antigo -- preciso p/ o caso de ACRESCENTAR uma linha
+// nova que ainda nao existe em lado nenhum).
+static char *config_find_file_with_match(const char *match)
 {
-	char *fname = NULL;
+	if (!match || !*match) return NULL;
+	char *found = NULL;
+	pthread_mutex_lock(&pfile_mutex);
 	struct filename_data *fs = cfg.files;
 	while (fs) {
-		if (strstr(fs->name, filestr)) { fname = fs->name; break; }
+		FILE *fp = fopen(fs->name, "r");
+		if (fp) {
+			int size = (int)fread(pfilebuf, 1, PFILE_MAX, fp);
+			fclose(fp);
+			if (size>0 && size<PFILE_MAX) {
+				pfilebuf[size] = 0;
+				if (strstr(pfilebuf, match)) { found = fs->name; break; }
+			}
+		}
 		fs = fs->next;
+	}
+	pthread_mutex_unlock(&pfile_mutex);
+	return found;
+}
+
+int config_line_edit(char *filestr, char *match, int action)
+{
+	char *fname = config_find_file_with_match(match);
+	if (!fname) {
+		struct filename_data *fs = cfg.files;
+		while (fs) {
+			if (strstr(fs->name, filestr)) { fname = fs->name; break; }
+			fs = fs->next;
+		}
 	}
 	if (!fname || !match) return -1;
 	pthread_mutex_lock(&pfile_mutex);
@@ -5464,11 +5526,14 @@ int config_line_edit(char *filestr, char *match, int action)
 // v1.61: substitui a linha que contem 'match' por 'newline' (se nao encontrar, acrescenta no fim)
 int config_line_replace(char *filestr, char *match, const char *newline)
 {
-	char *fname = NULL;
-	struct filename_data *fs = cfg.files;
-	while (fs) {
-		if (strstr(fs->name, filestr)) { fname = fs->name; break; }
-		fs = fs->next;
+	// fix v1.70.13 (#56): ver nota em config_find_file_with_match() acima de config_line_edit().
+	char *fname = config_find_file_with_match(match);
+	if (!fname) {
+		struct filename_data *fs = cfg.files;
+		while (fs) {
+			if (strstr(fs->name, filestr)) { fname = fs->name; break; }
+			fs = fs->next;
+		}
 	}
 	if (!fname || !match || !newline) return -1;
 	pthread_mutex_lock(&pfile_mutex);
@@ -5507,6 +5572,101 @@ int config_line_replace(char *filestr, char *match, const char *newline)
 }
 
 // v1.61: EDIT LINHA - popup com campos (servers e clients)
+// fix v1.70.13 (#56): chaves booleanas validas por tipo de linha do popup de Edit -- usadas
+// tanto para desenhar os checkboxes como para decidir o que e' aceite do campo oculto 'bool'
+// no save. So' estas chaves podem originar um "key=yes;" no ficheiro; o resto e' sempre ignorado.
+static int le_bool_is_valid(const char *type, const char *key)
+{
+	if (!strcmp(type,"server"))
+		return !strcmp(key,"nocheck")||!strcmp(key,"providrewrite")||!strcmp(key,"stealth")||!strcmp(key,"arbiter");
+#ifdef CHECK_NEXTDCW
+	if (!strcmp(type,"user")||!strcmp(type,"f")||!strcmp(type,"mg")||!strcmp(type,"cs378xc")||!strcmp(type,"camd35c"))
+		return !strcmp(key,"dcwcheck");
+#endif
+	if (!strcmp(type,"peer"))
+		return !strcmp(key,"csp")||!strcmp(key,"autoadd")||!strcmp(key,"sendreq")||!strcmp(key,"sendrep")||!strcmp(key,"fwd");
+	return 0;
+}
+
+// fix v1.70.13 (#56): tipos cujo parser NAO tem fallback seguro para chaves desconhecidas no
+// bloco "{ }" (Servers, clientes CS378X/CAMD35 e Cache Peer -- ver config.c: parse_server_data
+// e os blocos CS378X/CAMD35 USER: / CACHE PEER: nao tem "else" generico). Nestes, uma chave
+// gravada que o parser nao reconheca faz o resto da linha (e por vezes do ficheiro) ficar mal
+// interpretada daí em diante. Para estes tipos o campo livre "Outras opcoes" e' filtrado por whitelist.
+static int le_type_is_unsafe(const char *type)
+{
+	return !strcmp(type,"server")||!strcmp(type,"cs378xc")||!strcmp(type,"camd35c")||!strcmp(type,"peer");
+}
+
+// fix v1.70.13 (#56): chaves nao-booleanas aceites no campo livre "Outras opcoes" dos tipos
+// "inseguros" (ver le_type_is_unsafe). Fiel ao que cada parser realmente reconhece em config.c.
+static int le_freetext_is_valid(const char *type, const char *key)
+{
+	if (!strcmp(type,"server")) {
+		if (!strcmp(key,"hop")||!strcmp(key,"budget_max")||!strcmp(key,"budget_group")||!strcmp(key,"budget_ask")||!strcmp(key,"profiles")) return 1;
+#ifdef CACHEEX
+		if (!strcmp(key,"cacheex_mode")) return 1;
+#endif
+		return 0;
+	}
+	if (!strcmp(type,"cs378xc")||!strcmp(type,"camd35c")) {
+		if (!strcmp(key,"profiles")||!strcmp(key,"shares")) return 1;
+#ifdef CACHEEX
+		if (!strcmp(key,"cacheex_mode")) return 1;
+#endif
+		return 0;
+	}
+	if (!strcmp(type,"peer")) return !strcmp(key,"shares");
+	return 0;
+}
+
+// fix v1.70.13 (#56): valida (e reescreve de forma canonica) o conteudo do campo livre
+// "Outras opcoes" para um tipo "inseguro". Devolve 1 e preenche 'out' se tudo for valido;
+// devolve 0 e preenche 'badkey' com a 1a chave desconhecida, sem gravar nada, caso contrario.
+static int le_validate_freetext(const char *type, const char *in, char *out, int outsz, char *badkey, int badkeysz)
+{
+	out[0] = 0;
+	int outlen = 0;
+	const char *p = in;
+	while (*p) {
+		while (*p==' '||*p=='\t'||*p=='{'||*p=='}'||*p=='\r'||*p=='\n') p++;
+		if (!*p) break;
+		const char *eq = strchr(p,'=');
+		if (!eq) break; // resto nao e' um par key=value -- ignora e termina
+		const char *semi = strchr(p,';');
+		if (semi && eq>semi) break; // ';' antes do '=' -- token mal formado, termina
+		int klen = (int)(eq-p);
+		while (klen>0 && (p[klen-1]==' '||p[klen-1]=='\t')) klen--;
+		char key[64];
+		if (klen<=0 || klen>=(int)sizeof(key)) break;
+		memcpy(key,p,klen); key[klen]=0;
+		if (!le_freetext_is_valid(type,key)) {
+			strncpy(badkey,key,badkeysz-1); badkey[badkeysz-1]=0;
+			return 0;
+		}
+		const char *vstart = eq+1;
+		while (*vstart==' '||*vstart=='\t') vstart++;
+		const char *vend = semi ? semi : (p+strlen(p));
+		while (vend>vstart && (vend[-1]==' '||vend[-1]=='\t')) vend--;
+		int vlen = (int)(vend-vstart);
+		if (vlen<0) vlen = 0;
+		if (outlen + klen + vlen + 4 >= outsz) break; // sem espaco -- corta por seguranca
+		outlen += sprintf(out+outlen, "%s=%.*s; ", key, vlen, vstart);
+		p = semi ? semi+1 : vend;
+	}
+	return 1;
+}
+
+// fix v1.70.13 (#56): true se 'key' estiver presente na lista CSV (',k1,k2,...,') de chaves
+// de checkbox marcadas, enviada pelo browser no save.
+static int le_bool_checked(const char *csv, const char *key)
+{
+	char pat[80];
+	if (!csv || !csv[0]) return 0;
+	snprintf(pat, sizeof(pat), ",%s,", key);
+	return strstr(csv, pat)!=NULL;
+}
+
 void http_send_lineedit(int sock, http_request *req)
 {
 	char http_buf[2048];
@@ -5524,9 +5684,15 @@ void http_send_lineedit(int sock, http_request *req)
 		host[0]=user[0]=pass[0]=key[0]=opts[0]=oldmatch[0]=0;
 		int port = 0;
 		int isserver = !strcmp(type,"server");
+		int ispeer = !strcmp(type,"peer");
 		char proto[16];
 		strcpy(proto, isserver ? "cccam" : "user");
 		tcp_init(&tcpbuf);
+
+		// fix v1.70.13 (#56): estado atual das checkboxes booleanas deste tipo (lido
+		// diretamente da struct em memoria, nunca do texto do ficheiro).
+		int b_nocheck=0,b_providrewrite=0,b_stealth=0,b_arbiter=0,b_dcwcheck=0;
+		int b_csp=0,b_autoadd=0,b_sendreq=0,b_sendrep=0,b_fwd=0,b_fblock0=0;
 
 		if (isserver) {
 			struct server_data *srv = getsrvbyid(id);
@@ -5539,18 +5705,20 @@ void http_send_lineedit(int sock, http_request *req)
 			else if (srv->type==TYPE_CCCAM) strcpy(proto,"cccam");
 			else if (srv->type==TYPE_CS378X) strcpy(proto,"cs378x");
 			else if (srv->type==TYPE_CAMD35) strcpy(proto,"camd35");
-			
+
 			else if (srv->type==TYPE_CACHE) strcpy(proto,"cache");
 			if (srv->type==TYPE_NEWCAMD) {
 				int k=0, i;
 				for (i=0;i<14;i++) k += sprintf(key+k, "%s%02X", i?" ":"", srv->key[i]);
 			}
+			b_nocheck = srv->nocheck?1:0;
+			b_providrewrite = srv->providrewrite?1:0;
+			b_stealth = srv->stealth?1:0;
+			b_arbiter = srv->arbiter?1:0;
 			{
+				// fix v1.70.13: so' as opcoes NAO-booleanas ficam no campo livre -- as 4
+				// booleanas (nocheck/providrewrite/stealth/arbiter) passaram a checkbox.
 				char *o = opts;
-				if (srv->nocheck) o += sprintf(o, "nocheck=yes; ");
-				if (srv->stealth) o += sprintf(o, "stealth=yes; ");
-				if (srv->arbiter) o += sprintf(o, "arbiter=yes; ");
-				if (srv->providrewrite) o += sprintf(o, "providrewrite=yes; ");
 				if (srv->hop) o += sprintf(o, "hop=%d; ", srv->hop);
 				if (srv->budget_max) o += sprintf(o, "budget_max=%d; ", srv->budget_max);
 				if (srv->budget_group) o += sprintf(o, "budget_group=%d; ", srv->budget_group);
@@ -5575,6 +5743,9 @@ void http_send_lineedit(int sock, http_request *req)
 			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "USER: %s", cli->user);
+#ifdef CHECK_NEXTDCW
+			b_dcwcheck = cli->dcwcheck?1:0;
+#endif
 		}
 		else if (!strcmp(type,"f")) {
 			struct cc_client_data *cli = getcccamclientbyid(id);
@@ -5582,24 +5753,49 @@ void http_send_lineedit(int sock, http_request *req)
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "F: %s", cli->user);
 			strcpy(proto,"f");
+#ifdef CHECK_NEXTDCW
+			b_dcwcheck = cli->dcwcheck?1:0;
+#endif
 		}
 		else if (!strcmp(type,"mg")) {
 			struct mg_client_data *cli = getmgcamdclientbyid(id);
 			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "MG: %s", cli->user);
+#ifdef CHECK_NEXTDCW
+			b_dcwcheck = cli->dcwcheck?1:0;
+#endif
 		}
 		else if (!strcmp(type,"cs378xc")) {
 			struct camd35_client_data *cli = getcs378xclientbyid(id);
 			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "CS378X USER: %s", cli->user);
+#ifdef CHECK_NEXTDCW
+			b_dcwcheck = cli->dcwcheck?1:0;
+#endif
 		}
 		else if (!strcmp(type,"camd35c")) {
 			struct camd35_client_data *cli = getcamd35clientbyid(id);
 			if (!cli) { http_send_text(sock, "<span class='miss'>Client not found</span>"); return; }
 			strcpy(user, cli->user); strcpy(pass, cli->pass);
 			sprintf(oldmatch, "CAMD35 USER: %s", cli->user);
+#ifdef CHECK_NEXTDCW
+			b_dcwcheck = cli->dcwcheck?1:0;
+#endif
+		}
+		else if (ispeer) {
+			struct cachepeer_data *peer = getpeerbyid(id);
+			if (!peer) { http_send_text(sock, "<span class='miss'>Peer not found</span>"); return; }
+			strcpy(host, peer->host ? (char*)peer->host->name : "");
+			port = peer->port;
+			b_csp = peer->csp?1:0;
+			b_autoadd = peer->autoadd?1:0;
+			b_sendreq = (peer->flags&FLAG_CACHE_SENDREQ)?1:0;
+			b_sendrep = (peer->flags&FLAG_CACHE_SENDREP)?1:0;
+			b_fwd = peer->fwd?1:0;
+			b_fblock0 = peer->fblock0onid?1:0;
+			sprintf(oldmatch, "%s %d", host, port);
 		}
 		else { http_send_text(sock, "<span class='miss'>Tipo desconhecido</span>"); return; }
 
@@ -5646,6 +5842,13 @@ void http_send_lineedit(int sock, http_request *req)
 				ehost, port, euser, epass);
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
+		else if (ispeer) {
+			sprintf( http_buf, "<input type=hidden id='le_proto' value='peer'>"
+				"<tr><td>Host</td><td><input id='le_host' style='width:100%%' value=\"%s\"></td></tr>"
+				"<tr><td>Port</td><td><input id='le_port' style='width:80px' value='%d'></td></tr>",
+				ehost, port);
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
 		else {
 			sprintf( http_buf, "<input type=hidden id='le_proto' value='%s'>"
 				"<tr><td>User</td><td><input id='le_user' style='width:100%%' value=\"%s\"></td></tr>"
@@ -5654,18 +5857,66 @@ void http_send_lineedit(int sock, http_request *req)
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
 
+		// fix v1.70.13 (#56): DesKey so' faz sentido em Servers Newcamd -- deixa de aparecer
+		// (incorretamente) em qualquer tipo de Cliente.
 		sprintf( http_buf, "<tr id='lerow_key'%s><td>DesKey (14 pairs)</td><td><input id='le_key' style='width:100%%' value=\"%s\"></td></tr>",
-			(!isserver || !strcmp(proto,"newcamd"))?"":" style='display:none'", ekey);
+			(isserver && !strcmp(proto,"newcamd"))?"":" style='display:none'", ekey);
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 
-		sprintf( http_buf, "<tr><td>Options</td><td><input id='le_opts' style='width:100%%' value=\"%s\" placeholder='e.g. nocheck=yes; hop=3; profiles=15003; name=\"\"X\"\"; budget_max=60'></td></tr>"
+		// fix v1.70.13 (#56): checkboxes reais por tipo/protocolo em vez de texto livre.
+		// data-key = chave EXATA reconhecida pelo parser (config.c); leSave() no JS recolhe
+		// os data-key das caixas marcadas em '.le-bool' no save.
+		if (isserver) {
+			sprintf( http_buf,
+				"<tr><td>Options</td><td>"
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='nocheck'%s> No Check</label> "
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='providrewrite'%s> Provid Rewrite</label> "
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='stealth'%s> Stealth</label> "
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='arbiter'%s> Arbiter</label>"
+				"</td></tr>",
+				b_nocheck?" checked":"", b_providrewrite?" checked":"", b_stealth?" checked":"", b_arbiter?" checked":"");
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+#ifdef CHECK_NEXTDCW
+		else if (!strcmp(type,"user")||!strcmp(type,"f")||!strcmp(type,"mg")||!strcmp(type,"cs378xc")||!strcmp(type,"camd35c")) {
+			sprintf( http_buf,
+				"<tr><td>Options</td><td>"
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='dcwcheck'%s> DCW Check</label>"
+				"</td></tr>", b_dcwcheck?" checked":"");
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+#endif
+		else if (ispeer) {
+			sprintf( http_buf,
+				"<tr><td>Options</td><td>"
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='csp'%s> CSP</label> "
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='autoadd'%s> Auto Add</label> "
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='sendreq'%s> Send Requests</label> "
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='sendrep'%s> Send Replies</label> "
+				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='fwd'%s> Forward</label><br>"
+				"<label class='le-cb'><input type=checkbox id='le_fblock0'%s> Block requests with ONID 0</label>"
+				"</td></tr>",
+				b_csp?" checked":"", b_autoadd?" checked":"", b_sendreq?" checked":"", b_sendrep?" checked":"", b_fwd?" checked":"",
+				b_fblock0?" checked":"");
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+		}
+
+		// fix v1.70.13 (#56): campo livre so' para as restantes opcoes nao-booleanas. Para os
+		// tipos "inseguros" (Servers, clientes CS378X/CAMD35, Cache Peer) o save valida cada
+		// chave aqui escrita contra a whitelist antes de gravar (le_freetext_is_valid).
+		sprintf( http_buf, "<tr><td>Outras op&ccedil;&otilde;es</td><td><input id='le_opts' style='width:100%%' value=\"%s\" placeholder='%s'></td></tr>"
 			"<tr><td></td><td style='text-align:right'><button class='sbutton' onclick=\"leSave()\">Save line</button> <button class='sbutton' onclick=\"leClose()\">Cancel</button></td></tr>"
 			"</table>"
 			"<script>"
 			"var lep=document.getElementById('le_proto');"
 			"function leProtoChange(){var k=document.getElementById('lerow_key');var p=document.getElementById('le_proto').value;if(k)k.style.display=(p=='newcamd')?'':'none';}"
-			"if(lep){lep.onchange=leProtoChange;}"
-			"</script>", eopts);
+			"if(lep&&lep.tagName==='SELECT'){lep.onchange=leProtoChange;}"
+			"</script>",
+			eopts,
+			isserver?"e.g. hop=3; profiles=15003; budget_max=60":
+			ispeer?"e.g. shares=1,0100:000000:0000":
+			(!strcmp(type,"cs378xc")||!strcmp(type,"camd35c"))?"e.g. profiles=15003":
+			"e.g. profiles=15003; name=John");
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		tcp_flush(&tcpbuf, sock);
 		return;
@@ -5680,6 +5931,8 @@ void http_send_lineedit(int sock, http_request *req)
 		char *p_pass = isset_get(req, "pass");
 		char *p_key = isset_get(req, "key");
 		char *p_opts = isset_get(req, "opts");
+		char *p_bool = isset_get(req, "bool"); // fix v1.70.13: CSV das checkboxes '.le-bool' marcadas
+		char *p_fblock0 = isset_get(req, "fblock0"); // fix v1.70.13: Cache Peer -- "1"/"0"
 		char host[128], user[64], pass[64], key[64], opts[640], old[256];
 		host[0]=user[0]=pass[0]=key[0]=opts[0]=old[0]=0;
 		if (p_host && *p_host) base64_pdecode(p_host, host);
@@ -5691,19 +5944,72 @@ void http_send_lineedit(int sock, http_request *req)
 		int port = p_port ? atoi(p_port) : 0;
 		const char *proto = p_proto ? p_proto : "cccam";
 		int isserver = !strcmp(type,"server");
+		int ispeer = !strcmp(type,"peer");
 
-		// tail de opcoes
-		char tail[700];
-		tail[0] = 0;
-		{
+		// fix v1.70.13 (#56): lista CSV (',k1,k2,...,') das checkboxes marcadas no browser.
+		char boolcsv[400]; boolcsv[0]=0;
+		if (p_bool && *p_bool) {
+			boolcsv[0]=',';
+			strncpy(boolcsv+1, p_bool, sizeof(boolcsv)-3);
+			boolcsv[sizeof(boolcsv)-2] = 0;
+			strcat(boolcsv, ",");
+		}
+
+		// fix v1.70.13 (#56): campo livre -- para tipos "inseguros" (sem fallback no parser)
+		// e' validado por whitelist: se aparecer QUALQUER chave desconhecida, REJEITA TODA a
+		// gravacao (nada e' escrito) para nunca corromper o parse do resto do ficheiro. Para
+		// os restantes tipos (parser com fallback seguro) mantem-se livre, como antes.
+		char freetext[700]; freetext[0] = 0;
+		if (le_type_is_unsafe(type)) {
+			char badkey[64];
+			if (!le_validate_freetext(type, opts, freetext, sizeof(freetext), badkey, sizeof(badkey))) {
+				char msg[200];
+				snprintf(msg, sizeof(msg), "<span class='miss'>Op&ccedil;&atilde;o desconhecida '%s' em \"Outras op&ccedil;&otilde;es\" -- nada foi gravado para n&atilde;o corromper o ficheiro</span>", badkey);
+				http_send_text(sock, msg);
+				return;
+			}
+		}
+		else {
 			char *t = opts;
 			while (*t==' '||*t=='\t') t++;
 			if (*t) {
-				// remover { } duplicados se o user os puser
 				if (t[0]=='{') t++;
-				int l = strlen(t);
+				int l = (int)strlen(t);
 				if (l && t[l-1]=='}') t[l-1]=0;
-				sprintf(tail, " { %s }", t);
+				snprintf(freetext, sizeof(freetext), "%s", t);
+			}
+		}
+
+		// fix v1.70.13 (#56): tail = checkboxes marcadas (so' as validas p/ este tipo) +
+		// campo livre (ja' validado acima). Uma checkbox desmarcada NUNCA e' escrita -- nunca
+		// fica "key=no;" nem comentada, simplesmente nao aparece no texto gravado.
+		char tail[800]; tail[0] = 0;
+		{
+			char opttxt[760]; int ol = 0;
+			opttxt[0] = 0;
+			if (ispeer) {
+				if (le_bool_checked(boolcsv,"csp")) ol += sprintf(opttxt+ol,"csp=yes; ");
+				if (le_bool_checked(boolcsv,"autoadd")) ol += sprintf(opttxt+ol,"autoadd=yes; ");
+				if (le_bool_checked(boolcsv,"sendreq")) ol += sprintf(opttxt+ol,"sendreq=yes; ");
+				if (le_bool_checked(boolcsv,"sendrep")) ol += sprintf(opttxt+ol,"sendrep=yes; ");
+				if (le_bool_checked(boolcsv,"fwd")) ol += sprintf(opttxt+ol,"fwd=yes; ");
+			}
+			else if (isserver) {
+				if (le_bool_checked(boolcsv,"nocheck")) ol += sprintf(opttxt+ol,"nocheck=yes; ");
+				if (le_bool_checked(boolcsv,"providrewrite")) ol += sprintf(opttxt+ol,"providrewrite=yes; ");
+				if (le_bool_checked(boolcsv,"stealth")) ol += sprintf(opttxt+ol,"stealth=yes; ");
+				if (le_bool_checked(boolcsv,"arbiter")) ol += sprintf(opttxt+ol,"arbiter=yes; ");
+			}
+#ifdef CHECK_NEXTDCW
+			else if (le_bool_is_valid(type,"dcwcheck")) {
+				if (le_bool_checked(boolcsv,"dcwcheck")) ol += sprintf(opttxt+ol,"dcwcheck=yes; ");
+			}
+#endif
+			if (freetext[0]) ol += snprintf(opttxt+ol, sizeof(opttxt)-ol, "%s", freetext);
+			if (ol>0) {
+				while (ol>0 && opttxt[ol-1]==' ') ol--; // apara espaco a mais antes do "}"
+				opttxt[ol] = 0;
+				snprintf(tail, sizeof(tail), " { %s }", opttxt);
 			}
 		}
 
@@ -5714,15 +6020,23 @@ void http_send_lineedit(int sock, http_request *req)
 			else if (!strcmp(proto,"cccam")) sprintf(newline, "C: %s %d %s %s%s", host, port, user, pass, tail);
 			else if (!strcmp(proto,"cs378x")) sprintf(newline, "CS378X SERVER: %s %d %s %s%s", host, port, user, pass, tail);
 			else if (!strcmp(proto,"camd35")) sprintf(newline, "CAMD35 SERVER: %s %d %s %s%s", host, port, user, pass, tail);
-			
+
 			else if (!strcmp(proto,"cache")) sprintf(newline, "CACHE: %s %d %s %s", host, port, user, pass);
 			else sprintf(newline, "C: %s %d %s %s%s", host, port, user, pass, tail);
 			if (old[0] && host[0]) config_line_replace("Servers.cfg", old, newline);
 		}
+		else if (ispeer) {
+			// fix v1.70.13 (#56): formato real confirmado no parser (config.c):
+			// CACHE PEER: host porta [0|1] [ { opcoes } ] -- o 0|1 (fblock0onid) e'
+			// posicional, nunca uma chave dentro de "{ }".
+			int fblock0 = (p_fblock0 && !strcmp(p_fblock0,"1")) ? 1 : 0;
+			sprintf(newline, "CACHE PEER: %s %d %d%s", host, port, fblock0, tail);
+			if (old[0] && host[0]) config_line_replace("Cache.cfg", old, newline);
+		}
 		else {
 			if (!strcmp(proto,"user")) sprintf(newline, "USER: %s %s%s", user, pass, tail);
 			else if (!strcmp(proto,"f")) sprintf(newline, "F: %s %s%s", user, pass, tail);
-			else if (!strcmp(proto,"mg")) sprintf(newline, "MG: %s %s", user, pass);
+			else if (!strcmp(proto,"mg")) sprintf(newline, "MG: %s %s%s", user, pass, tail);
 			else if (!strcmp(proto,"cs378xc")) sprintf(newline, "CS378X USER: %s %s%s", user, pass, tail);
 			else sprintf(newline, "CAMD35 USER: %s %s%s", user, pass, tail);
 			if (old[0]) config_line_replace("Clients.cfg", old, newline);

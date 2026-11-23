@@ -848,10 +848,13 @@ int read_config(struct config_data *cfg)
 		// v1.54: linha comentada "#N:" "#C:" "#CS378X SERVER:" "#CAMD35 SERVER:"
 		// = reader desactivado pela GUI (mantem a entrada com FLAG_DISABLE para o ON)
 		// (o '#' imediatamente antes da keyword: as linhas de exemplo "#    N: ..." nao contam)
+		// fix v1.70.13 (#56): "#CACHE PEER:" juntou-se a este grupo -- sem isto, um peer
+		// desativado pela GUI desaparecia de vez da memoria no reload seguinte (o parser
+		// ignora comentarios, e o merge so' preserva um disabled se a linha ainda "existir").
 		int disabled_line = 0;
 		{
 			char *q = currentline;
-			if (*q=='#' && (!strncmp(q+1,"N:",2)||!strncmp(q+1,"C:",2)||!strncmp(q+1,"CS378X SERVER:",14)||!strncmp(q+1,"CAMD35 SERVER:",13))) {
+			if (*q=='#' && (!strncmp(q+1,"N:",2)||!strncmp(q+1,"C:",2)||!strncmp(q+1,"CS378X SERVER:",14)||!strncmp(q+1,"CAMD35 SERVER:",13)||!strncmp(q+1,"CACHE PEER:",11))) {
 				disabled_line = 1;
 				memmove(currentline, q+1, strlen(q+1)+1);
 			}
@@ -2947,6 +2950,11 @@ link_cccam_client:
 							if (parse_hex(str)) cli->cacheex_mode = hex2int(str);
 						}
 #endif
+#ifdef CHECK_NEXTDCW
+						// fix v1.70.13: dcwcheck ja' existia na struct e era usado no runtime
+						// (srv-camd35.c), mas nunca era lido desta linha -- ficava sempre 0.
+						else if (!strcmp(str,"dcwcheck")) cli->dcwcheck = parse_boolean();
+#endif
 						parse_spaces();
 						if (*iparser==';') iparser++; else break;
 					}
@@ -3026,6 +3034,11 @@ link_cccam_client:
 						else if (!strcmp(str,"cacheex_mode")) {
 							if (parse_hex(str)) cli->cacheex_mode = hex2int(str);
 						}
+#endif
+#ifdef CHECK_NEXTDCW
+						// fix v1.70.13: dcwcheck ja' existia na struct e era usado no runtime
+						// (srv-cs378x.c), mas nunca era lido desta linha -- ficava sempre 0.
+						else if (!strcmp(str,"dcwcheck")) cli->dcwcheck = parse_boolean();
 #endif
 						parse_spaces();
 						if (*iparser==';') iparser++; else break;
@@ -3391,6 +3404,9 @@ link_mgcamd_user:
 				peer->reqnb=0;
 				peer->reqnb=0;
 				peer->hitnb=0;
+				// fix v1.70.13 (#56): ver nota do "disabled_line" mais acima -- sem isto, uma
+				// linha "#CACHE PEER: ..." desativada pela GUI nunca marcava FLAG_DISABLE aqui.
+				if (disabled_line) peer->flags |= FLAG_DISABLE;
 				cfg_addcachepeer(cache, peer);
 			}
 			else if (!strcmp(str,"TIMEOUT")) {
@@ -6108,6 +6124,12 @@ void update_camd35_clients(struct camd35_server_data *srv, struct camd35_server_
 #ifdef CACHEEX
 			cli->cacheex_mode = newcli->cacheex_mode;
 #endif
+#ifdef CHECK_NEXTDCW
+			// fix v1.70.13 (#56): dcwcheck ja' era parseado por USER:, mas o merge nunca o
+			// transportava para o cliente persistente -- o save do popup ficava sempre com o
+			// valor antigo (memset 0) depois do reload automatico apagar o que acabou de gravar.
+			cli->dcwcheck = newcli->dcwcheck;
+#endif
 			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
 				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
 			}
@@ -6158,6 +6180,10 @@ void update_camd35_cacheexclients(struct camd35_server_data *srv, struct camd35_
 			newcli->flags |= FLAG_DELETE;
 #ifdef CACHEEX
 			cli->cacheex_mode = newcli->cacheex_mode;
+#endif
+#ifdef CHECK_NEXTDCW
+			// fix v1.70.13 (#56): ver nota equivalente em update_camd35_clients().
+			cli->dcwcheck = newcli->dcwcheck;
 #endif
 			if ( memcmp(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits)) ) {
 				memcpy(cli->sharelimits, newcli->sharelimits, sizeof(cli->sharelimits));
