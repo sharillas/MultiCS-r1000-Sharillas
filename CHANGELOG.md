@@ -1,3 +1,12 @@
+## v1.70.11 (2026-11-23)
+- Fix: pagina Servers, coluna "readers" -- quando o servidor nao tinha a opcao "name"
+  configurada, mostrava sempre "-" em vez de cair para o host (ip/hostname usado na
+  ligacao). Agora mostra o name se configurado, senao o host.
+- Fix: pagina Monitoring, "Readers (reputation)" -- a coluna do reader mostrava sempre
+  "- (host:port)" quando o servidor nao tinha "name" configurado (o "-" e os parenteses
+  apareciam sempre, mesmo sem nome). Agora mostra o name se configurado, senao o host,
+  sem o "-" nem os parenteses -- alinhado com a coluna "readers" da pagina Servers.
+
 ## v1.70.10 (2026-11-23)
 - Fix: /newcamd e /cacheex perdiam o bloco "local services" (perfis Newcamd / servidores
   CacheEX) a cada refresh automatico ou logo apos clicar em qualquer botao on/off/delete.

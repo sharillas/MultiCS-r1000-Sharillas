@@ -2747,8 +2747,12 @@ void http_send_watchdog(int sock, http_request *req)
 			if (el > 1800) cwbad_eff = 0;
 			else if (el > 600) cwbad_eff = cwbad_eff / 2;
 		}
-		sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s</td><td>%d%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d/%d</td>",
-			srv->name[0]?srv->name:"-", srv->host->name, srv->port,
+		// fix v1.70.10: mostrava sempre "- (host:port)" quando o servidor nao tinha "name"
+		// configurado (o "-" e os parenteses ficavam sempre, mesmo sem nome). Agora mostra o
+		// name se configurado, senao o host (sem o "-" nem os parenteses), alinhado com a
+		// coluna "readers" da pagina Servers.
+		sprintf( http_buf, "<tr><td>%s</td><td>%s</td><td>%d%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d/%d</td>",
+			srv->name[0]?srv->name:srv->host->name,
 			srv->hop==1?"<span class='badge-green'>directa</span>":(srv->hop>1?"circuito":"?"),
 			h, hen?"":" (off)", cwbad_eff, srv->divcount, nactive, srv->ecmok, srv->ecmnb );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
@@ -3854,7 +3858,10 @@ void getservercells(struct server_data *srv, char cell[16][2048] )
 			dotc = n>=90 ? "g" : (n>=60 ? "a" : "r");
 		}
 		else if (srv->flags&FLAG_DISABLE) dotc = "r";
-		sprintf( cell[0],"<span class='dot %s'></span><a href=\"/server?id=%d\">%s</a>", dotc, srv->id, srv->name[0]?srv->name:"-");
+		// fix v1.70.10: quando o servidor nao tem "name" configurado, mostrava sempre "-" em
+		// vez de cair para o host (ip/hostname usado na ligacao) -- agora mostra o name se
+		// configurado, senao o host, e so' "-" se nenhum dos dois existir (nunca deveria acontecer).
+		sprintf( cell[0],"<span class='dot %s'></span><a href=\"/server?id=%d\">%s</a>", dotc, srv->id, srv->name[0]?srv->name:(srv->host->name[0]?srv->host->name:"-"));
 		if (srv->type==TYPE_NEWCAMD) {
 			if (srv->progname && srv->progname[0]) {
 				if (srv->version[0]) sprintf( temp,"<br><span class='muted' style='font-size:11px'>%s %s</span>", srv->progname, srv->version);
