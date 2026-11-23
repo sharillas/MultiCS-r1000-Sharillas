@@ -1,3 +1,43 @@
+## v1.70.12 (2026-11-23)
+- Fix (causa real do #53 "on/off e delete nao fazem nada" em cs378x/camd35): os botoes da
+  pagina de lista real (/cs378x e /camd35) chamam http_send_c35_page() -- uma funcao
+  partilhada entre os dois protocolos, DIFERENTE de http_send_cs378x_client/
+  http_send_camd35_client (que a v1.70.10 tinha corrigido, mas que so' sao chamadas pelos
+  endpoints /cs378xclient e /camd35client, nunca pelos botoes reais). http_send_c35_page()
+  reconhecia "disable"/"enable" no parsing mas nao tinha NENHUM bloco a tratar essas accoes
+  (so' existia handling para ACTION_ROW e ACTION_PAGE) -- o pedido AJAX devolvia sempre HTTP
+  200 com a pagina/div re-renderizada, sem alterar nada, dando a impressao de sucesso. A
+  accao "delete" nem sequer era reconhecida como string valida. Adicionado reconhecimento de
+  "delete" e um bloco que processa ACTION_DISABLE/ACTION_ENABLE/ACTION_DELETE, procurando o
+  cliente por id na lista de servidores ja' recebida pela funcao e persistindo a alteracao em
+  Clients.cfg (tal como newcamd/cccam/mgcamd ja' faziam).
+- Fix: botao Edit em clientes CS378X vistos na pagina de lista real mandava sempre
+  type=camd35c (em vez de cs378xc) para o popup de edicao, porque camd35cells() detetava o
+  protocolo comparando o "path" recebido com a string fixa "/cs378xclient" -- mas o path real
+  usado pela lista e' "/cs378x" (c35_row_emit chama camd35cells com o path da pagina atual).
+  O backend (/editline) acabava por procurar o cliente na lista de camd35 em vez de cs378x,
+  dando quase sempre "Client not found" -- uma 2a causa, independente da do reload automatico
+  (ja corrigida em v1.70.10), para o mesmo sintoma. Deteta agora cs378x por substring no path.
+- Fix (causa raiz de ambos os bugs acima, mais profunda): cfg->camd35.clientid e
+  cfg->cs378x.clientid nunca eram inicializados em init_config() (ficavam 0, via memset),
+  ao contrario de newcamd/cccam/mgcamd (que comecam em 1). Em cfg_set_id_counters() -- que
+  corre em muitos pedidos HTTP admin, nao so' no reload de config -- o teste usado para saber
+  se um cliente ja tem id atribuido e' "if (!cli->id)", ou seja, trata id==0 como "ainda sem
+  id". Mas e' exatamente o id que o PRIMEIRO cliente cs378x/camd35 de sempre recebe (o
+  contador comeca em 0). Resultado: a cada chamada seguinte de cfg_set_id_counters(), esse
+  1o cliente era silenciosamente re-numerado para um id novo (so' acontecia uma vez, porque o
+  novo id ja nao e' zero) -- fazia o id capturado pelo browser no render anterior (usado pelos
+  botoes e pelo popup Edit) deixar de corresponder ao cliente real, com o mesmo sintoma de
+  "nao faz nada" / "Client not found". Contadores agora comecam em 1, como os outros
+  protocolos, resolvendo a ambiguidade na origem.
+- Adicionado: accao DELETE a http_send_cs378x_client/http_send_camd35_client (endpoints
+  /cs378xclient e /camd35client) -- so' newcamd/cccam/mgcamd tinham; mantido por correcao
+  mesmo nao sendo o caminho usado pelos botoes da lista principal.
+- Verificado: suite de regressao completa 107/107, incluindo testes manuais end-to-end dos
+  URLs reais usados pelos botoes (/cs378x?id=X&action=disable|enable|delete e equivalente
+  para /camd35), confirmando persistencia em Clients.cfg e estabilidade do id do cliente
+  entre pedidos.
+
 ## v1.70.11 (2026-11-23)
 - Fix: pagina Servers, coluna "readers" -- quando o servidor nao tinha a opcao "name"
   configurada, mostrava sempre "-" em vez de cair para o host (ip/hostname usado na

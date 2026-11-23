@@ -211,6 +211,24 @@ void init_config(struct config_data *cfg)
 	cfg->mgcamd.dcwcheck = 1;
 #endif
 
+	// fix v1.70.12: camd35.clientid/cs378x.clientid (e os respetivos serverid) nunca eram
+	// inicializados (ficavam 0 via memset), ao contrario de newcamd/cccam/mgcamd (=1). Em
+	// cfg_set_id_counters() o teste "if (!cli->id)" usa id==0 como sinal de "ainda sem id"
+	// -- mas e' exatamente o id que o PRIMEIRO cliente de sempre recebe (contador comeca em
+	// 0). Resultado: a cada chamada de cfg_set_id_counters() (corre em muitos pedidos HTTP
+	// admin, nao so' no reload) esse 1o cliente era reatribuido para um id novo (ja' nao-zero
+	// da proxima vez, por isso so' acontece uma vez por cliente) -- fazia o botao Edit (que
+	// usa o id capturado no render anterior) e o getXclientbyid() parecerem "perder" o
+	// cliente. Comecar os contadores em 1 (tal como os outros protocolos) resolve na origem.
+#ifdef CAMD35_SRV
+	cfg->camd35.clientid = 1;
+	cfg->camd35.serverid = 1;
+#endif
+#ifdef CS378X_SRV
+	cfg->cs378x.clientid = 1;
+	cfg->cs378x.serverid = 1;
+#endif
+
 #ifdef TESTCHANNEL
 	cfg->testchn.sid = 0;
 	cfg->testchn.caid = 0;

@@ -1601,7 +1601,15 @@ static void camd35cells(struct camd35_client_data *cli, char cell[11][2048], con
 	}
 	sprintf( temp," <span class='icobtn del' title='Delete this entry from Clients.cfg' onclick=\"if(confirm('Delete user %s from the config file?')) imgrequest('%s?id=%d&action=delete',this);setTimeout('updateDiv()',900)\">DEL</span>",cli->user,path,cli->id);
 	strcat( cell[9], temp );
-	sprintf( temp," <span class='icobtn ed' title='Edit line (popup)' onclick=\"leOpen('%s',%d)\">Edit</span>", (!strcmp(path,"/cs378xclient"))?"cs378xc":"camd35c", cli->id);
+	// fix v1.70.12: o "path" real da pagina de lista e' "/cs378x"/"/camd35" (c35_row_emit),
+	// nao "/cs378xclient" (so' usado pelas funcoes getcs378xcells/getcamd35cells, que ja nao
+	// sao chamadas de lado nenhum) -- o botao Edit mandava SEMPRE type=camd35c para clientes
+	// cs378x vistos na pagina de lista real. O backend (/editline) fazia entao a procura pelo
+	// id errado (getcamd35clientbyid em vez de getcs378xclientbyid), dando quase sempre
+	// "Client not found" -- uma 2a causa, independente da do reload automatico (ja corrigida
+	// em v1.70.10), para o mesmo sintoma em cs378x. Deteta cs378x por substring, cobrindo
+	// qualquer "path" (lista ou o antigo /cs378xclient).
+	sprintf( temp," <span class='icobtn ed' title='Edit line (popup)' onclick=\"leOpen('%s',%d)\">Edit</span>", strstr(path,"cs378x")?"cs378xc":"camd35c", cli->id);
 	strcat( cell[9], temp );
 	strcat( cell[9], "</span>");
 }
@@ -1701,10 +1709,58 @@ static void http_send_c35_page(int sock, http_request *req, const char *path, co
 		else if (!strcmp(str_action,"enable")) get_action = ACTION_ENABLE;
 		else if (!strcmp(str_action,"status")) get_action = ACTION_STATUS;
 		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
+		// fix v1.70.12: faltava reconhecer "delete" -- o botao DEL da pagina de lista real
+		// (cs378x/camd35) caia sempre em ACTION_PAGE.
+		else if (!strcmp(str_action,"delete")) get_action = ACTION_DELETE;
 		else str_action = NULL;
 	}
 	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
 	/////////////////////////////////////////////
+	// fix v1.70.12: ESTA e' a pagina realmente usada pelos botoes on/off/delete das linhas
+	// de clientes em /cs378x e /camd35 (ver c35_row_emit: imgrequest('<path>?id=<client id>&
+	// action=disable/enable/delete')). "disable"/"enable" ja eram reconhecidos no parsing
+	// acima, mas nunca havia nenhum "if (get_action==ACTION_DISABLE)" nesta funcao -- o
+	// pedido AJAX caia nos blocos de ACTION_ROW/ACTION_PAGE (nenhum dos dois correspondia),
+	// atravessava sem fazer nada e so' devolvia HTTP 200 com a pagina/div re-renderizada --
+	// dava a impressao de sucesso (o botao esbatia) mas nao alterava nada. "delete" nem
+	// chegava a ser reconhecido como accao valida. Note-se que "id" aqui e' o ID do CLIENTE
+	// (tal como enviado pelos botoes), nao do servidor -- esse outro uso de "id" mais abaixo
+	// so' se aplica ao carregamento normal da pagina/div (ACTION_PAGE/ACTION_DIV).
+	if (get_action==ACTION_DISABLE || get_action==ACTION_ENABLE || get_action==ACTION_DELETE) {
+		if (str_id) {
+			int cid = atoi(str_id);
+			struct camd35_server_data *s35 = srvlist;
+			struct camd35_client_data *cli = NULL;
+			while (s35 && !cli) {
+				struct camd35_client_data *c = s35->client;
+				while (c) {
+					if ( !(c->flags&FLAG_DELETE) && (c->id==cid) ) { cli = c; break; }
+					c = c->next;
+				}
+				s35 = s35->next;
+			}
+			if (cli) {
+				char match[192];
+				sprintf( match, "%s USER: %s", use_status?"CS378X":"CAMD35", cli->user);
+				if (get_action==ACTION_DISABLE) {
+					cli->flags |= FLAG_DISABLE;
+					if (cli->connection.status>0) { if (use_status) cs378x_disconnect_cli(cli); else camd35_disconnect_cli(cli); }
+					config_line_edit("Clients.cfg", match, 0);
+				}
+				else if (get_action==ACTION_ENABLE) {
+					cli->flags &= ~FLAG_DISABLE;
+					config_line_edit("Clients.cfg", match, 1);
+				}
+				else {
+					cli->flags |= (FLAG_DELETE|FLAG_DISABLE);
+					if (cli->connection.status>0) { if (use_status) cs378x_disconnect_cli(cli); else camd35_disconnect_cli(cli); }
+					config_line_edit("Clients.cfg", match, 2);
+				}
+			}
+		}
+		http_send_ok(sock);
+		return;
+	}
 	if (get_action==ACTION_ROW) {
 		// Check for XML ROW
 		if (str_clid) {
@@ -1976,6 +2032,9 @@ void http_send_cs378x_client(int sock, http_request *req)
 		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
 		else if (!strcmp(str_action,"dbginfo")) get_action = ACTION_DBGINFO;
 		else if (!strcmp(str_action,"update")) get_action = ACTION_UPDATE;
+		// fix v1.70.12: faltava reconhecer "delete" (ao contrario de newcamd/cccam/mgcamd,
+		// que ja tinham); o botao DEL caia sempre em ACTION_PAGE e nao fazia nada.
+		else if (!strcmp(str_action,"delete")) get_action = ACTION_DELETE;
 		else str_action = NULL;
 	}
 	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
@@ -2009,6 +2068,19 @@ void http_send_cs378x_client(int sock, http_request *req)
 			char match[192];
 			sprintf( match, "CS378X USER: %s", cli->user); // fix: faltava persistir o disable/enable (so mexia em memoria, revertia no restart)
 			config_line_edit("Clients.cfg", match, 1);
+		}
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==ACTION_DELETE) {
+		// fix v1.70.12: DELETE nao estava implementado (so' newcamd/cccam/mgcamd tinham) --
+		// remove a linha CS378X USER do Clients.cfg, alinhado com o padrao dos outros protocolos.
+		cli->flags |= (FLAG_DELETE|FLAG_DISABLE);
+		if (cli->connection.status>0) cs378x_disconnect_cli(cli);
+		{
+			char match[192];
+			sprintf( match, "CS378X USER: %s", cli->user);
+			config_line_edit("Clients.cfg", match, 2);
 		}
 		http_send_ok(sock);
 		return;
@@ -2370,6 +2442,9 @@ void http_send_camd35_client(int sock, http_request *req)
 		else if (!strcmp(str_action,"debug")) get_action = ACTION_DEBUG;
 		else if (!strcmp(str_action,"dbginfo")) get_action = ACTION_DBGINFO;
 		else if (!strcmp(str_action,"update")) get_action = ACTION_UPDATE;
+		// fix v1.70.12: faltava reconhecer "delete" (ao contrario de newcamd/cccam/mgcamd,
+		// que ja tinham); o botao DEL caia sempre em ACTION_PAGE e nao fazia nada.
+		else if (!strcmp(str_action,"delete")) get_action = ACTION_DELETE;
 		else str_action = NULL;
 	}
 	if (!str_action) { str_action = "page"; get_action = ACTION_PAGE; }
@@ -2403,6 +2478,19 @@ void http_send_camd35_client(int sock, http_request *req)
 			char match[192];
 			sprintf( match, "CAMD35 USER: %s", cli->user); // fix: faltava persistir o disable/enable (so mexia em memoria, revertia no restart)
 			config_line_edit("Clients.cfg", match, 1);
+		}
+		http_send_ok(sock);
+		return;
+	}
+	else if (get_action==ACTION_DELETE) {
+		// fix v1.70.12: DELETE nao estava implementado (so' newcamd/cccam/mgcamd tinham) --
+		// remove a linha CAMD35 USER do Clients.cfg, alinhado com o padrao dos outros protocolos.
+		cli->flags |= (FLAG_DELETE|FLAG_DISABLE);
+		if (cli->connection.status>0) camd35_disconnect_cli(cli);
+		{
+			char match[192];
+			sprintf( match, "CAMD35 USER: %s", cli->user);
+			config_line_edit("Clients.cfg", match, 2);
 		}
 		http_send_ok(sock);
 		return;
