@@ -1,22 +1,23 @@
 # ============================================================
 # deploy.ps1 - Build + Deploy para a VPS de producao
 # Uso: .\deploy.ps1
-# Passos: build (zig musl) -> pscp -> backup -> restart -> verifica
-# Requisitos: plink/pscp em C:\TMP\opencode, VPS acessivel por SSH
-# SEGREDOS: as credenciais vivem em deploy.secrets.ps1 (NUNCA no
-#           git - esta no .gitignore). Exemplo do ficheiro:
-#             $VPSHost = "1.2.3.4"
-#             $VPSUser = "root"
-#             $VPSPass = "a-tua-password"
+# Passos: build (zig musl) -> scp -> backup -> restart -> verifica
+# Requisitos: OpenSSH (ssh/scp) nativo do Windows + alias "stockroom-vps"
+#             em ~/.ssh/config, apontando para a chave
+#             ~/.ssh/id_ed25519_stockroom (sem password, so' a chave).
+#             Isto substitui o plink/pscp -pw usados antes do v1.70.9:
+#             a autenticacao e' feita so' por chave publica, nunca por
+#             password escrita em disco ou em memoria neste script.
+# SEGREDOS: so' resta a password da GUI HTTP (nao tem equivalente a
+#           chave SSH), que vive em deploy.secrets.ps1 (NUNCA no git -
+#           esta no .gitignore). Exemplo do ficheiro:
 #             $GuiUser = "admin"
 #             $GuiPass = "a-tua-password-gui"
 # ============================================================
 $ErrorActionPreference = "Stop"
 
 # --- CONFIG ---
-$VPSHost = ""
-$VPSUser = ""
-$VPSPass = ""
+$VPSAlias = "stockroom-vps"   # Host alias definido em ~/.ssh/config (chave, sem password)
 $GuiUser = ""
 $GuiPass = ""
 $ToolDir = "C:\TMP\opencode"
@@ -30,12 +31,19 @@ $SecretsFile = @(
 if ($SecretsFile) {
 	. $SecretsFile
 }
-if (!$VPSHost -or !$VPSUser -or !$VPSPass -or !$GuiUser -or !$GuiPass) {
-	Write-Host "ERRO: cria o ficheiro deploy.secrets.ps1 (gitignored) com `$VPSHost/`$VPSUser/`$VPSPass/`$GuiUser/`$GuiPass" -ForegroundColor Red
+if (!$GuiUser -or !$GuiPass) {
+	Write-Host "ERRO: cria o ficheiro deploy.secrets.ps1 (gitignored) com `$GuiUser/`$GuiPass" -ForegroundColor Red
 	exit 1
 }
 $VPSBin  = "/opt/multics/multics.x64"
 $VPSBin32 = "/opt/multics/multics.x32"
+
+# teste rapido de que a chave SSH funciona sem pedir password (BatchMode=yes falha em vez de prompt)
+$probe = & ssh -o BatchMode=yes -o ConnectTimeout=8 $VPSAlias "echo ssh-ok" 2>$null
+if ($LASTEXITCODE -ne 0 -or $probe -ne "ssh-ok") {
+	Write-Host "ERRO: nao foi possivel autenticar em '$VPSAlias' por chave SSH (sem password). Confirma ~/.ssh/config e a chave." -ForegroundColor Red
+	exit 1
+}
 
 Write-Host "== 1. Build =="
 cmd /c "powershell -ExecutionPolicy Bypass -File `"$Root\build.ps1`" > $ToolDir\bl.log 2>&1"
@@ -47,9 +55,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "   build OK" -ForegroundColor Green
 
 Write-Host "== 2. Upload =="
-& "$ToolDir\pscp.exe" -pw $VPSPass -q "$Root\build\multics.x64" "$VPSUser@${VPSHost}:/tmp/multics.x64.new"
-if ($LASTEXITCODE -ne 0) { Write-Host "pscp x64 falhou"; exit 1 }
-& "$ToolDir\pscp.exe" -pw $VPSPass -q "$Root\build\multics.x32" "$VPSUser@${VPSHost}:/tmp/multics.x32.new"
+& scp -q "$Root\build\multics.x64" "${VPSAlias}:/tmp/multics.x64.new"
+if ($LASTEXITCODE -ne 0) { Write-Host "scp x64 falhou"; exit 1 }
+& scp -q "$Root\build\multics.x32" "${VPSAlias}:/tmp/multics.x32.new"
 Write-Host "   upload OK" -ForegroundColor Green
 
 Write-Host "== 3. Deploy + restart =="
@@ -67,8 +75,13 @@ systemctl is-active multics
 # os scripts remotos vao para o bash da VPS: com core.autocrlf (checkout CRLF no Windows) o \r ficaria colado
 # aos nomes de ficheiro/comandos, por isso e sempre removido antes de enviar
 $remote = $remote -replace "`r",""
-& "$ToolDir\plink.exe" -ssh "$VPSUser@$VPSHost" -pw $VPSPass -batch $remote
-if ($LASTEXITCODE -ne 0) { Write-Host "deploy remoto falhou"; exit 1 }
+$deployFile = Join-Path $env:TEMP "multics_deploy.sh"
+[IO.File]::WriteAllText($deployFile, $remote, (New-Object Text.UTF8Encoding($false)))
+& scp -q $deployFile "${VPSAlias}:/tmp/multics_deploy.sh"
+& ssh $VPSAlias "bash /tmp/multics_deploy.sh; r=`$?; rm -f /tmp/multics_deploy.sh; exit `$r"
+$deployExit = $LASTEXITCODE
+Remove-Item $deployFile -ErrorAction SilentlyContinue
+if ($deployExit -ne 0) { Write-Host "deploy remoto falhou"; exit 1 }
 
 Write-Host "== 4. Verifica (GUI + stats) =="
 Start-Sleep -Seconds 10
@@ -92,11 +105,12 @@ top -bn1 | grep -m1 multics
 exit $fail
 '@
 $chk = $chk.Replace('@@LOGIN@@', $loginB64) -replace "`r",""
-# o script vai por ficheiro: aspas duplas na linha de comandos do plink perdem-se no Windows
+# o script vai por ficheiro: aspas duplas na linha de comandos do ssh perdem-se no Windows
 $chkFile = Join-Path $env:TEMP "multics_verify.sh"
 [IO.File]::WriteAllText($chkFile, $chk, (New-Object Text.UTF8Encoding($false)))
-& "$ToolDir\pscp.exe" -pw $VPSPass -q $chkFile "$VPSUser@${VPSHost}:/tmp/multics_verify.sh"
-& "$ToolDir\plink.exe" -ssh "$VPSUser@$VPSHost" -pw $VPSPass -batch "bash /tmp/multics_verify.sh; r=`$?; rm -f /tmp/multics_verify.sh; exit `$r"
+& scp -q $chkFile "${VPSAlias}:/tmp/multics_verify.sh"
+& ssh $VPSAlias "bash /tmp/multics_verify.sh; r=`$?; rm -f /tmp/multics_verify.sh; exit `$r"
+$verifyExit = $LASTEXITCODE
 Remove-Item $chkFile -ErrorAction SilentlyContinue
-if ($LASTEXITCODE -ne 0) { Write-Host "Verificacao falhou - ver acima (o binario antigo esta em /opt/multics/*.bak-*)" -ForegroundColor Red; exit 1 }
+if ($verifyExit -ne 0) { Write-Host "Verificacao falhou - ver acima (o binario antigo esta em /opt/multics/*.bak-*)" -ForegroundColor Red; exit 1 }
 Write-Host "== DEPLOY COMPLETO ==" -ForegroundColor Green
