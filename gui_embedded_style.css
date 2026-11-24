@@ -169,6 +169,12 @@ a.mbtn[href="/configurations"]::before { display: block; --ico: url("data:image/
 .toolbar input[type=range] { accent-color: var(--accent); flex: 0 1 220px; padding: 0; border: 0; background: transparent; }
 .toolbar-label { color: var(--muted); font-weight: 500; }
 .toolbar-badge { background: var(--band); color: var(--bandText); padding: 2px 12px; border-radius: 999px; font-weight: 600; font-size: 12px; min-width: 44px; text-align: center; }
+.pollctl { gap: 10px; }
+.pollctl .pbtn { min-width: 34px; height: 32px; padding: 0 10px; }
+.pollctl .pbtn-wide { padding: 0 16px; }
+.pollctl .pollval { width: 46px; text-align: center; padding: 4px 0; transition: background-color .15s ease-out; }
+.pollctl .pollval.hb { background: var(--accent); color: var(--onAccent); }
+#pollerr { position: fixed; top: 8px; left: 8px; z-index: 99999; background: #c62828; color: #fff59d; padding: 3px 10px; border-radius: 4px; font: 700 12px var(--mono); }
 #mainDiv { margin: 0 24px; padding: 18px 0 24px 0; min-height: 100vh; }
 
 /* ---------- base elements ---------- */

@@ -108,7 +108,7 @@ char *programid(unsigned int id);
 
 
 
-char HTTP_UPDATE_DIV[] = "\nvar autorefresh=%d;\nvar tautorefresh;\nvar arows = [];\nvar arowpos = 0;\nvar atick = 0;\nvar requestError = 0;\nfunction setautorefresh(t)\n{\n	clearTimeout(tautorefresh);\n	autorefresh = t;\n	if (t>0) tautorefresh = setTimeout('autoTick()',autorefresh);\n}\nfunction updateDiv()\n{\n	var d = document.getElementById('mainDiv');\n	if (d && d.matches && d.matches(':hover')) return;\n	var httpRequest;\n	try {\n		httpRequest = new XMLHttpRequest();  // Mozilla, Safari, etc\n	}\n	catch(trymicrosoft) {\n		try {\n			httpRequest = new ActiveXObject('Msxml2.XMLHTTP');\n		}\n		catch(oldermicrosoft) {\n			try {\n				httpRequest = new ActiveXObject('Microsoft.XMLHTTP');\n			}\n			catch(failed) {\n				httpRequest = false;\n			}\n		}\n	}\n	if (!httpRequest) {\n		alert('Your browser does not support Ajax.');\n		return false;\n	}\n	// Action http_request\n	httpRequest.onreadystatechange = function()\n	{\n		if (httpRequest.readyState == 4) {\n			if(httpRequest.status == 200) {\n				requestError=0;\n				var keepLog = (window.dbgPaused && document.getElementById('dbglog')) ? document.getElementById('dbglog').innerHTML : null;\n\t\t\t\tdocument.getElementById('mainDiv').innerHTML = httpRequest.responseText;\n\t\t\t\tif (keepLog !== null) { var dl = document.getElementById('dbglog'); if (dl) dl.innerHTML = keepLog; }\n\t\t\t\tif (window.dbgSyncBtn) dbgSyncBtn();\n				if (window.bindSortable) bindSortable();\n				if (window.reopenDbg) reopenDbg();\n			}\n		}\n	}\n	httpRequest.open('GET', '%s',true);\n	httpRequest.send(null);\n}\n// v1.51: o autorefresh actualiza APENAS as linhas da tabela (round-robin);\n// a cada 12 ciclos recarrega o div completo (apanha linhas novas/removidas)\nfunction autoTick()\n{\n	var d = document.getElementById('mainDiv');\n	if (d && d.matches && d.matches(':hover')) { tautorefresh = setTimeout('autoTick()',autorefresh); return; }\n	var rows = document.querySelectorAll(\"tr[id^='Row']\");\n	if (rows.length) {\n		arows = [];\n		for (var i=0;i<rows.length;i++) arows.push(rows[i].id);\n		var rid = arows[arowpos %% arows.length];\n		arowpos++;\n		atick++;\n		if (typeof autorefreshRow === 'function') autorefreshRow(rid);\n		if (atick >= 12) { atick = 0; updateDiv(); }\n	}\n	else updateDiv();\n	tautorefresh = setTimeout('autoTick()',autorefresh);\n}\n";
+char HTTP_UPDATE_DIV[] = "\nvar autorefresh=%d;\nvar pollUrl='%s';\nvar requestError = 0;\nif (window.mcsP) mcsP.url = pollUrl;\nfunction setautorefresh(t)\n{\n\tif (window.mcsPollInit) mcsPollInit(t, pollUrl);\n}\nfunction updateDiv()\n{\n\tif (window.mcsPollNow) mcsPollNow(pollUrl);\n}\nfunction autoTick()\n{\n\tupdateDiv();\n}\nwindow.addEventListener('load', function(){ setautorefresh(autorefresh); });\n";
 char HTTP_UPDATE_ROW[] = "\nvar idx = 0;\nvar tupdateRow;\n\nfunction setupdateRow(id)\n{\n	clearTimeout(tupdateRow);\n	idx = id;\n	if (id>0) tupdateRow = setTimeout('updateRow()',1000);\n}\n\nvar lastidx = 0;\nvar requestError = 0;\nfunction updateRow()\n{\n	if (lastidx!=idx) {\n		requestError = 0;\n		lastidx = idx;\n	}\n	if ( !requestError && (idx>0) ) {\n		var httpRequest;\n		try {\n			httpRequest = new XMLHttpRequest();  // Mozilla, Safari, etc\n		}\n		catch(trymicrosoft) {\n			try {\n				httpRequest = new ActiveXObject('Msxml2.XMLHTTP');\n			}\n			catch(oldermicrosoft) {\n				try {\n					httpRequest = new ActiveXObject('Microsoft.XMLHTTP');\n				}\n				catch(failed) {\n					httpRequest = false;\n				}\n			}\n		}\n		if (!httpRequest) {\n			alert('Your browser does not support Ajax.');\n			return false;\n		}\n		var savedidx = idx;\n		// Action http_request\n		httpRequest.onreadystatechange = function()\n		{\n			if (httpRequest.readyState == 4) {\n				if (httpRequest.status == 200) {\n					requestError=0;\n					xmlupdateRow( httpRequest.responseXML, 'Row'+savedidx );\n				}\n				else {\n					requestError++;\n				}\n			}\n		}\n		httpRequest.open('GET', %s, true);\n		httpRequest.send(null);\n		requestError++;\n	}\n}\n\n// v1.51: autorefresh por LINHA (o timer chama esta funcao com o id da row)\nfunction autorefreshRow(rid)\n{\n	var id = parseInt(rid.substring(3));\n	if (!id || isNaN(id)) return;\n	lastidx = 0;\n	requestError = 0;\n	idx = id;\n	updateRow();\n}\n";
 
 
@@ -920,12 +920,17 @@ void tcp_write_menu(struct tcp_buffer_data *tcpbuf, int sock, int selected)
 
 	//
 	if ( (selected!=PAGE_RESTART)&&(selected!=PAGE_EDITOR)&&(selected!=PAGE_CONFIGURATIONS) ) {
-		tcp_writestr(tcpbuf, sock, "<div class='toolbar'><span class='toolbar-label'>Autorefresh</span><input id='ar_slider' type=range min=0 max=100 value=");
-		sprintf( buf, "%d", cfg.http.autorefresh);
+		tcp_writestr(tcpbuf, sock, "<div class='toolbar pollctl'><span class='toolbar-label'>Polling</span>"
+		"<button type='button' id='pl_dec' class='pbtn' onclick='mcsPollStep(-1)' title='Decrease interval' aria-label='Decrease interval'>&minus;</button>"
+		"<input id='pl_val' class='pollval' type='text' readonly size='3' aria-label='Polling interval in seconds' value='");
+		sprintf( buf, "%d", cfg.http.autorefresh>0 ? cfg.http.autorefresh : 5);
 		tcp_writestr(tcpbuf, sock, buf);
-		tcp_writestr(tcpbuf, sock, " oninput='var v=this.value;document.getElementById(\"ar_val\").innerHTML=v==0?\"OFF\":v+\"s\";setautorefresh(v*1000);'> <span id=ar_val class='toolbar-badge'>");
-		if (cfg.http.autorefresh>0) { sprintf( buf, "%ds", cfg.http.autorefresh); tcp_writestr(tcpbuf, sock, buf); }
-		else tcp_writestr(tcpbuf, sock, "OFF");
+		tcp_writestr(tcpbuf, sock, "'><span class='toolbar-label'>s</span>"
+		"<button type='button' id='pl_inc' class='pbtn' onclick='mcsPollStep(1)' title='Increase interval' aria-label='Increase interval'>+</button>"
+		"<button type='button' id='pl_pause' class='pbtn pbtn-wide' aria-pressed='false' onclick='mcsPollToggle()'>Pause polling</button>"
+		"<span id=ar_val class='toolbar-badge'>");
+		if (cfg.http.autorefresh>0) { sprintf( buf, "Live %ds", cfg.http.autorefresh); tcp_writestr(tcpbuf, sock, buf); }
+		else tcp_writestr(tcpbuf, sock, "Paused");
 		tcp_writestr(tcpbuf, sock, "</span></div>\n");
 	}
 }
