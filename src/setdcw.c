@@ -885,6 +885,26 @@ int dcwchan_getlast2(uint16_t caid, uint32_t provid, uint16_t sid, uint8_t cw1[1
 }
 
 
+// v1.70.19: transformacao de saida do perfil (CAK7 / SWAP) numa funcao unica.
+// O DCW AGREE compara a CW ja transformada com as CWs cruas guardadas de cada
+// reader; sem aplicar a mesma transformacao a essas copias nunca havia
+// consenso e o ECM ficava retido (box sem CW) com CAK7/SWAP activos.
+static void dcw_profile_xform(struct cardserver_data *cs, ECM_DATA *ecm, uint8_t dcw[16])
+{
+	if (cs->option.dcw.cak7) {
+		if (cs->option.dcw.cak7inv) dcw_cak7_apply_inv(dcw);
+		else dcw_cak7_apply(dcw);
+	}
+#ifdef DCWSWAP
+	if (cs->option.dcw.swap && (ecm->caid==0x1802)) {
+		uint8_t tmp[8];
+		memcpy(tmp, dcw, 8);
+		memcpy(dcw, dcw+8, 8);
+		memcpy(dcw+8, tmp, 8);
+	}
+#endif
+}
+
 void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 {
 	char nullcw[16] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
@@ -932,21 +952,9 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 			fclose(fp);
 		}
 	}
-	if (cs->option.dcw.cak7) {
-		if (cs->option.dcw.cak7inv) dcw_cak7_apply_inv(dcw); // v1.48: fonte entrega icam -> inverter
-		else dcw_cak7_apply(dcw);
-	}
-
-	// v1.47.2 TESTE: NOS 1802 - o swap INCONDICIONAL do par (a fonte entrega a paridade invertida;
-	// o dcwcheck_nds so actua nos half-nulled NDS e nunca chega aos pares completos da NOS)
-#ifdef DCWSWAP
-	if (cs && cs->option.dcw.swap && (ecm->caid==0x1802)) {
-		char tmp[8];
-		memcpy(tmp, dcw, 8);
-		memcpy(dcw, dcw+8, 8);
-		memcpy(dcw+8, tmp, 8);
-	}
-#endif
+	// v1.48 CAK7 (inverso: fonte entrega icam) + v1.47.2 SWAP incondicional do par
+	// NOS 1802 (a fonte entrega a paridade invertida) - ver dcw_profile_xform()
+	dcw_profile_xform(cs, ecm, dcw);
 
 	// DCW LOG: ficheiro de aprendizagem (canal + CW) quando o perfil tem DCW LOG: YES
 	if (cs->option.dcw.dcwlog) {
@@ -1114,7 +1122,12 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 		for (ai=0; ai<ecm->server_totalsent; ai++) {
 			// v1.63.2 FIX: o dcwcmp16 devolve VERDADEIRO quando IGUAL - o ! inverteu
 			// o consenso (contava as fontes que DISCORDAM). Agora conta as iguais.
-			if ( (ecm->server[ai].flag==ECM_SRV_REPLY_GOOD) && dcwcmp16(ecm->server[ai].dcw, dcw) ) same++;
+			if (ecm->server[ai].flag==ECM_SRV_REPLY_GOOD) {
+				uint8_t sdcw[16];
+				memcpy(sdcw, ecm->server[ai].dcw, 16);
+				dcw_profile_xform(cs, ecm, sdcw); // v1.70.19: mesma saida que o dcw recebido
+				if ( dcwcmp16(sdcw, dcw) ) same++;
+			}
 		}
 		if (same >= agree_need) {
 			mlogf(LOGINFO,getdbgflagpro(DBG_SERVER,0,0,cs->id)," agree: %d/%d fontes concordam ch %04x:%06x:%04x\n",
