@@ -2786,6 +2786,14 @@ void http_send_verdict(int sock, http_request *req)
 	tcp_flush(&tcpbuf, sock);
 }
 
+// v1.70.17: rotulo do reader no Monitoring = name se configurado, senao so o host (sem "-" nem "(host:porta)")
+static const char *mon_srvlabel(struct server_data *s)
+{
+	if (s->name[0]) return s->name;
+	if (s->host && s->host->name[0]) return (const char*)s->host->name;
+	return "-";
+}
+
 void http_send_watchdog(int sock, http_request *req)
 {
 	char http_buf[4096];
@@ -2823,9 +2831,10 @@ void http_send_watchdog(int sock, http_request *req)
 
 	// === 1. Readers: reputacao + bad-cw cache activo ===
 	tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Readers (reputation)</h3>"
-		"<table class='maintable'><tr><th>Reader</th><th>Hop</th><th>Health</th><th>cwbad</th><th>Div</th><th>Flagged channels</th><th>OK/total</th><th>Last 24 h (15 min per bar)</th></tr>");
+		"<table class='maintable'><tr><th>Reader</th><th>Hop</th><th>Health</th><th>cwbad</th><th>Div</th><th>Flagged channels</th><th>OK/total</th><th>Last 24 h (15 min per bar, newest on the right)</th></tr>");
 	struct server_data *srv = cfg.server;
 	while (srv) {
+		if (srv->flags&(FLAG_DELETE|FLAG_DISABLE)) { srv = srv->next; continue; } // v1.70.17: servers removidos ou desativados (linha comentada) nao aparecem no Monitoring
 		int h = 0, hen = 0;
 		h = srv_healthscore_gui(srv, &hen);
 		// canais marcados ACTIVOS (entradas nao expiradas)
@@ -2850,66 +2859,40 @@ void http_send_watchdog(int sock, http_request *req)
 		// configurado (o "-" e os parenteses ficavam sempre, mesmo sem nome). Agora mostra o
 		// name se configurado, senao o host (sem o "-" nem os parenteses), alinhado com a
 		// coluna "readers" da pagina Servers.
+		char hopbuf[200];
+		if (srv->hop==1) strcpy( hopbuf, "<span class='badge-green' title='hop=1: the cards of this reader are local to it (direct source, preferred by the load balancer)'>direct</span>");
+		else if (srv->hop>1) sprintf( hopbuf, "<span title='hop=%d: cards reached through this reader's own chain (circuit)'>circuit (%d)</span>", srv->hop, srv->hop );
+		else strcpy( hopbuf, "<span class='muted' title='No hop=N option on this server line. Optional: hop=1 marks a direct source, hop=2+ a circuit.'>not set</span>");
 		sprintf( http_buf, "<tr><td>%s</td><td>%s</td><td>%d%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d/%d</td>",
-			srv->name[0]?srv->name:srv->host->name,
-			srv->hop==1?"<span class='badge-green'>directa</span>":(srv->hop>1?"circuito":"?"),
+			mon_srvlabel(srv),
+			hopbuf,
 			h, hen?"":" (off)", cwbad_eff, srv->divcount, nactive, srv->ecmok, srv->ecmnb );
 		tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-		// v1.45: grafico 24h - linha de area (ok%) com marcadores de cwbad
-		// (96 janelas de 15min, mais recente a direita; tooltip com os numeros)
-		// W=244 H=52: area 0..236 (passo 2.46) x 0..36, linha base y=38
-		tcp_writestr(&tcpbuf, sock, "<td><svg width='244' height='52'>");
+		// v1.70.17: Last 24h = percentagem + tira de 96 celulas (15 min cada, mais recente a direita),
+		// cor por % de ECMs OK (verde/amarelo/vermelho), vazio = sem pedidos; marca vermelha no topo = cwbad
 		{
 			int i, pos = srv->hist_idx;
-			// fundo + grelha 25/50/75/100%
-			int gy;
-			for (gy=0; gy<4; gy++) {
-				int y = 38 - ((gy+1)*36)/4;
-				sprintf( http_buf, "<line x1='0' y1='%d' x2='236' y2='%d' stroke='#2c333e' stroke-width='0.6'/>", y, y );
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
+			uint32_t tnb = 0, tok = 0;
+			for (i=0; i<HIST_MAX; i++) { tnb += srv->hist_nb[i]; tok += srv->hist_ok[i]; }
+			if (tnb) {
+				int tp = (int)((tok*100ULL)/tnb);
+				sprintf( http_buf, "<td><div class='h24'><span class='h24pct' style='color:%s' title='%u/%u ECMs OK in the last 24 h'>%d%%</span><span class='h24bar'>",
+					tp>=90 ? "var(--pok)" : (tp>=60 ? "var(--pwarn)" : "var(--pbad)"), tok, tnb, tp );
 			}
-			// recolher os pontos (so as janelas com dados)
-			char line[2048];
-			char area[2304];
-			int lp = 0, ap = 0;
-			lp += sprintf( line+lp, "M" );
-			ap += sprintf( area+ap, "M" );
-			int firstx = -1, lastx = -1;
+			else strcpy( http_buf, "<td><div class='h24'><span class='h24pct muted'>--</span><span class='h24bar'>");
+			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			for (i=0; i<HIST_MAX; i++) {
-				int s = (pos + i) % HIST_MAX;
-				int nb = srv->hist_nb[s];
-				if (!nb) continue;
-				int x = i*236/95;
-				int h = (srv->hist_ok[s]*36)/nb;
-				if (firstx<0) firstx = x;
-				lastx = x;
-				lp += sprintf( line+lp, "%d,%d ", x, 38-h );
-				ap += sprintf( area+ap, "%d,%d ", x, 38-h );
-			}
-			if (firstx>=0) {
-				// area preenchida (linha + base)
-				sprintf( http_buf, "<path d='%s%d,38 %d,38 Z' fill='rgba(67,160,71,0.28)' stroke='none'/>", area, lastx, firstx );
-				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				sprintf( http_buf, "<path d='%s' fill='none' stroke='#4caf50' stroke-width='1.8' stroke-linejoin='round'/>", line );
+				int sl = (pos + i) % HIST_MAX;
+				int nb = srv->hist_nb[sl];
+				if (!nb) { tcp_writestr(&tcpbuf, sock, "<i></i>"); continue; }
+				int pc2 = (srv->hist_ok[sl]*100)/nb;
+				sprintf( http_buf, "<i class='%s%s' title='%d/%d OK (%d%%)%s'></i>",
+					pc2>=90 ? "g" : (pc2>=60 ? "y" : "r"), srv->hist_cwbad[sl] ? " cb" : "",
+					srv->hist_ok[sl], nb, pc2, srv->hist_cwbad[sl] ? ", cwbad" : "" );
 				tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			}
-			// marcadores de cwbad (pontos vermelhos no topo)
-			for (i=0; i<HIST_MAX; i++) {
-				int s = (pos + i) % HIST_MAX;
-				int nb = srv->hist_nb[s];
-				if (!nb) continue;
-				if (srv->hist_cwbad[s]) {
-					int x = i*236/95;
-					sprintf( http_buf, "<circle cx='%d' cy='3' r='2' fill='#e53935'><title>%d/%d OK (%d%%), cwbad %d</title></circle>",
-						x, srv->hist_ok[s], nb, nb?(srv->hist_ok[s]*100)/nb:0, srv->hist_cwbad[s] );
-					tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
-				}
-			}
-			// legenda minima
-			tcp_writestr(&tcpbuf, sock, "<text x='2' y='50' font-size='7' fill='#9aa4b2'>24h atras</text>");
-			tcp_writestr(&tcpbuf, sock, "<text x='176' y='50' font-size='7' fill='#9aa4b2'>now</text>");
+			tcp_writestr(&tcpbuf, sock, "</span></div></td></tr>");
 		}
-		tcp_writestr(&tcpbuf, sock, "</svg></td></tr>");
 		srv = srv->next;
 	}
 	tcp_writestr(&tcpbuf, sock, "</table></div>");
@@ -2920,13 +2903,14 @@ void http_send_watchdog(int sock, http_request *req)
 	int anybad = 0;
 	srv = cfg.server;
 	while (srv) {
+		if (srv->flags&(FLAG_DELETE|FLAG_DISABLE)) { srv = srv->next; continue; }
 		uint32_t ticks = GetTickCount();
 		int i;
 		for (i=0; i<BADCW_CACHE_MAX; i++) {
 			if (!srv->bad_time[i]) continue;
 			if ( (uint32_t)(ticks - srv->bad_time[i]) > 3600000 ) { srv->bad_time[i] = 0; continue; }
-			sprintf( http_buf, "<tr><td>%s (%s:%d)</td><td>%s <span class='muted'>%04x:%04x</span></td><td>%us</td></tr>",
-				srv->name[0]?srv->name:"-", srv->host->name, srv->port,
+			sprintf( http_buf, "<tr><td>%s</td><td>%s <span class='muted'>%04x:%04x</span></td><td>%us</td></tr>",
+				mon_srvlabel(srv),
 				getchname(srv->bad_caid[i], 0, srv->bad_sid[i]), srv->bad_caid[i], srv->bad_sid[i], (ticks - srv->bad_time[i])/1000 );
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			anybad = 1;
@@ -2958,9 +2942,10 @@ void http_send_watchdog(int sock, http_request *req)
 	// === 2.6 Budget Engine - Anti-Share Protection ===
 	{
 		tcp_writestr(&tcpbuf, sock, "<div class='stat-section' style='margin:10px 0'><h3 class='stitle'>Budget Engine - Anti-Share Protection</h3>"
-			"<table class='maintable'><tr><th style='text-align:center'>Reader Name</th><th style='text-align:center'>IP</th><th style='text-align:center'>Port</th><th style='text-align:center'>Usage per minute</th><th style='text-align:center'>Usage limit</th><th style='text-align:center'>Usage percentage</th></tr>");
+			"<table class='maintable'><tr><th style='text-align:center'>Reader</th><th style='text-align:center'>IP</th><th style='text-align:center'>Port</th><th style='text-align:center'>Usage per minute</th><th style='text-align:center'>Usage limit</th><th style='text-align:center'>Usage percentage</th></tr>");
 		srv = cfg.server;
 		while (srv) {
+			if (srv->flags&(FLAG_DELETE|FLAG_DISABLE)) { srv = srv->next; continue; }
 			uint32_t cons = 0, ceiling = 0;
 			int pct = 0;
 			srv_budget_values(srv, &cons, &ceiling, &pct);
@@ -2972,7 +2957,7 @@ void http_send_watchdog(int sock, http_request *req)
 			if (srv->budget_on) sprintf( limbuf, "%u/min", ceiling );
 			else strcpy( limbuf, "--");
 			sprintf( http_buf, "<tr><td><b>%s</b></td><td align=center><span class='muted'>%s</span></td><td align=center>%d</td><td align=center>%s</td><td align=center>%s</td><td align=center><span style='color:%s;font-weight:700'>%d%%</span></td></tr>",
-				srv->name[0]?srv->name:"-", srv->host? (char*)srv->host->name : "-", srv->port, consbuf, limbuf, pc, pct );
+				mon_srvlabel(srv), srv->host? (char*)srv->host->name : "-", srv->port, consbuf, limbuf, pc, pct );
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 			srv = srv->next;
 		}

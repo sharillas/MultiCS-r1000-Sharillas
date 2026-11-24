@@ -503,3 +503,14 @@ tr.dbgrow td { background: var(--field); padding: 10px; border-radius: 12px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* v1.70.17: Monitoring - Last 24h (percentagem + tira de 96 janelas de 15 min) */
+.h24 { display: flex; align-items: center; gap: 10px; }
+.h24pct { min-width: 42px; font: 700 14px var(--font); text-align: right; }
+.h24bar { display: flex; gap: 1px; width: 240px; height: 22px; }
+.h24bar i { flex: 1 1 0; min-width: 1px; border-radius: 1px; background: var(--pline); opacity: .45; }
+.h24bar i.g { background: var(--pok); opacity: 1; }
+.h24bar i.y { background: var(--pwarn); opacity: 1; }
+.h24bar i.r { background: var(--pbad); opacity: 1; }
+.h24bar i.cb { box-shadow: inset 0 3px 0 var(--pbad); }
+.h24bar i.g.cb, .h24bar i.y.cb { box-shadow: inset 0 3px 0 var(--pbad); }

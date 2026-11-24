@@ -6747,6 +6747,15 @@ void update_servers(struct config_data *cfg, struct config_data *newcfg )
 			}
 			// priority
 			srv->priority = newsrv->priority;
+			// fix v1.70.17: a linha passou a comentada ("#N: ...") ou deixou de o estar a mao no ficheiro --
+			// a memoria mantinha o estado antigo ate' ao restart (server "removido" continuava ativo e a aparecer)
+			if ( (newsrv->flags&FLAG_DISABLE) && !(srv->flags&FLAG_DISABLE) ) {
+				srv->flags |= (FLAG_DISABLE|FLAG_DISCONNECT);
+			}
+			else if ( !(newsrv->flags&FLAG_DISABLE) && (srv->flags&FLAG_DISABLE) ) {
+				srv->flags &= ~FLAG_DISABLE;
+				if (srv->host) srv->host->checkiptime = 0;
+			}
 			// fix v1.70.14: estas opcoes do bloco "{ }" do server nao sobreviviam ao reload -- o
 			// ficheiro mudava (ex: desmarcar "No Check" no popup de Edit) mas a memoria mantinha
 			// o valor antigo ate' ao restart, e o popup continuava a mostrar a checkbox marcada.
