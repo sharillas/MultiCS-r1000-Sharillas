@@ -12,6 +12,6 @@
 #define NAGRA_BADCHK  2
 #define NAGRA_BADPROV 3
 
-int nagra_check(ECM_DATA *ecm, uint8_t cw[16]);
+int nagra_check(ECM_DATA *ecm, uint8_t cw[16], int nochecksum);
 
 #endif

@@ -373,6 +373,7 @@ Esta secção foi escrita a partir do parser (`src/config.c`) da **v1.63.4**. Os
 | `providrewrite=` | `yes`/`no` | v1.48. Reescreve o provid para 0 nos pedidos a este reader. |
 | `stealth=` | `yes`/`no` | v1.48.2. Server stealth (não anuncia a lista de cards). |
 | `nocheck=` | `yes`/`no` | Desliga a proteção anti-loop (cliente e reader no mesmo IP). |
+| `nochecksum=` | `yes`/`no` | v1.70.18. Não rejeitar as CWs **deste reader** por checksum inválido (resposta a ECM e proteção NAGRA `CHK`). CW nula, bad e fake (xor F0) continuam a ser rejeitadas. Não afeta o CacheEX. Checkbox "No CW checksum" no popup Edit. |
 | `type=` | `mgcamd`/`newcamd`/`cccam` | v1.51. Grupo de apresentação na GUI (o protocolo real não muda). |
 | `cacheex_mode=` / `cacheex_maxhop=` / `cacheex_forward=` | hex | Opções CacheEX do reader. |
 

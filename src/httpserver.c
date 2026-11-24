@@ -5701,7 +5701,7 @@ static int le_param(http_request *req, const char *name, char *out, int outsz)
 static int le_bool_is_valid(const char *type, const char *key)
 {
 	if (!strcmp(type,"server"))
-		return !strcmp(key,"nocheck")||!strcmp(key,"providrewrite")||!strcmp(key,"stealth")||!strcmp(key,"arbiter");
+		return !strcmp(key,"nocheck")||!strcmp(key,"nochecksum")||!strcmp(key,"providrewrite")||!strcmp(key,"stealth")||!strcmp(key,"arbiter");
 #ifdef CHECK_NEXTDCW
 	if (!strcmp(type,"user")||!strcmp(type,"f")||!strcmp(type,"mg")||!strcmp(type,"cs378xc")||!strcmp(type,"camd35c"))
 		return !strcmp(key,"dcwcheck");
@@ -5948,7 +5948,7 @@ void http_send_lineedit(int sock, http_request *req)
 
 		// fix v1.70.13 (#56): estado atual das checkboxes booleanas deste tipo (lido
 		// diretamente da struct em memoria, nunca do texto do ficheiro).
-		int b_nocheck=0,b_providrewrite=0,b_stealth=0,b_arbiter=0,b_dcwcheck=0;
+		int b_nocheck=0,b_nochecksum=0,b_providrewrite=0,b_stealth=0,b_arbiter=0,b_dcwcheck=0;
 		int b_csp=0,b_autoadd=0,b_sendreq=0,b_sendrep=0,b_fwd=0,b_fblock0=0;
 		int cxmode=0; // fix v1.70.14: cacheex_mode atual (clientes F:/CS378X/CAMD35) para o select
 		int toolong=0; // fix v1.70.14: bloco de opcoes real demasiado grande p/ o popup -> recusa abrir
@@ -5971,6 +5971,7 @@ void http_send_lineedit(int sock, http_request *req)
 				for (i=0;i<14;i++) k += sprintf(key+k, "%s%02X", i?" ":"", srv->key[i]);
 			}
 			b_nocheck = srv->nocheck?1:0;
+			b_nochecksum = srv->nochecksum?1:0;
 			b_providrewrite = srv->providrewrite?1:0;
 			b_stealth = srv->stealth?1:0;
 			b_arbiter = srv->arbiter?1:0;
@@ -6098,6 +6099,8 @@ void http_send_lineedit(int sock, http_request *req)
 				if (strlen(rblk) > 1900) toolong = 1;
 				le_blk_filter(rblk, "nocheck", "providrewrite", rtmp, sizeof(rtmp), NULL, 0, NULL, 0);
 				le_blk_filter(rtmp, "stealth", "arbiter", rrest, sizeof(rrest), NULL, 0, NULL, 0);
+				le_blk_filter(rrest, "nochecksum", "nochecksum", rtmp, sizeof(rtmp), NULL, 0, NULL, 0); // v1.70.18: checkbox "No CW checksum"
+				snprintf(rrest, sizeof(rrest), "%s", rtmp);
 				snprintf(opts, sizeof(opts), "%s", rrest);
 			}
 		}
@@ -6183,11 +6186,12 @@ void http_send_lineedit(int sock, http_request *req)
 			sprintf( http_buf,
 				"<tr><td>Options</td><td>"
 				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='nocheck'%s> No Check</label> "
+				"<label class='le-cb' title='Do not reject CWs from this reader for a bad checksum (null/bad/fake CWs are still rejected)'><input type=checkbox class='le-bool' data-key='nochecksum'%s> No CW checksum</label> "
 				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='providrewrite'%s> Provid Rewrite</label> "
 				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='stealth'%s> Stealth</label> "
 				"<label class='le-cb'><input type=checkbox class='le-bool' data-key='arbiter'%s> Arbiter</label>"
 				"</td></tr>",
-				b_nocheck?" checked":"", b_providrewrite?" checked":"", b_stealth?" checked":"", b_arbiter?" checked":"");
+				b_nocheck?" checked":"", b_nochecksum?" checked":"", b_providrewrite?" checked":"", b_stealth?" checked":"", b_arbiter?" checked":"");
 			tcp_write(&tcpbuf, sock, http_buf, strlen(http_buf) );
 		}
 #ifdef CHECK_NEXTDCW
@@ -6347,6 +6351,7 @@ void http_send_lineedit(int sock, http_request *req)
 			}
 			else if (isserver) {
 				if (le_bool_checked(boolcsv,"nocheck")) ol += sprintf(opttxt+ol,"nocheck=yes; ");
+				if (le_bool_checked(boolcsv,"nochecksum")) ol += sprintf(opttxt+ol,"nochecksum=yes; ");
 				if (le_bool_checked(boolcsv,"providrewrite")) ol += sprintf(opttxt+ol,"providrewrite=yes; ");
 				if (le_bool_checked(boolcsv,"stealth")) ol += sprintf(opttxt+ol,"stealth=yes; ");
 				if (le_bool_checked(boolcsv,"arbiter")) ol += sprintf(opttxt+ol,"arbiter=yes; ");

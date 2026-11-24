@@ -479,6 +479,10 @@ void parse_server_data( struct server_data *tsrv )
 					// nao aplicar a protecao anti-loop (cliente e reader no mesmo IP)
 					tsrv->nocheck = parse_boolean();
 				}
+				else if (!strcmp(str,"nochecksum")) {
+					// v1.70.18: nao rejeitar CWs deste reader por checksum invalido
+					tsrv->nochecksum = parse_boolean();
+				}
 				else if (!strcmp(str,"providrewrite")) {
 					// v1.48: reescreve o provid para 0 nos pedidos a este reader
 					// (para servers que encaminham 005211 para cacheex "Channel Push"
@@ -6760,6 +6764,7 @@ void update_servers(struct config_data *cfg, struct config_data *newcfg )
 			// ficheiro mudava (ex: desmarcar "No Check" no popup de Edit) mas a memoria mantinha
 			// o valor antigo ate' ao restart, e o popup continuava a mostrar a checkbox marcada.
 			srv->nocheck = newsrv->nocheck;
+			srv->nochecksum = newsrv->nochecksum;
 			srv->providrewrite = newsrv->providrewrite;
 			srv->stealth = newsrv->stealth;
 			srv->arbiter = newsrv->arbiter;

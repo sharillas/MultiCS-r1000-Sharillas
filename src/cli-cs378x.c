@@ -174,7 +174,7 @@ void cs378x_srv_recvmsg(struct server_data *srv)
 			int isnanoe0=ecm_isnanoe0(ecm->ecm,ecm->caid);
 			if ( isnanoe0 )
 				mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] viaccess nano e0 detected ch %04x:%06x:%04x\n",ecm->caid, ecm->provid, ecm->sid);
-			if (!acceptDCW( buf+24, isnanoe0 ) ) {
+			if (!ACCEPTDCW_SRV( srv, buf+24, isnanoe0 ) ) {
 				mlogf(LOGINFO,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from cs378x server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid, isnanoe0);
 				srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount();
 				pthread_mutex_lock(&prg.lockecm); //###

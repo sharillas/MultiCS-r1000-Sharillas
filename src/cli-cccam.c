@@ -134,7 +134,7 @@ void cc_srv_recvmsg(struct server_data *srv)
 				if ( isnanoe0 )
 					mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] viaccess nano e0 detected ch %04x:%06x:%04x\n",ecm->caid, ecm->provid, ecm->sid);
 				// Check for DCW
-				if (!acceptDCW( dcw, isnanoe0 ) ) {
+				if (!ACCEPTDCW_SRV( srv, dcw, isnanoe0 ) ) {
 					mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from cccam server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid, isnanoe0);
 					srv->ecmerrdcw ++;
 #ifdef SID_FILTER

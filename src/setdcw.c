@@ -1006,7 +1006,9 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 
 	// NAGRA PROTECTION (18xx/19xx): checksum, provider, ciclo e similaridade
 	{
-		int ncode = nagra_check( ecm, dcw );
+		int nochk = 0;
+		if (srctype==DCW_SOURCE_SERVER) { struct server_data *ns = getsrvbyid(srcid&0xffff); if (ns && ns->nochecksum) nochk = 1; }
+		int ncode = nagra_check( ecm, dcw, nochk );
 		if (ncode) {
 			// v1.30.1: conta CWs suspeitas por reader (qualidade no load-balance)
 			if (srctype==DCW_SOURCE_SERVER) {
@@ -1028,7 +1030,8 @@ void ecm_setdcwdata( ECM_DATA *ecm, uint8_t dcw[16], int srctype, int srcid )
 	// se nenhuma responder, o timeout cai no LASTCWONNOK (ultima CW boa).
 	if (cs->option.nagra.enable && cs->option.nagra.chk
 		&& (ecm->caid>=0x1813) && (ecm->caid<=0x1a12)
-		&& !checksumDCW(dcw)) {
+		&& !checksumDCW(dcw)
+		&& !(srctype==DCW_SOURCE_SERVER && getsrvbyid(srcid&0xffff) && getsrvbyid(srcid&0xffff)->nochecksum)) {
 		if (srctype==DCW_SOURCE_SERVER) {
 			struct server_data *s = getsrvbyid(srcid&0xffff);
 			if (s) { srv_nok_record(s, ecm->caid, ecm->sid); srv_bad_record(s, ecm->caid, ecm->sid); s->cwbad++; s->cwbad_time = GetTickCount(); }

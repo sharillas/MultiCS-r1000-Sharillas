@@ -689,6 +689,8 @@ struct PACK server_data
 	uint8_t hop;
 	// Nao aplicar a protecao anti-loop (cliente e reader no mesmo IP externo)
 	uint8_t nocheck;
+	// v1.70.18: nao rejeitar CWs deste reader por checksum invalido (so' null/bad/fake continuam rejeitadas)
+	uint8_t nochecksum;
 	// v1.48: reescrever o provid para 0 nos pedidos a este reader
 	uint8_t providrewrite;
 	// v1.48.2: reader stealth (server nao anuncia cards) - enviar ECMs na mesma
@@ -1767,6 +1769,11 @@ void free_filenames( struct config_data *cfg );
 #define IP_ADRESS 0
 //( (1<<24) | (0<<16) | (0<<8) | 127 )
 
+
+
+// v1.70.18: reader com nochecksum=yes -> a CW recebida nao e' testada pelo checksum
+int accept_dcw_nochk(uint8_t *data);
+#define ACCEPTDCW_SRV(srv,data,nano) ( (srv)->nochecksum ? accept_dcw_nochk(data) : acceptDCW((data),(nano)) )
 
 #if (IP_ADRESS==0)
 #define CHECK_IP_ADRESS(s) ;

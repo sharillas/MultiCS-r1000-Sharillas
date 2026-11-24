@@ -117,7 +117,7 @@ void camd35_srv_recvmsg(struct server_data *srv)
 			if ( isnanoe0 )
 				mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] viaccess nano e0 detected ch %04x:%06x:%04x\n",ecm->caid, ecm->provid, ecm->sid);
 
-			if (!acceptDCW( buf+24, isnanoe0 ) ) {
+			if (!ACCEPTDCW_SRV( srv, buf+24, isnanoe0 ) ) {
 				srv->ecmerrdcw++; srv->ecmerrdcw_time = GetTickCount();
 				// Log abnormal case when dcw is rejected
 				mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from camd35 server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid,isnanoe0);

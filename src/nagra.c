@@ -14,7 +14,16 @@ static int nagra_accept_prov(struct cardserver_data *cs, uint32_t provid)
 	return 0;
 }
 
-int nagra_check(ECM_DATA *ecm, uint8_t cw[16])
+// v1.70.18: reader com nochecksum=yes -- so' rejeita CW nula / bad / fake (xor F0), nao testa o checksum
+int accept_dcw_nochk(uint8_t *data)
+{
+	if ( isfakecw_xorF0(data) ) return 0;
+	if ( isnullDCW(data) ) return 0;
+	if ( isbadDCW(data) ) return 0;
+	return 1;
+}
+
+int nagra_check(ECM_DATA *ecm, uint8_t cw[16], int nochecksum)
 {
 	struct cardserver_data *cs = ecm->cs;
 	if (!cs || !cs->option.nagra.enable) return NAGRA_OK;
@@ -30,7 +39,7 @@ int nagra_check(ECM_DATA *ecm, uint8_t cw[16])
 		if (!cw[14]) return NAGRA_OK;
 	}
 
-	if (cs->option.nagra.chk) {
+	if (cs->option.nagra.chk && !nochecksum) {
 		if (!checksumDCW(cw)) {
 			mlogf(LOGINFO,getdbgflag(DBG_CACHE,0,0)," nagra: bad checksum ch %04x:%06x:%04x\n",
 				ecm->caid, ecm->provid, ecm->sid);

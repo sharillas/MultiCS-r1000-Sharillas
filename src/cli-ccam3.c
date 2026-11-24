@@ -282,7 +282,7 @@ void ccam3_srv_recvmsg(struct server_data *srv)
 		struct cardserver_data *cs = ecm->cs;
 		if (!cs) cs = getcsbycaprovid(ecm->caid, ecm->provid);
 		int isnanoe0 = ecm_isnanoe0(ecm->ecm, ecm->caid);
-		if (!acceptDCW( dcw, isnanoe0 )) {
+		if (!ACCEPTDCW_SRV( srv, dcw, isnanoe0 )) {
 			mlogf(LOGDEBUG,getdbgflag(DBG_SERVER,0,srv->id)," [!] dcw error from ccam3 server (%s:%d), bad dcw!!! ch %04x:%06x:%04x nanoe0=%d\n",srv->host->name,srv->port,ecm->caid, ecm->provid, ecm->sid, isnanoe0);
 			srv->ecmerrdcw++;
 			pthread_mutex_unlock(&prg.lockecm);
